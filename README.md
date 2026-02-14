@@ -2,18 +2,31 @@
 
 > **"Your thoughts don't happen in a vacuum. Neither should your notes."**
 
-![Project Status](https://img.shields.io/badge/Status-In%20Development-orange)
-![Tech Stack](https://img.shields.io/badge/Stack-Flutter%20%7C%20FastAPI%20%7C%20PostgreSQL-blue)
-![AI](https://img.shields.io/badge/AI-OpenAI%20%2B%20Llama3-purple)
+![Status](https://img.shields.io/badge/Status-In%20Development-orange?style=for-the-badge)
+![Stack](https://img.shields.io/badge/Stack-Flutter%20%7C%20FastAPI%20%7C%20PostgreSQL-blue?style=for-the-badge)
+![AI](https://img.shields.io/badge/AI-OpenAI%20%2B%20Llama3-purple?style=for-the-badge)
+
+<br>
 
 ## 💡 The Vision
 
 Most note-taking apps are just **digital graveyards**. You dump ideas in, and they disappear forever.
 
 **BrainDump** is different. It is an **Agentic Knowledge Graph** that doesn't just store your text; it captures your **State of Mind**.
-* **Passively records context:** What were you listening to? (Spotify) Where were you? (Location) What was the vibe? (Energy Level).
-* **Active Recall:** An AI Agent ("The Subconscious") that connects your past notes to your current problems.
-* **Clarity Engine:** It detects when you are scattered or anxious and forces you to prioritize.
+
+* **🎧 Passively Records Context:** What were you listening to? (Spotify) Where were you? (Location) What was the vibe? (Energy Level).
+* **🧠 Active Recall:** An AI Agent ("The Subconscious") that connects your past notes to your current problems.
+* **🔮 Clarity Engine:** It detects when you are scattered or anxious and forces you to prioritize.
+
+---
+
+## 📱 The Interface
+*Current Build: Neural Onboarding & Adaptive Dashboard*
+
+| **The Hook** | **The Dump** | **The Calibration** | **The Focus HUD** |
+|:---:|:---:|:---:|:---:|
+| <img src="https://github.com/user-attachments/assets/504d92fb-4ca9-4fc0-9cc6-7050b737d18a" width="200" /> | <img src="https://github.com/user-attachments/assets/7260203e-a893-4768-9aa5-3bade8530867" width="200" /> | <img src="https://github.com/user-attachments/assets/5696988f-6552-4cdd-b015-f3cc82b9db90" width="200" /> | <img src="https://github.com/user-attachments/assets/6234b5ae-9104-4ccf-832d-de546f3be7ce" width="200" /> |
+| *Initial System Link* | *Raw "RAM" Clear* | *Context Awareness* | *Energy-Based UI* |
 
 ---
 
@@ -34,10 +47,11 @@ Most note-taking apps are just **digital graveyards**. You dump ideas in, and th
 
 ---
 
-## ✨ Key Features (Roadmap)
+## ✨ Roadmap
 
 ### **Phase 1: The Foundation (Current)**
 - [x] **Neural Onboarding:** "Mad Libs" style user calibration (Energy, Goals, Music).
+- [x] **Adaptive Dashboard:** Home screen that changes UI based on user energy.
 - [ ] **The "Peeking Dock":** A distraction-free UI to capture thoughts instantly.
 - [ ] **Context Injection:** Attaching metadata (Time, Mood) to every note.
 
