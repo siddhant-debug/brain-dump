@@ -6,6 +6,10 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import '../services/file_service.dart';
 import '../../notes/services/note_service.dart';
 
+/*
+1 : FileVaultScreen is a unified repository for all stored data (files and thoughts).
+It uses a TabController to switch between file storage and note history.
+*/
 class FileVaultScreen extends ConsumerStatefulWidget {
   const FileVaultScreen({super.key});
 
@@ -15,6 +19,10 @@ class FileVaultScreen extends ConsumerStatefulWidget {
 
 class _FileVaultScreenState extends ConsumerState<FileVaultScreen>
     with SingleTickerProviderStateMixin {
+  /*
+  2 : _searchController and _searchQuery enable real-time filtering of the file list.
+  _tabController manages the switch between 'Files' and 'Thoughts' tabs.
+  */
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   late TabController _tabController;
@@ -32,6 +40,11 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen>
     super.dispose();
   }
 
+  /*
+  3 : _pickAndUploadFile triggers the device-native file picker.
+  Once a file is selected, it's passed to FileService for multipart upload.
+  It invalidates filesProvider on success to refresh the UI list.
+  */
   Future<void> _pickAndUploadFile() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -43,7 +56,7 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen>
       try {
         await ref.read(fileServiceProvider).uploadFile(file);
         if (!mounted) return;
-        ref.invalidate(filesProvider); // Refresh list
+        ref.invalidate(filesProvider); // Trigger a re-fetch of the file list
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('File uploaded successfully')),
         );
@@ -59,6 +72,9 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen>
     }
   }
 
+  /*
+  4 : _openFile fetches the raw content of a stored file and navigates to FileViewer.
+  */
   void _openFile(Map<String, dynamic> file) async {
     final fileId = file['id'];
     final filename = file['filename'];
@@ -90,6 +106,10 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen>
 
   @override
   Widget build(BuildContext context) {
+    /*
+    5 : filesState and notesState watch their respective providers 
+    to reactive update when data is fetched or refreshed.
+    */
     final filesState = ref.watch(filesProvider);
     final notesState = ref.watch(notesProvider);
 
@@ -116,9 +136,9 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          // Tab 1: Files
+          // 6 : Tab 1: Render the searchable file list
           _buildFileList(filesState),
-          // Tab 2: Thoughts (Notes)
+          // 7 : Tab 2: Render the thoughts (saved notes) list
           _buildNotesList(notesState),
         ],
       ),

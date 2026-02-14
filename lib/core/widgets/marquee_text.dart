@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+/*
+1 : MarqueeText is a horizontal scrolling utility for long strings.
+It uses an infinite while loop in its initState to animate the scroll position.
+*/
 class MarqueeText extends StatefulWidget {
   final String text;
   final TextStyle style;
@@ -20,15 +24,27 @@ class MarqueeText extends StatefulWidget {
 
 class _MarqueeTextState extends State<MarqueeText>
     with SingleTickerProviderStateMixin {
+  /*
+  2 : _scrollController is used to programmatically move the scroll position.
+  */
   late ScrollController _scrollController;
 
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+    // 3 : Start the scrolling loop after the first frame is rendered.
     WidgetsBinding.instance.addPostFrameCallback((_) => _startScrolling());
   }
 
+  /*
+  4 : _startScrolling manages the animation loop:
+  - Wait for pauseDuration.
+  - Calculate max scroll extent.
+  - Animate to the end at a constant speed.
+  - Wait again.
+  - Snap back to start and repeat.
+  */
   void _startScrolling() async {
     while (mounted) {
       await Future.delayed(widget.pauseDuration);

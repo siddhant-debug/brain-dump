@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 // Features
 import '../features/brain_dump/providers/brain_dump_provider.dart';
 import '../features/brain_dump/widgets/brain_dump_input.dart';
-import '../features/brain_dump/widgets/interactive_neural_tree.dart';
+// import '../features/brain_dump/widgets/interactive_neural_tree.dart'; // [Preserved]
 import '../features/dock/providers/dock_provider.dart';
 import '../features/dock/widgets/magnified_dock.dart';
 import '../features/music/providers/music_provider.dart';
@@ -12,10 +12,18 @@ import '../features/notes/services/note_service.dart';
 
 // Core / Shared
 import '../core/widgets/minimal_icon_button.dart';
+// import '../core/widgets/synaptic_roots_background.dart'; // [Preserved]
 import '../core/widgets/synaptic_roots_background.dart';
+import '../features/brain_dump/widgets/interactive_neural_tree.dart';
 import '../features/auth/controllers/auth_controller.dart';
 import '../features/vault/presentation/file_vault_screen.dart';
+// import 'neural_canvas_page.dart'; // Preserved for reference
+// [New Circuit Layout]
 
+/*
+1 : BrainDumpScreen is a ConsumerStatefulWidget that serves as the main interaction hub.
+It uses Riverpod's ConsumerState to access providers and manage its local state.
+*/
 class BrainDumpScreen extends ConsumerStatefulWidget {
   const BrainDumpScreen({super.key});
 
@@ -25,6 +33,12 @@ class BrainDumpScreen extends ConsumerStatefulWidget {
 
 class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     with SingleTickerProviderStateMixin {
+  /*
+  2 : _controller manages the text input in the main brain dump field.
+  _focusNode controls the keyboard focus for the input field.
+  _dockIconKeys stores GlobalKeys for each dock item to calculate their global positions.
+  _pulseController drives the ambient breathing animation of the UI.
+  */
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   final List<GlobalKey> _dockIconKeys = List.generate(4, (_) => GlobalKey());
@@ -54,10 +68,14 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     super.dispose();
   }
 
+  /*
+  3 : _onSubmitted is the primary flow for saving thoughts.
+  It triggers the noteServiceProvider to persist the text to the backend.
+  Optimistically clears the input and refocuses on success.
+  */
   Future<void> _onSubmitted(String text) async {
     if (text.trim().isEmpty) return;
 
-    // Show loading? BrainDumpInput handles its own if needed, but we can do it here.
     try {
       await ref.read(noteServiceProvider).saveNote(text);
       if (!mounted) return;
@@ -71,8 +89,6 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
           backgroundColor: Colors.blueAccent,
         ),
       );
-
-      // Optionally refresh notes list if we had one here
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -84,14 +100,22 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     }
   }
 
+  /*
+  4 : _toggleDock manages the opening/closing of the magnified dock.
+  It triggers a delayed position update to ensure the dock icons are rendered 
+  before calculating their screen coordinates for the synaptic roots background.
+  */
   void _toggleDock() {
     ref.read(dockProvider.notifier).toggle();
     if (ref.read(dockProvider).isOpen) {
-      // Defer position update until animation settles
       Future.delayed(const Duration(milliseconds: 360), _updateDockPositions);
     }
   }
 
+  /*
+  5 : _updateDockPositions calculates where the dock icons are on the screen.
+  These coordinates are shared with the SynapticRootsBackground to draw connections.
+  */
   void _updateDockPositions() {
     if (!mounted) return;
     final positions = <Offset>[];
@@ -110,16 +134,16 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
   @override
   Widget build(BuildContext context) {
     // [Architect] REACTIVE UI BINDINGS
-    // `ref.watch` subscribes this widget to changes in these providers.
-    // If any of these states change, Flutter will re-run this build() method.
+    /*
+    6 : dockState: Stores dock open/close status and icon positions.
+    musicState: Tracks playing status of external apps (Spotify/Apple).
+    brainDumpState: Manages the 'processing' state of the AI/Input.
+    userState: Provides authenticated user info (fetched via /auth/me).
+    */
     final dockState = ref.watch(dockProvider);
     final musicState = ref.watch(musicProvider);
-    final brainDumpState = ref.watch(
-      brainDumpProvider,
-    ); // Rebuilds on isProcessing changes
-    final userState = ref.watch(
-      userProvider,
-    ); // Fetches user data asynchronously
+    final brainDumpState = ref.watch(brainDumpProvider);
+    final userState = ref.watch(userProvider);
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -132,6 +156,18 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
 
             return Stack(
               children: [
+                /*
+                // ─── [ CIRCUIT LAYOUT ] ──────────────────────────────────────────────
+                Positioned.fill(
+                  child: AnimatedOpacity(
+                    opacity: isWriting ? 0.0 : 0.8,
+                    duration: const Duration(milliseconds: 300),
+                    child: const NeuralCanvasPage(),
+                  ),
+                ),
+                */
+
+                // [LEGACY BIOLOGY RESTORED]
                 // 1. Synaptic roots background (Hidden while typing)
                 Positioned.fill(
                   child: AnimatedOpacity(
@@ -142,20 +178,6 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                       dockIconPositions: dockState.iconPositions,
                       phase: _pulseController.value,
                       child: const SizedBox.expand(),
-                    ),
-                  ),
-                ),
-
-                // 1.5 Interactive Neural Tree Nodes (Hidden while typing)
-                Positioned.fill(
-                  child: AnimatedOpacity(
-                    opacity: isWriting ? 0.0 : 1.0,
-                    duration: const Duration(milliseconds: 400),
-                    child: IgnorePointer(
-                      ignoring: isWriting,
-                      child: InteractiveNeuralTree(
-                        phase: _pulseController.value,
-                      ),
                     ),
                   ),
                 ),
@@ -181,10 +203,19 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                   ),
                 ),
 
-                // 3. Action Buttons (Lower UI)
+                // 3. Interactive Neural Tree Nodes (On top, hidden while typing)
+                Positioned.fill(
+                  child: AnimatedOpacity(
+                    opacity: isWriting ? 0.0 : 1.0,
+                    duration: const Duration(milliseconds: 400),
+                    child: InteractiveNeuralTree(phase: _pulseController.value),
+                  ),
+                ),
+
+                // 4. Action Buttons (Lower UI)
                 _buildActionButtons(brainDumpState),
 
-                // 4. Overlays & Modals
+                // 5. Overlays & Modals
                 if (dockState.isOpen)
                   Positioned.fill(
                     child: GestureDetector(
@@ -194,7 +225,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                     ),
                   ),
 
-                // 5. Dock Implementation
+                // 6. Dock Implementation
                 MagnifiedDock(
                   isOpen: dockState.isOpen,
                   onToggle: _toggleDock,
@@ -212,6 +243,12 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     );
   }
 
+  /*
+  8 : _buildActionButtons provides the bottom-row interactions:
+  - Submit: Manual submission of the current thought.
+  - The Vault: Navigates to the file storage screen.
+  - Logout: Invalidates the auth session via AuthController.
+  */
   Widget _buildActionButtons(BrainDumpState state) {
     return Positioned(
       bottom: 16,

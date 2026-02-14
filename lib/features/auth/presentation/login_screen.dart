@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../controllers/auth_controller.dart';
 
+/*
+1 : LoginScreen is the entry point for unauthenticated users.
+It provides a minimalist interface for both signing in and creating an account.
+*/
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -10,6 +14,10 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
+  /*
+  2 : _emailController and _passwordController store user credentials.
+  _isLogin toggles the UI between Login and Signup modes.
+  */
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLogin = true;
@@ -21,6 +29,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  /*
+  3 : _submit triggers the authentication flow through AuthController.
+  It handles validation and calls either login or signup based on _isLogin state.
+  */
   Future<void> _submit() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -37,15 +49,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } else {
       await ref.read(authControllerProvider.notifier).signup(email, password);
     }
-
-    if (mounted && ref.read(authControllerProvider).hasError == false) {
-      // Navigate to main screen
-      // Navigator.of(context).pushReplacementNamed('/home');
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    /*
+    4 : authState: Watches the current authentication operation status (AsyncValue).
+    ref.listen: Observes the auth state to show global error snackbars.
+    */
     final authState = ref.watch(authControllerProvider);
 
     ref.listen<AsyncValue<void>>(authControllerProvider, (previous, next) {
@@ -78,6 +89,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 48),
+              // 5 : Email input field with minimalist styling
               TextField(
                 controller: _emailController,
                 style: const TextStyle(color: Colors.white),
@@ -95,6 +107,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              // 6 : Password input field (obscured)
               TextField(
                 controller: _passwordController,
                 obscureText: true,
@@ -113,6 +126,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 32),
+              /*
+              7 : Action UI: Shows a spinner during loading, 
+              or the primary action button and mode toggle otherwise.
+              */
               if (authState.isLoading)
                 const CircularProgressIndicator(color: Colors.white)
               else

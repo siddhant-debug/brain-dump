@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+/*
+1 : DockItemModel defines the static properties of a sidebar application.
+id: Unique identifier used to link with NowPlayingInfo.
+icon: The visual representation in the dock.
+color: The theme accent color for the item and its associated background root.
+*/
 class DockItemModel {
   final String id;
   final IconData icon;
@@ -15,6 +21,9 @@ class DockItemModel {
   });
 }
 
+/*
+2 : defaultDockItems: The registry of available system applications.
+*/
 const defaultDockItems = [
   DockItemModel(
     id: 'apple',

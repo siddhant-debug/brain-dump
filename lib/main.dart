@@ -19,6 +19,10 @@ class BrainDumpApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(isAuthenticatedProvider);
+    /*
+    1 : final authState = ref.watch(isAuthenticatedProvider);
+    is used to watch the isAuthenticatedProvider.
+    */
 
     return MaterialApp(
       title: 'Brain Dump',
@@ -39,18 +43,41 @@ class BrainDumpApp extends ConsumerWidget {
         ),
       ),
       home: authState.when(
+        /*
+        2 : authState.when(
+        is used to watch the authState.
+        based on the state it returns the appropriate widget.
+        it check is isAuthenticated is true or false.
+        if true it returns the OnboardingScreen or BrainDumpScreen.
+        onboarding screen is shown if isNewUser is true.
+        brain dump screen is shown if isNewUser is false.
+        if false it returns the LoginScreen.
+        */
+
         data: (isAuthenticated) {
           if (isAuthenticated) {
             final isNewUser = ref.watch(isNewUserProvider);
+            /*
+            2 : final isNewUser = ref.watch(isNewUserProvider);
+            is used to watch the isNewUserProvider.
+            */
             return isNewUser
                 ? const OnboardingScreen()
                 : const BrainDumpScreen();
           }
           return const LoginScreen();
+          /*
+          3 : return const LoginScreen();
+          is used to return the LoginScreen.
+          */
         },
         loading: () =>
             const Scaffold(body: Center(child: CircularProgressIndicator())),
         error: (_, __) => const LoginScreen(),
+        /*
+        4 : error: (_, __) => const LoginScreen(),
+        is used to return the LoginScreen.
+        */
       ),
     );
   }

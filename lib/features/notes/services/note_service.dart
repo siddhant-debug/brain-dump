@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../../core/constants/api_constants.dart';
 
 // [Architect] PROVIDER DEFINITION
 // This is the entry point for the UI to access the NoteService.
@@ -16,47 +17,53 @@ final notesProvider = FutureProvider<List<dynamic>>((ref) async {
   return ref.watch(noteServiceProvider).getNotes();
 });
 
+/*
+1 : NoteService handles the persistence of text thoughts to the remote backend.
+It includes automatic token retrieval with retries to handle disk I/O latency.
+*/
 class NoteService {
   NoteService();
 
+  /*
+  2 : _dio is configured for communication with the FastAPI backend.
+  */
   final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: 'http://localhost:8000',
+      baseUrl: ApiConstants.baseUrl,
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 10),
     ),
   );
 
+  /*
+  3 : _getTokenWithRetry attempts to read the JWT from secure storage.
+  It retries up to 3 times because the disk write on login might still be in progress
+  when the first request (like fetching notes) is triggered.
+  */
   Future<String?> _getTokenWithRetry() async {
-    // Read directly from secure storage to avoid potential provider access issues
     const storage = FlutterSecureStorage();
     String? token;
     int attempts = 0;
     while (attempts < 3) {
       token = await storage.read(key: 'jwt_token');
       if (token != null) {
-        print('DEBUG: Token found on attempt ${attempts + 1}');
         return token;
       }
-      print('DEBUG: Token null, retrying... (${attempts + 1}/3)');
       await Future.delayed(const Duration(milliseconds: 500));
       attempts++;
     }
     return null;
   }
 
+  /*
+  4 : saveNote sends a new text thought to the API.
+  It requires an authenticated session.
+  */
   Future<Map<String, dynamic>> saveNote(String content) async {
-    // [Architect] CROSS-PROVIDER INTERACTION
-    // We read another provider (AuthController) to get the JWT token.
     final token = await _getTokenWithRetry();
-    print(
-      'DEBUG: NoteService.saveNote loaded token: ${token != null ? "PRESENT" : "NULL"}',
-    );
     if (token == null) throw Exception('Not authenticated');
 
     try {
-      // [Architect] API INTERACTION
-      // We use Dio to perform the actual HTTP POST request to FastAPI.
       final response = await _dio.post(
         '/notes/',
         data: {'content': content},
@@ -68,6 +75,9 @@ class NoteService {
     }
   }
 
+  /*
+  5 : getNotes retrieves all previously saved thoughts from the vault.
+  */
   Future<List<dynamic>> getNotes() async {
     final token = await _getTokenWithRetry();
     if (token == null) throw Exception('Not authenticated');

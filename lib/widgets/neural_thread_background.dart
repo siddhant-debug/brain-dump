@@ -38,6 +38,11 @@ const _dummyThoughts = [
 /// branching vine/node graph on the right side of the screen.
 ///
 /// Thought labels glow in category colors along the neural thread.
+/*
+1 : NeuralThreadBackground generates an ambient, procedural background.
+It draws a 'neural trunk' with branching thought nodes on the right side.
+The opacity pulse is driven by a local AnimationController.
+*/
 class NeuralThreadBackground extends StatefulWidget {
   const NeuralThreadBackground({super.key, required this.child});
 
@@ -49,6 +54,10 @@ class NeuralThreadBackground extends StatefulWidget {
 
 class _NeuralThreadBackgroundState extends State<NeuralThreadBackground>
     with SingleTickerProviderStateMixin {
+  /*
+  2 : _controller: Drives the breathing effect.
+  _opacityAnim: Maps the controller value to a subtle opacity range (0.08 to 0.22).
+  */
   late final AnimationController _controller;
   late final Animation<double> _opacityAnim;
 
@@ -74,6 +83,9 @@ class _NeuralThreadBackgroundState extends State<NeuralThreadBackground>
 
   @override
   Widget build(BuildContext context) {
+    /*
+    3 : AnimatedBuilder ensures the CustomPaint repaints only when the opacity changes.
+    */
     return AnimatedBuilder(
       animation: _opacityAnim,
       builder: (context, child) {

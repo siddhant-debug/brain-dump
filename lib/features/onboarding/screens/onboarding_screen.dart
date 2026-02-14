@@ -7,6 +7,10 @@ import 'package:brain_dump/features/onboarding/widgets/selection_card.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:brain_dump/features/auth/controllers/auth_controller.dart';
 
+/*
+1 : OnboardingScreen is a multi-step experience for new users.
+It guides them through 'Hook', 'Raw Dump', and 'Calibration' phases.
+*/
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -15,11 +19,15 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
+  /*
+  2 : _pageController: Manages horizontal scrolling between onboarding steps.
+  _rawDumpController: Captures the initial stream of consciousness thoughts.
+  */
   final PageController _pageController = PageController();
   final TextEditingController _rawDumpController = TextEditingController();
   int _currentPage = 0;
 
-  // Question Data
+  // 3 : Question Data for the Calibration phase (Vibe selection)
   final Map<String, List<String>> _questions = {
     'Current Energy': [
       '🔋 Charged',
@@ -54,6 +62,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    /*
+    4 : Watches onboardingProvider to sync UI with selection state across pages.
+    */
     final state = ref.watch(onboardingProvider);
     final notifier = ref.read(onboardingProvider.notifier);
 
@@ -63,8 +74,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         controller: _pageController,
         physics: const NeverScrollableScrollPhysics(),
         children: [
+          // 5 : Phase 1 - The Hook (introductory animation)
           _buildHookPage(),
+          // 6 : Phase 2 - The Raw Dump (initial note entry)
           _buildRawDumpPage(state, notifier),
+          // 7 : Phase 3 - The Calibration (user preference selection)
           _buildCalibrationPage(state, notifier),
         ],
       ),

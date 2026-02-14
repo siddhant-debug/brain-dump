@@ -6,6 +6,11 @@ import 'package:flutter/material.dart';
 ///
 /// When [isDockOpen] is false: Roots sway idly.
 /// When [isDockOpen] is true: Root tips reach out to connect to the [dockIconPositions].
+/*
+1 : SynapticRootsBackground is an organic, procedural background widget.
+It renders fractal-like roots that sway idly or connect to dock icons.
+It uses a CustomPaint for high-performance drawing.
+*/
 class SynapticRootsBackground extends StatefulWidget {
   const SynapticRootsBackground({
     super.key,
@@ -15,6 +20,12 @@ class SynapticRootsBackground extends StatefulWidget {
     required this.phase,
   });
 
+  /*
+  2 : child: The content to be rendered on top of the background.
+  isDockOpen: Determines if roots should reach out or stay idle.
+  dockIconPositions: The global coordinates of the dock items.
+  phase: A 0..1 value from an external pulse animation controller.
+  */
   final Widget child;
   final bool isDockOpen;
   final List<Offset> dockIconPositions;
@@ -26,10 +37,12 @@ class SynapticRootsBackground extends StatefulWidget {
 }
 
 class _SynapticRootsBackgroundState extends State<SynapticRootsBackground> {
-  // Removed local AnimationController
-
   @override
   Widget build(BuildContext context) {
+    /*
+    3 : TweenAnimationBuilder manages the connection transition state (0 = idle, 1 = connected).
+    It smooths the morphing of root tips towards their targets.
+    */
     return TweenAnimationBuilder<double>(
       duration: const Duration(milliseconds: 600),
       curve: Curves.easeInOutCubic,
@@ -49,8 +62,10 @@ class _SynapticRootsBackgroundState extends State<SynapticRootsBackground> {
   }
 }
 
-// ─── Painter ───────────────────────────────────────────────────────────────
-
+/*
+4 : _SynapticRootsPainter handles the actual canvas drawing.
+It uses recursive branching to create a "synaptic" or "root-like" structure.
+*/
 class _SynapticRootsPainter extends CustomPainter {
   _SynapticRootsPainter({
     required this.phase,
@@ -58,12 +73,13 @@ class _SynapticRootsPainter extends CustomPainter {
     required this.targets,
   });
 
-  final double phase; // 0..1 pulse animation
-  final double connectionT; // 0..1 (0=idle, 1=connected)
+  final double phase; // drives the idle sway
+  final double connectionT; // drives the reach/morphing to targets
   final List<Offset> targets;
 
-  static const int _seed = 77;
-  static const int _maxDepth = 7;
+  static const int _seed =
+      77; // deterministic seed for consistent tree structure
+  static const int _maxDepth = 7; // depth of the fractal recursion
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -71,13 +87,11 @@ class _SynapticRootsPainter extends CustomPainter {
     final h = size.height;
     final rand = Random(_seed);
 
-    // Fade in/out logic:
-    // When connecting (T > 0), increased base opacity.
-    final baseOpacity = 0.15 + (connectionT * 0.3); // 0.15 -> 0.45
+    final baseOpacity = 0.15 + (connectionT * 0.3);
 
-    // Draw the main root system
-    // We'll generate branches. The deepest tips will be "assigned" to targets
-    // if connectionT > 0.
+    /*
+    5 : The root system starts from the top-right corner and branches downwards.
+    */
     _drawRecursiveBranch(
       canvas: canvas,
       rand: rand,
@@ -87,10 +101,14 @@ class _SynapticRootsPainter extends CustomPainter {
       strokeWidth: 3.5,
       opacity: baseOpacity,
       depth: 0,
-      targetIndex: 0, // Track which target to connect to
+      targetIndex: 0,
     );
   }
 
+  /*
+  6 : _drawRecursiveBranch is the core fractal engine.
+  It calculates current segments, applies sway, and handles target morphing at the tips.
+  */
   void _drawRecursiveBranch({
     required Canvas canvas,
     required Random rand,
@@ -102,11 +120,9 @@ class _SynapticRootsPainter extends CustomPainter {
     required int depth,
     required int targetIndex,
   }) {
-    // Stop condition
     if (depth >= _maxDepth || opacity < 0.01) return;
 
-    // ── Calculate "Natural" End Point (Idle State) ──────────────────────
-    // Natural sway
+    // 7 : Calculate natural sway based on global phase and recursion depth
     final sway = sin(phase * pi * 2 + depth * 1.2) * 0.05 * (depth + 1);
     final naturalAngle = angle + sway;
 
@@ -115,51 +131,32 @@ class _SynapticRootsPainter extends CustomPainter {
       start.dy + sin(naturalAngle) * length,
     );
 
-    // ── Determine Actual End Point (Morphing) ───────────────────────────
     Offset currentEnd = naturalEnd;
 
-    // If we are deep enough and have a valid target, we morph the tip position
-    // ONLY for the specific branches that are destined to be "connectors".
-    // We'll strip this down: The first 4 deep branches we find map to targets 0..3.
-    // Since this is a fractal, we need a deterministic way to map "leaf X" to "target Y".
-    // Simplification: We only morph the VERY tip (last segment) towards the target.
-
+    // 8 : If at a leaf (tip), morph the position towards a dock icon target if connectionT > 0
     bool isTip = depth == _maxDepth - 1;
-    // We'll use a hacky modulo to assign tips to targets 0-3
-    // But since recursion order is deterministic, this works visually.
     int myTargetIdx = -1;
 
     if (isTip && targets.isNotEmpty) {
-      // Pick a target based on the random seed stream state (simulated by passing index or just rand)
-      // Actually, passing targetIndex down is cleaner.
-      // We assume the tree splits 1->2.
-      // Let's just say if we are at a tip, we interpolate to target[targetIndex % total].
       myTargetIdx = targetIndex % targets.length;
     }
 
     if (isTip && myTargetIdx >= 0 && connectionT > 0.0) {
       final target = targets[myTargetIdx];
-      // Interpolate between natural tip and target position
-      // Using cubic curve for smooth motion
       final dx = target.dx - naturalEnd.dx;
       final dy = target.dy - naturalEnd.dy;
       currentEnd = Offset(
         naturalEnd.dx + dx * connectionT,
         naturalEnd.dy + dy * connectionT,
       );
-
-      // When fully connected, straighten the curve slightly to look like tension?
-      // Or keep it organic. Let's keep organic.
     }
 
-    // ── Draw Segment ───────────────────────────────────────────────────
-    // Control point for quadratic bezier
+    // 9 : Render the segment using a quadratic bezier path for an organic curve
     final mid = Offset(
       (start.dx + currentEnd.dx) / 2,
       (start.dy + currentEnd.dy) / 2,
     );
     final perpAngle = naturalAngle + pi / 2;
-    // Reduce bulge as we connect to straigthen out the "reach" slightly
     final bulgeFactor = (1.0 - connectionT * 0.5);
     final bulge = (rand.nextDouble() - 0.5) * length * 0.4 * bulgeFactor;
 
@@ -168,9 +165,7 @@ class _SynapticRootsPainter extends CustomPainter {
       mid.dy + sin(perpAngle) * bulge,
     );
 
-    // Pulse brightness
     final pulse = 0.8 + 0.4 * sin(phase * pi * 2 + depth * 0.7);
-    // If connected, boost brightness significantly to show "energy"
     final connectionGlow = connectionT * 0.5;
 
     final paint = Paint()
@@ -187,7 +182,7 @@ class _SynapticRootsPainter extends CustomPainter {
 
     canvas.drawPath(path, paint);
 
-    // ── Interaction: Draw connection node if connected ────────────────
+    // 10 : Draw interactive 'node' glow if fully connected to a target
     if (isTip && connectionT > 0.5 && myTargetIdx >= 0) {
       final nodePaint = Paint()
         ..color = Colors.white.withValues(
@@ -201,14 +196,12 @@ class _SynapticRootsPainter extends CustomPainter {
       canvas.drawCircle(currentEnd, 3.0 * connectionT, corePaint);
     }
 
-    // ── Recursion ──────────────────────────────────────────────────────
+    // 11 : Split and recurse to create branches
     final splitChance = 0.6 - depth * 0.05;
     final doSplit = rand.nextDouble() < splitChance;
     final childCount = doSplit ? 2 : 1;
 
     for (int i = 0; i < childCount; i++) {
-      // Pass a modified target index to distribute targets among children
-      // e.g. Left child gets target, right gets target+1
       final nextTargetIndex = targetIndex + i;
 
       final spread = doSplit
@@ -221,12 +214,10 @@ class _SynapticRootsPainter extends CustomPainter {
         canvas: canvas,
         rand: rand,
         start: currentEnd,
-        angle:
-            naturalAngle +
-            spread, // Angle relative to *natural* flow, not the distorted one
+        angle: naturalAngle + spread,
         length: length * (0.65 + rand.nextDouble() * 0.15),
         strokeWidth: (strokeWidth * 0.7).clamp(0.5, 4.0),
-        opacity: opacity * 0.85, // slower fade
+        opacity: opacity * 0.85,
         depth: depth + 1,
         targetIndex: nextTargetIndex,
       );

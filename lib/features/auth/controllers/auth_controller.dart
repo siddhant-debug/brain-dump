@@ -1,6 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../../core/constants/api_constants.dart';
+
+/*
+Variables and Providers 
+
+1 : auth controller provider variable stores the instance of AuthController which 
+is used to manage the state of the authentication process. State notifier provider 
+takes a callback function that returns an instance of AuthController.
+*/
 
 final authControllerProvider =
     StateNotifierProvider<AuthController, AsyncValue<void>>((ref) {
@@ -8,12 +17,21 @@ final authControllerProvider =
     });
 
 final isNewUserProvider = StateProvider<bool>((ref) => false);
+/*
+2 : isNewUserProvider is a state provider that stores a boolean value indicating 
+whether the user is a new user or not.
+*/
 
 final isAuthenticatedProvider = FutureProvider<bool>((ref) async {
   final storage = const FlutterSecureStorage();
   final token = await storage.read(key: 'jwt_token');
   return token != null;
 });
+
+/*
+3 : isAuthenticatedProvider is a future provider that returns a boolean value 
+indicating whether the user is authenticated or not.
+*/
 
 class UserModel {
   final int id;
@@ -38,49 +56,81 @@ class UserModel {
   }
 }
 
+/*
+4 : userProvider is a future provider that returns a UserModel object containing 
+the user's information.
+*/
+
 final userProvider = FutureProvider<UserModel?>((ref) async {
   final auth = ref.watch(isAuthenticatedProvider);
   if (auth.value != true) return null;
 
+  /*
+  5 : authController is a state notifier provider that stores an instance of AuthController.
+  It is used to manage the state of the authentication process.
+  */
+
   final authController = ref.read(authControllerProvider.notifier);
 
+  /*
+  6 : token is a String that stores the JWT token used to authenticate the user.
+  */
   final token = await authController.getToken();
   if (token == null) return null;
 
   try {
+    /*
+    7 : dio is a Dio instance that is used to make HTTP requests to the server.
+    */
     final dio = authController._dio;
     final response = await dio.get(
       '/auth/me',
       options: Options(headers: {'Authorization': 'Bearer $token'}),
     );
+    /*
+    8 : UserModel.fromJson(response.data) is a factory constructor that creates
+    a UserModel object from the JSON response.
+    */
     return UserModel.fromJson(response.data);
   } catch (e) {
     return null;
   }
 });
 
-// [Architect] STATE MANAGEMENT (LOGIC LAYER)
-// AuthController extends StateNotifier to manage complex state logic.
-// It exposes an AsyncValue<void> to the UI to represent loading/success/error states.
+/*
+9 : AuthController extends StateNotifier to manage complex state logic.
+It exposes an AsyncValue<void> to the UI to represent loading/success/error states.
+*/
 class AuthController extends StateNotifier<AsyncValue<void>> {
   AuthController(this.ref) : super(const AsyncValue.data(null));
 
-  // [Architect] REF INJECTION
-  // We hold `ref` to interact with other providers or invalidate them (e.g., refresh user data on login).
+  /*
+  10 : ref is a Ref object that is used to interact with other providers or invalidate
+   them (e.g., refresh user data on login).
+  */
   final Ref ref;
 
   final Dio _dio = Dio(
     BaseOptions(
-      baseUrl:
-          'http://localhost:8000', // Update with your server local IP for physical devices
+      baseUrl: ApiConstants.baseUrl, // Use centralized local IP
       connectTimeout: const Duration(seconds: 5),
       receiveTimeout: const Duration(seconds: 3),
     ),
   );
 
+  /*
+  11 : _storage is a FlutterSecureStorage object that is used to store the JWT token.
+  */
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
+  /*
+  12 : login is a method that is used to login the user.
+  It takes an email and password as parameters.
+  */
   Future<void> login(String email, String password) async {
+    /*
+    13 : state = const AsyncValue.loading(); is used to set the state to loading.
+    */
     state = const AsyncValue.loading();
     try {
       final response = await _dio.post(
@@ -88,9 +138,19 @@ class AuthController extends StateNotifier<AsyncValue<void>> {
         data: {'email': email, 'password': password},
       );
 
+      /*
+      14 : final String accessToken = response.data['access_token']; 
+      is used to get the access token from the response.
+      */
       final String accessToken = response.data['access_token'];
       await _storage.write(key: 'jwt_token', value: accessToken);
 
+      /*
+      15 : ref.invalidate(isAuthenticatedProvider); 
+      is used to invalidate the isAuthenticatedProvider.
+      This is used to refresh the user data on login.
+      
+      */
       ref.invalidate(isAuthenticatedProvider);
       state = const AsyncValue.data(null);
     } on DioException catch (e, stack) {

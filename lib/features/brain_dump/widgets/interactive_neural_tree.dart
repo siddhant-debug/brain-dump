@@ -4,12 +4,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../vault/services/file_service.dart';
 import '../../vault/presentation/file_vault_screen.dart';
 
+/*
+1 : InteractiveNeuralTree overlays clickable nodes onto the background 'neural trunk'.
+It uses the same deterministic random math as the painter to ensure that 
+the interactive buttons align perfectly with the visual branches.
+*/
 class InteractiveNeuralTree extends ConsumerWidget {
   final double phase;
   const InteractiveNeuralTree({super.key, required this.phase});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    /*
+    2 : Watches filesProvider to generate a node for each stored file or memory.
+    */
     final filesState = ref.watch(filesProvider);
 
     return LayoutBuilder(
@@ -19,7 +27,10 @@ class InteractiveNeuralTree extends ConsumerWidget {
 
         return filesState.when(
           data: (files) {
-            // Replicate the deterministic random tree logic to get node positions
+            /*
+            3 : _calculateNodePositions: Uses the same seed (77) and recursive logic 
+            as the CustomPainter to calculate the (x, y) coordinates of branch tips.
+            */
             final nodes = _calculateNodePositions(w, h, files.length, phase);
 
             return Stack(
@@ -31,21 +42,37 @@ class InteractiveNeuralTree extends ConsumerWidget {
                   left: node.dx - 6,
                   top: node.dy - 6,
                   child: GestureDetector(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => FileViewer(
-                            filename: file['filename'],
-                            type: file['file_type'],
-                            content: null,
-                          ),
-                        ),
-                      );
+                    onTap: () async {
+                      // 4 : Tapping a node opens the FileViewer for the associated memory.
+                      // First, show a loading indicator if possible, or just fetch and then push.
+                      try {
+                        final content = await ref
+                            .read(fileServiceProvider)
+                            .getFileContent(file['id']);
+
+                        if (context.mounted) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => FileViewer(
+                                filename: file['filename'],
+                                type: file['file_type'],
+                                content: content,
+                              ),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Failed to load file: $e')),
+                          );
+                        }
+                      }
                     },
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        // The Node Glow
+                        // 5 : The Node Glow visual (matching the background theme)
                         Container(
                           width: 12,
                           height: 12,
@@ -61,9 +88,9 @@ class InteractiveNeuralTree extends ConsumerWidget {
                             ],
                           ),
                         ),
-                        // The Tag/Label
+                        // 6 : The Tag/Label showing the filename
                         Positioned(
-                          left: -50, // Center roughly
+                          left: -50,
                           top: 18,
                           child: Container(
                             width: 100,

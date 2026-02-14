@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 
 /// A subtle, ghost-style icon button for the minimalist UI.
+/*
+1 : MinimalIconButton is a reusable ghost-style button component.
+It handles its own hover/tap effects (via InkWell) and loading state (via CircularProgressIndicator).
+*/
 class MinimalIconButton extends StatelessWidget {
   const MinimalIconButton({
     super.key,
@@ -10,6 +14,12 @@ class MinimalIconButton extends StatelessWidget {
     this.isLoading = false,
   });
 
+  /*
+  2 : icon: The graphical representation of the action.
+  tooltip: Accessibility text shown on long-press or hover.
+  onPressed: The callback function executed when the button is clicked.
+  isLoading: If true, disables interaction and shows a progress spinner.
+  */
   final IconData icon;
   final String tooltip;
   final VoidCallback onPressed;

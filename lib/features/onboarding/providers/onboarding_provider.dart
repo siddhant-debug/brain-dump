@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class OnboardingState {
@@ -42,6 +43,10 @@ class OnboardingState {
   }
 }
 
+/*
+1 : OnboardingNotifier collects user profile data during the first launch.
+It holds a local state that is eventually 'Initialized' into the system.
+*/
 class OnboardingNotifier extends StateNotifier<OnboardingState> {
   OnboardingNotifier() : super(const OnboardingState());
 
@@ -65,10 +70,12 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     state = state.copyWith(primaryGoal: goal);
   }
 
+  /*
+  2 : completeOnboarding: Serializes the collected 'Vibe' data for persistence.
+  */
   Map<String, dynamic> completeOnboarding() {
     final data = state.toJson();
-    // In a real app, this would be an API call
-    print('[Onboarding] Syncing to Neural Core: $data');
+    debugPrint('[Onboarding] Syncing to Neural Core: $data');
     return data;
   }
 }

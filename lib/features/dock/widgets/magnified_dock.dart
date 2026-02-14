@@ -6,6 +6,11 @@ import '../../music/models/now_playing_info.dart';
 import '../models/dock_item_model.dart';
 import '../../../core/widgets/marquee_text.dart';
 
+/*
+1 : MagnifiedDock is an interactive sidebar that expands when hovered or dragged.
+It uses 'Fish-eye' magnification logic where icons grow based on their distance 
+from the user's cursor or touch point.
+*/
 class MagnifiedDock extends StatefulWidget {
   final Map<String, NowPlayingInfo?> activeApps;
   final List<GlobalKey> iconKeys;
@@ -27,6 +32,10 @@ class MagnifiedDock extends StatefulWidget {
 }
 
 class _MagnifiedDockState extends State<MagnifiedDock> {
+  /*
+  2 : _hoverYNotifier tracks the vertical position of the cursor/touch.
+  It is used to calculate the focal point of the magnification effect.
+  */
   final ValueNotifier<double?> _hoverYNotifier = ValueNotifier<double?>(null);
 
   @override
@@ -85,6 +94,10 @@ class _MagnifiedDockState extends State<MagnifiedDock> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: List.generate(widget.items.length, (index) {
+                        /*
+                        3 : ValueListenableBuilder ensures that only the dock items 
+                        rebuild when the hover position changes, optimizing performance.
+                        */
                         return ValueListenableBuilder<double?>(
                           valueListenable: _hoverYNotifier,
                           builder: (context, hoverY, child) {
