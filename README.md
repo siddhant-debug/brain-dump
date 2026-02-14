@@ -33,11 +33,9 @@ Most note-taking apps are just **digital graveyards**. You dump ideas in, and th
 ## 🔌 The Infrastructure
 *Robust FastAPI Backend with Auto-Generated Documentation (Swagger UI)*
 
-> **Note:** Upload your Swagger screenshot to GitHub and paste the link below.
-> Example: `<img width="1375" height="771" alt="Screenshot 2026-02-14 at 2 45 33 PM" src="https://github.com/user-attachments/assets/d0800b59-9d4a-4c62-8467-830248a47eb6" />
-`
+**Available API Endpoints**
 
-![API Documentation](YOUR_IMAGE_LINK_HERE)
+<img width="1375" height="771" alt="Screenshot 2026-02-14 at 2 45 33 PM" src="https://github.com/user-attachments/assets/d0800b59-9d4a-4c62-8467-830248a47eb6" />
 
 ---
 
