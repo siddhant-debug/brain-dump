@@ -28,6 +28,16 @@ Most note-taking apps are just **digital graveyards**. You dump ideas in, and th
 | <img src="https://github.com/user-attachments/assets/504d92fb-4ca9-4fc0-9cc6-7050b737d18a" width="200" /> | <img src="https://github.com/user-attachments/assets/7260203e-a893-4768-9aa5-3bade8530867" width="200" /> | <img src="https://github.com/user-attachments/assets/5696988f-6552-4cdd-b015-f3cc82b9db90" width="200" /> | <img src="https://github.com/user-attachments/assets/6234b5ae-9104-4ccf-832d-de546f3be7ce" width="200" /> |
 | *Initial System Link* | *Raw "RAM" Clear* | *Context Awareness* | *Energy-Based UI* |
 
+<br>
+
+## 🔌 The Infrastructure
+*Robust FastAPI Backend with Auto-Generated Documentation (Swagger UI)*
+
+> **Note:** Upload your Swagger screenshot to GitHub and paste the link below.
+> Example: `![API Docs](https://github.com/your-username/brain-dump/assets/api_screenshot.png)`
+
+![API Documentation](YOUR_IMAGE_LINK_HERE)
+
 ---
 
 ## 🏗️ Tech Stack
@@ -52,7 +62,7 @@ Most note-taking apps are just **digital graveyards**. You dump ideas in, and th
 ### **Phase 1: The Foundation (Current)**
 - [x] **Neural Onboarding:** "Mad Libs" style user calibration (Energy, Goals, Music).
 - [x] **Adaptive Dashboard:** Home screen that changes UI based on user energy.
-- [ ] **The "Peeking Dock":** A distraction-free UI to capture thoughts instantly.
+- [x] **API Infrastructure:** Secure Auth, File Upload, and Notes endpoints.
 - [ ] **Context Injection:** Attaching metadata (Time, Mood) to every note.
 
 ### **Phase 2: The Brain (Q2 2026)**
