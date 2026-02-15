@@ -1,29 +1,21 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart'; // For ScrollDirection
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-// Features
+import 'package:intl/intl.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../features/brain_dump/models/chat_message.dart';
 import '../features/brain_dump/providers/brain_dump_provider.dart';
-import '../features/brain_dump/widgets/brain_dump_input.dart';
-// import '../features/brain_dump/widgets/interactive_neural_tree.dart'; // [Preserved]
-import '../features/dock/providers/dock_provider.dart';
-import '../features/dock/widgets/magnified_dock.dart';
-import '../features/music/providers/music_provider.dart';
-import '../features/notes/services/note_service.dart';
-
-// Core / Shared
-import '../core/widgets/minimal_icon_button.dart';
-// import '../core/widgets/synaptic_roots_background.dart'; // [Preserved]
-import '../core/widgets/synaptic_roots_background.dart';
-import '../features/brain_dump/widgets/interactive_neural_tree.dart';
 import '../features/auth/controllers/auth_controller.dart';
 import '../features/vault/presentation/file_vault_screen.dart';
-// import 'neural_canvas_page.dart'; // Preserved for reference
-// [New Circuit Layout]
 
-/*
-1 : BrainDumpScreen is a ConsumerStatefulWidget that serves as the main interaction hub.
-It uses Riverpod's ConsumerState to access providers and manage its local state.
-*/
+// [Architect] TermiChat-Style Terminal UI
+// Design Philosophy:
+// 1. Authentic Terminal: Header, version, initialization message
+// 2. Command-line Prompts: username@terminal:~$ format
+// 3. Timestamps: HH:mm:ss format for all messages
+// 4. Debug Logging: Show API endpoint status
+
 class BrainDumpScreen extends ConsumerStatefulWidget {
   const BrainDumpScreen({super.key});
 
@@ -33,257 +25,613 @@ class BrainDumpScreen extends ConsumerStatefulWidget {
 
 class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     with SingleTickerProviderStateMixin {
-  /*
-  2 : _controller manages the text input in the main brain dump field.
-  _focusNode controls the keyboard focus for the input field.
-  _dockIconKeys stores GlobalKeys for each dock item to calculate their global positions.
-  _pulseController drives the ambient breathing animation of the UI.
-  */
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  final List<GlobalKey> _dockIconKeys = List.generate(4, (_) => GlobalKey());
-  late final AnimationController _pulseController;
+  final ScrollController _scrollController = ScrollController();
+
+  // Navigation State
+  int _selectedIndex = 0; // 0: Chat (Home), 1: Vault (Library)
+
+  // Message tracking
+  int _previousMessageCount = 0;
+
+  // Dock Animation
+  double _dockOpacity = 1.0;
+  double _dockBottomPosition = 20.0;
+
+  // Typing indicator animation
+  late AnimationController _typingAnimationController;
+
+  // Username for terminal prompt
+  String _username = 'guest';
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
+
+    // Typing indicator animation
+    _typingAnimationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 4500),
+      duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
 
-    // Add listener to rebuild when typing starts/stops
-    _controller.addListener(_onTextChanged);
+    // Scroll listener for dock animation
+    _scrollController.addListener(_handleScroll);
+
+    // Auto-focus on load
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_selectedIndex == 0) {
+        _focusNode.requestFocus();
+      }
+      _loadUsername();
+    });
   }
 
-  void _onTextChanged() {
-    setState(() {});
+  Future<void> _loadUsername() async {
+    // Try to get user email from auth
+    try {
+      final storage = const FlutterSecureStorage();
+      final email = await storage.read(key: 'user_email');
+      if (email != null && mounted) {
+        setState(() {
+          _username = email.split('@')[0]; // Use email prefix as username
+        });
+      }
+    } catch (e) {
+      // Keep default 'guest'
+    }
+  }
+
+  void _handleScroll() {
+    if (_scrollController.hasClients) {
+      final scrollPosition = _scrollController.position;
+      final isScrollingDown =
+          scrollPosition.userScrollDirection == ScrollDirection.reverse;
+
+      setState(() {
+        if (isScrollingDown) {
+          _dockOpacity = 0.3;
+          _dockBottomPosition = 10.0;
+        } else {
+          _dockOpacity = 1.0;
+          _dockBottomPosition = 20.0;
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
-    _pulseController.dispose();
     _controller.dispose();
     _focusNode.dispose();
+    _scrollController.dispose();
+    _typingAnimationController.dispose();
     super.dispose();
   }
 
-  /*
-  3 : _onSubmitted is the primary flow for saving thoughts.
-  It triggers the noteServiceProvider to persist the text to the backend.
-  Optimistically clears the input and refocuses on success.
-  */
-  Future<void> _onSubmitted(String text) async {
-    if (text.trim().isEmpty) return;
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      });
+    }
+  }
+
+  void _autoFocusAfterResponse() {
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted && _selectedIndex == 0) {
+        _focusNode.requestFocus();
+      }
+    });
+  }
+
+  Future<void> _onSubmitted() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
 
     try {
-      await ref.read(noteServiceProvider).saveNote(text);
+      await ref.read(brainDumpProvider.notifier).processInput(text);
       if (!mounted) return;
-
       _controller.clear();
       _focusNode.requestFocus();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Thought saved to the Vault!'),
-          backgroundColor: Colors.blueAccent,
-        ),
-      );
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to save: $e'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+      debugPrint('[DEBUG] Error: $e');
     }
-  }
-
-  /*
-  4 : _toggleDock manages the opening/closing of the magnified dock.
-  It triggers a delayed position update to ensure the dock icons are rendered 
-  before calculating their screen coordinates for the synaptic roots background.
-  */
-  void _toggleDock() {
-    ref.read(dockProvider.notifier).toggle();
-    if (ref.read(dockProvider).isOpen) {
-      Future.delayed(const Duration(milliseconds: 360), _updateDockPositions);
-    }
-  }
-
-  /*
-  5 : _updateDockPositions calculates where the dock icons are on the screen.
-  These coordinates are shared with the SynapticRootsBackground to draw connections.
-  */
-  void _updateDockPositions() {
-    if (!mounted) return;
-    final positions = <Offset>[];
-    for (final key in _dockIconKeys) {
-      final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
-      if (renderBox != null) {
-        final pos = renderBox.localToGlobal(Offset.zero);
-        final center =
-            pos + Offset(renderBox.size.width / 2, renderBox.size.height / 2);
-        positions.add(center);
-      }
-    }
-    ref.read(dockProvider.notifier).updatePositions(positions);
   }
 
   @override
   Widget build(BuildContext context) {
-    // [Architect] REACTIVE UI BINDINGS
-    /*
-    6 : dockState: Stores dock open/close status and icon positions.
-    musicState: Tracks playing status of external apps (Spotify/Apple).
-    brainDumpState: Manages the 'processing' state of the AI/Input.
-    userState: Provides authenticated user info (fetched via /auth/me).
-    */
-    final dockState = ref.watch(dockProvider);
-    final musicState = ref.watch(musicProvider);
     final brainDumpState = ref.watch(brainDumpProvider);
-    final userState = ref.watch(userProvider);
+
+    // Auto-scroll and auto-focus when new messages arrive
+    if (brainDumpState.messages.length > _previousMessageCount) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom();
+        // Only auto-focus if the last message is from AI (response received)
+        if (brainDumpState.messages.isNotEmpty &&
+            brainDumpState.messages.last.sender == MessageSender.ai &&
+            brainDumpState.messages.last.status == MessageStatus.sent) {
+          _autoFocusAfterResponse();
+        }
+      });
+      _previousMessageCount = brainDumpState.messages.length;
+    }
 
     return Scaffold(
+      backgroundColor: const Color(0xFF000000), // Pure black
       resizeToAvoidBottomInset: true,
-      backgroundColor: const Color(0xFF0D0D0D),
       body: SafeArea(
-        child: AnimatedBuilder(
-          animation: _pulseController,
-          builder: (context, child) {
-            final isWriting = _controller.text.isNotEmpty;
+        top: false,
+        child: Stack(
+          children: [
+            // LAYER 1: CONTENT (Chat or Vault)
+            Positioned.fill(
+              child: IndexedStack(
+                index: _selectedIndex,
+                children: [
+                  _buildChatLayer(),
+                  const FileVaultScreen(isEmbedded: true),
+                ],
+              ),
+            ),
 
-            return Stack(
-              children: [
-                /*
-                // ─── [ CIRCUIT LAYOUT ] ──────────────────────────────────────────────
-                Positioned.fill(
-                  child: AnimatedOpacity(
-                    opacity: isWriting ? 0.0 : 0.8,
-                    duration: const Duration(milliseconds: 300),
-                    child: const NeuralCanvasPage(),
+            // LAYER 2: TERMINAL INPUT (Only visible on Chat screen)
+            if (_selectedIndex == 0)
+              Positioned(
+                bottom: 100, // Above dock
+                left: 20,
+                right: 20,
+                child: _buildTerminalInput(),
+              ),
+
+            // LAYER 3: iOS-STYLE GLASS DOCK
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+              bottom: _dockBottomPosition,
+              left: 0,
+              right: 0,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 300),
+                opacity: _dockOpacity,
+                child: Center(
+                  child: _GlassDock(
+                    selectedIndex: _selectedIndex,
+                    onTabSelected: (index) {
+                      setState(() {
+                        _selectedIndex = index;
+                        if (index == 0) {
+                          Future.delayed(const Duration(milliseconds: 100), () {
+                            _focusNode.requestFocus();
+                          });
+                        }
+                      });
+                    },
                   ),
                 ),
-                */
+              ),
+            ),
 
-                // [LEGACY BIOLOGY RESTORED]
-                // 1. Synaptic roots background (Hidden while typing)
-                Positioned.fill(
-                  child: AnimatedOpacity(
-                    opacity: isWriting ? 0.0 : 1.0,
-                    duration: const Duration(milliseconds: 400),
-                    child: SynapticRootsBackground(
-                      isDockOpen: dockState.isOpen,
-                      dockIconPositions: dockState.iconPositions,
-                      phase: _pulseController.value,
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-                ),
-
-                // 2. Main Input Feature
-                Positioned.fill(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24.0,
-                      vertical: 16.0,
-                    ),
-                    child: BrainDumpInput(
-                      controller: _controller,
-                      focusNode: _focusNode,
-                      onSubmitted: _onSubmitted,
-                      userName: userState.when(
-                        data: (user) =>
-                            user?.fullName ?? user?.email.split('@')[0],
-                        loading: () => null,
-                        error: (_, __) => null,
-                      ),
-                    ),
-                  ),
-                ),
-
-                // 3. Interactive Neural Tree Nodes (On top, hidden while typing)
-                Positioned.fill(
-                  child: AnimatedOpacity(
-                    opacity: isWriting ? 0.0 : 1.0,
-                    duration: const Duration(milliseconds: 400),
-                    child: InteractiveNeuralTree(phase: _pulseController.value),
-                  ),
-                ),
-
-                // 4. Action Buttons (Lower UI)
-                _buildActionButtons(brainDumpState),
-
-                // 5. Overlays & Modals
-                if (dockState.isOpen)
-                  Positioned.fill(
-                    child: GestureDetector(
-                      onTap: () => ref.read(dockProvider.notifier).close(),
-                      behavior: HitTestBehavior.opaque,
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-
-                // 6. Dock Implementation
-                MagnifiedDock(
-                  isOpen: dockState.isOpen,
-                  onToggle: _toggleDock,
-                  iconKeys: _dockIconKeys,
-                  activeApps: {
-                    'apple': musicState.applePlaying,
-                    'spotify': musicState.spotifyPlaying,
-                  },
-                ),
-              ],
-            );
-          },
+            // LAYER 4: LOGOUT (Top Right - Minimal)
+            Positioned(
+              top: 50,
+              right: 20,
+              child: IconButton(
+                icon: const Icon(Icons.logout_rounded, color: Colors.white24),
+                onPressed: () =>
+                    ref.read(authControllerProvider.notifier).signOut(),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  /*
-  8 : _buildActionButtons provides the bottom-row interactions:
-  - Submit: Manual submission of the current thought.
-  - The Vault: Navigates to the file storage screen.
-  - Logout: Invalidates the auth session via AuthController.
-  */
-  Widget _buildActionButtons(BrainDumpState state) {
-    return Positioned(
-      bottom: 16,
-      left: 0,
-      right: 0,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24.0, 0, 80.0, 0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            MinimalIconButton(
-              icon: Icons.send_rounded,
-              tooltip: 'Submit',
-              onPressed: () => _onSubmitted(_controller.text),
-              isLoading: state.isProcessing,
+  Widget _buildChatLayer() {
+    final brainDumpState = ref.watch(brainDumpProvider);
+    final hasMessages = brainDumpState.messages.isNotEmpty;
+
+    return Column(
+      children: [
+        // Terminal Header
+        _buildTerminalHeader(),
+
+        // Initialization Message (only show if no messages)
+        if (!hasMessages) _buildInitMessage(),
+
+        // Chat Messages
+        Expanded(
+          child: ListView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: 180, // Space for input + dock
             ),
-            MinimalIconButton(
-              icon: Icons.folder_copy_rounded,
-              tooltip: 'The Vault',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const FileVaultScreen(),
-                ),
+            itemCount: brainDumpState.messages.length,
+            itemBuilder: (context, index) {
+              final msg = brainDumpState.messages[index];
+              return _MessageRow(
+                msg: msg,
+                username: _username,
+                typingAnimation: _typingAnimationController,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Terminal Header (TermiChat style)
+  Widget _buildTerminalHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Row(
+        children: [
+          // Green dot indicator
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Color(0xFF00FF00),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 12),
+          // App name
+          const Text(
+            'BRAIN',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontFamily: 'Courier',
+              fontWeight: FontWeight.bold,
+              letterSpacing: 2,
+            ),
+          ),
+          const Text(
+            'DUMP',
+            style: TextStyle(
+              color: Color(0xFF666666),
+              fontSize: 16,
+              fontFamily: 'Courier',
+              fontWeight: FontWeight.bold,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Version badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFF00FF00)),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text(
+              'v1.0.0',
+              style: TextStyle(
+                color: Color(0xFF00FF00),
+                fontSize: 10,
+                fontFamily: 'Courier',
               ),
             ),
-            MinimalIconButton(
-              icon: Icons.logout_rounded,
-              tooltip: 'Logout',
-              onPressed: () {
-                debugPrint('Logout button pressed');
-                ref.read(authControllerProvider.notifier).signOut();
-              },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Initialization Message
+  Widget _buildInitMessage() {
+    final now = DateFormat('HH:mm:ss').format(DateTime.now());
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '[INFO] System initialized. Secure',
+            style: TextStyle(
+              color: Color(0xFF888888),
+              fontSize: 14,
+              fontFamily: 'Courier',
+              height: 1.5,
             ),
-          ],
+          ),
+          const Text(
+            '       connection established via',
+            style: TextStyle(
+              color: Color(0xFF888888),
+              fontSize: 14,
+              fontFamily: 'Courier',
+              height: 1.5,
+            ),
+          ),
+          const Text(
+            '       RAG Engine. Awaiting input.',
+            style: TextStyle(
+              color: Color(0xFF888888),
+              fontSize: 14,
+              fontFamily: 'Courier',
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            now,
+            style: const TextStyle(
+              color: Color(0xFF444444),
+              fontSize: 12,
+              fontFamily: 'Courier',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Terminal-style Input Field with username@terminal:~$ prompt
+  Widget _buildTerminalInput() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A0A0A),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: const Color(0xFF00FF00).withValues(alpha: 0.3),
         ),
+      ),
+      child: Row(
+        children: [
+          // Terminal prompt: username@terminal:~$
+          Text(
+            '$_username@terminal:~\$',
+            style: const TextStyle(
+              color: Color(0xFF00FF00),
+              fontSize: 14,
+              fontFamily: 'Courier',
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              maxLines: null,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _onSubmitted(),
+              style: const TextStyle(
+                color: Color(0xFF00FFFF), // Cyan for user input
+                fontSize: 14,
+                fontFamily: 'Courier',
+              ),
+              cursorColor: const Color(0xFF00FF00),
+              decoration: const InputDecoration(
+                hintText: 'Type command or message',
+                hintStyle: TextStyle(
+                  color: Color(0xFF444444),
+                  fontFamily: 'Courier',
+                  fontSize: 14,
+                ),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Terminal-style Message Row with Timestamp
+class _MessageRow extends StatelessWidget {
+  final ChatMessage msg;
+  final String username;
+  final AnimationController typingAnimation;
+
+  const _MessageRow({
+    required this.msg,
+    required this.username,
+    required this.typingAnimation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isUser = msg.sender == MessageSender.user;
+    final isThinking = msg.status == MessageStatus.thinking;
+    final isMemorizing = msg.status == MessageStatus.memorizing;
+
+    // Terminal color scheme
+    Color textColor = const Color(0xFF00FF00); // AI: Terminal green
+    if (isUser) textColor = const Color(0xFF00FFFF); // User: Cyan
+    if (isMemorizing) textColor = const Color(0xFFFFFF00); // Memorizing: Yellow
+    if (msg.content.startsWith('Error:'))
+      textColor = const Color(0xFFFF0000); // Error: Red
+
+    // Debug log prefix
+    String debugPrefix = '';
+    if (msg.content.startsWith('Error:')) {
+      debugPrefix = '[ERROR] ';
+    } else if (isMemorizing || msg.content.contains('Memorized')) {
+      debugPrefix = '[DEBUG] ';
+    }
+
+    // Timestamp
+    final timestamp = DateFormat('HH:mm:ss').format(msg.timestamp);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Message with prompt
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Terminal prompt
+              Text(
+                isUser ? '$username@terminal:~\$' : r'system@brain:~$',
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 14,
+                  fontFamily: 'Courier',
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Message content
+              Expanded(
+                child: isThinking
+                    ? _TypingIndicator(animation: typingAnimation)
+                    : Text(
+                        '$debugPrefix${msg.content}',
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: 14,
+                          fontFamily: 'Courier',
+                          height: 1.4,
+                        ),
+                      ),
+              ),
+            ],
+          ),
+          // Timestamp
+          Padding(
+            padding: const EdgeInsets.only(left: 0, top: 2),
+            child: Text(
+              timestamp,
+              style: const TextStyle(
+                color: Color(0xFF444444),
+                fontSize: 11,
+                fontFamily: 'Courier',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Terminal-style Typing Indicator
+class _TypingIndicator extends StatelessWidget {
+  final AnimationController animation;
+
+  const _TypingIndicator({required this.animation});
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: animation,
+      child: const Text(
+        '...',
+        style: TextStyle(
+          color: Color(0xFF00FF00), // Terminal green
+          fontSize: 14,
+          fontFamily: 'Courier',
+          letterSpacing: 4,
+        ),
+      ),
+    );
+  }
+}
+
+// iOS-Style Glass Dock
+class _GlassDock extends StatelessWidget {
+  final int selectedIndex;
+  final Function(int) onTabSelected;
+
+  const _GlassDock({required this.selectedIndex, required this.onTabSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(35),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          width: 320,
+          height: 75,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1C1C1E).withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(35),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _DockItem(
+                icon: Icons.radio_button_checked,
+                label: 'Home',
+                isSelected: selectedIndex == 0,
+                onTap: () => onTabSelected(0),
+              ),
+              _DockItem(
+                icon: Icons.grid_view_rounded,
+                label: 'Library',
+                isSelected: selectedIndex == 1,
+                onTap: () => onTabSelected(1),
+              ),
+              _DockItem(
+                icon: Icons.stream,
+                label: 'Flow',
+                isSelected: false,
+                onTap: () {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DockItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _DockItem({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            color: isSelected ? const Color(0xFFFA2D48) : Colors.white24,
+            size: 28,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.white24,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

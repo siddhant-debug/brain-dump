@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from . import models, auth, files, notes, database
+from . import models, auth, files, notes, database, rag_engine, rag_router
+from .schemas import ChatRequest, ChatResponse
 
 # Create database tables
 models.Base.metadata.create_all(bind=database.engine)
@@ -19,6 +20,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(files.router)
 app.include_router(notes.router)
+app.include_router(rag_router.router)
 
 @app.get("/")
 def read_root():

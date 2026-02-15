@@ -45,7 +45,7 @@ class FileService {
     });
 
     await _dio.post(
-      '/files/upload',
+      '/chat/upload-to-brain',
       data: formData,
       options: Options(headers: {'Authorization': 'Bearer $token'}),
     );
@@ -79,6 +79,24 @@ class FileService {
     );
 
     return response.data;
+  }
+
+  /*
+  7 : deleteFile removes a file from the vault and the brain.
+  */
+  Future<void> deleteFile(int id) async {
+    final token = await _getToken();
+    if (token == null) throw Exception('Not authenticated');
+
+    try {
+      // Use the RAG router endpoint which also cleans up vectors and disk
+      await _dio.delete(
+        '/chat/files/$id',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+    } catch (e) {
+      throw Exception('Failed to delete file: $e');
+    }
   }
 }
 

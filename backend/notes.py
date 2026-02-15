@@ -30,3 +30,21 @@ def get_notes(
         .order_by(models.Note.created_at.desc())\
         .all()
     return notes
+
+@router.delete("/{note_id}", status_code=204)
+def delete_note(
+    note_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    note = db.query(models.Note).filter(
+        models.Note.id == note_id,
+        models.Note.user_id == current_user.id
+    ).first()
+
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    db.delete(note)
+    db.commit()
+    return None

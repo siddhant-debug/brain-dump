@@ -1,28 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import 'package:brain_dump/features/onboarding/screens/onboarding_screen.dart';
-import 'package:brain_dump/screens/brain_dump_screen.dart';
-import 'package:brain_dump/features/auth/controllers/auth_controller.dart';
-import 'package:brain_dump/features/auth/presentation/login_screen.dart';
+import 'features/auth/controllers/auth_controller.dart';
+import 'features/auth/presentation/login_screen.dart';
+import 'features/onboarding/screens/onboarding_screen.dart';
+import 'screens/brain_dump_screen.dart';
 
 void main() {
-  // [Architect] Root of the Riverpod State Management System.
-  // ProviderScope stores all the state (Providers) and makes them accessible
-  // to any widget in the tree via a `ref` object.
-  runApp(const ProviderScope(child: BrainDumpApp()));
+  runApp(const ProviderScope(child: MyApp()));
 }
 
-class BrainDumpApp extends ConsumerWidget {
-  const BrainDumpApp({super.key});
+class MyApp extends ConsumerWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(isAuthenticatedProvider);
-    /*
-    1 : final authState = ref.watch(isAuthenticatedProvider);
-    is used to watch the isAuthenticatedProvider.
-    */
+    final userState = ref.watch(userProvider);
 
     return MaterialApp(
       title: 'Brain Dump',
@@ -41,43 +33,25 @@ class BrainDumpApp extends ConsumerWidget {
           selectionColor: Colors.white.withValues(alpha: 0.15),
           selectionHandleColor: Colors.white.withValues(alpha: 0.5),
         ),
+        useMaterial3: true,
       ),
-      home: authState.when(
-        /*
-        2 : authState.when(
-        is used to watch the authState.
-        based on the state it returns the appropriate widget.
-        it check is isAuthenticated is true or false.
-        if true it returns the OnboardingScreen or BrainDumpScreen.
-        onboarding screen is shown if isNewUser is true.
-        brain dump screen is shown if isNewUser is false.
-        if false it returns the LoginScreen.
-        */
-
-        data: (isAuthenticated) {
-          if (isAuthenticated) {
+      home: userState.when(
+        data: (user) {
+          if (user != null) {
             final isNewUser = ref.watch(isNewUserProvider);
-            /*
-            2 : final isNewUser = ref.watch(isNewUserProvider);
-            is used to watch the isNewUserProvider.
-            */
-            return isNewUser
-                ? const OnboardingScreen()
-                : const BrainDumpScreen();
+            // If new user -> Onboarding, else -> Dashboard
+            if (isNewUser) {
+              return const OnboardingScreen();
+            }
+            return const BrainDumpScreen();
+          } else {
+            return const LoginScreen();
           }
-          return const LoginScreen();
-          /*
-          3 : return const LoginScreen();
-          is used to return the LoginScreen.
-          */
         },
         loading: () =>
             const Scaffold(body: Center(child: CircularProgressIndicator())),
-        error: (_, __) => const LoginScreen(),
-        /*
-        4 : error: (_, __) => const LoginScreen(),
-        is used to return the LoginScreen.
-        */
+        error: (err, stack) =>
+            Scaffold(body: Center(child: Text('Error: $err'))),
       ),
     );
   }

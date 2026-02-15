@@ -92,4 +92,21 @@ class NoteService {
       throw Exception('Failed to fetch notes: $e');
     }
   }
+
+  /*
+  6 : deleteNote removes a thought from the backend.
+  */
+  Future<void> deleteNote(int id) async {
+    final token = await _getTokenWithRetry();
+    if (token == null) throw Exception('Not authenticated');
+
+    try {
+      await _dio.delete(
+        '/notes/$id',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+    } catch (e) {
+      throw Exception('Failed to delete note: $e');
+    }
+  }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/foundation.dart';
-import '../../notes/services/note_service.dart';
+import 'package:uuid/uuid.dart';
+import '../services/brain_service.dart';
+import '../models/chat_message.dart';
 
 final brainDumpProvider =
     StateNotifierProvider<BrainDumpNotifier, BrainDumpState>((ref) {
@@ -8,66 +9,161 @@ final brainDumpProvider =
     });
 
 class BrainDumpState {
+  final List<ChatMessage> messages;
   final bool isProcessing;
   final String? error;
 
-  BrainDumpState({this.isProcessing = false, this.error});
+  BrainDumpState({
+    this.messages = const [],
+    this.isProcessing = false,
+    this.error,
+  });
 
-  BrainDumpState copyWith({bool? isProcessing, String? error}) {
+  BrainDumpState copyWith({
+    List<ChatMessage>? messages,
+    bool? isProcessing,
+    String? error,
+  }) {
     return BrainDumpState(
+      messages: messages ?? this.messages,
       isProcessing: isProcessing ?? this.isProcessing,
       error: error ?? this.error,
     );
   }
 }
 
-/*
-1 : BrainDumpNotifier orchestrates the processing of user input.
-It differentiates between queries (ending in '?') and standard notes.
-*/
 class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
   final Ref ref;
+  final _uuid = const Uuid();
+
   BrainDumpNotifier(this.ref) : super(BrainDumpState());
 
-  /*
-  2 : processInput: The primary entry point for submissions from BrainDumpScreen.
-  It triggers either query handling or note shifting/saving.
-  */
   Future<void> processInput(String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
 
-    state = state.copyWith(isProcessing: true);
+    // 1. Add User Message immediately
+    final userMsgId = _uuid.v4();
+    final userMsg = ChatMessage(
+      id: userMsgId,
+      content: trimmed,
+      sender: MessageSender.user,
+      timestamp: DateTime.now(),
+      status: MessageStatus.sent,
+    );
+
+    state = state.copyWith(
+      messages: [...state.messages, userMsg],
+      isProcessing: true,
+      error: null,
+    );
 
     try {
       if (trimmed.endsWith('?')) {
-        // Handle as a search/query
         await _handleQuery(trimmed);
       } else {
-        // Handle as a memory/note to persist
         await _saveNote(trimmed);
       }
-      state = state.copyWith(error: null);
     } catch (e) {
-      state = state.copyWith(error: e.toString());
-      rethrow;
-    } finally {
-      state = state.copyWith(isProcessing: false);
+      // Find and update the "Thinking..." or "Memorizing..." message to show error
+      state = state.copyWith(
+        messages: state.messages.map((msg) {
+          if (msg.status == MessageStatus.thinking ||
+              msg.status == MessageStatus.memorizing) {
+            return ChatMessage(
+              id: msg.id,
+              content: "Error: ${e.toString().replaceAll('Exception: ', '')}",
+              sender: msg.sender,
+              timestamp: DateTime.now(),
+              status: MessageStatus
+                  .sent, // Stop the spinner, show content as error text
+            );
+          }
+          return msg;
+        }).toList(),
+        error: e.toString(),
+        isProcessing: false,
+      );
     }
   }
 
-  /*
-  3 : _handleQuery: Dedicated logic for conversational interactions (Future integration site).
-  */
   Future<void> _handleQuery(String text) async {
-    debugPrint('🔍 [Architect] Query logic: "$text"');
-    await Future.delayed(const Duration(milliseconds: 500));
+    // 2. Add "Thinking..." placeholder
+    final aiMsgId = _uuid.v4();
+    final placeholderMsg = ChatMessage(
+      id: aiMsgId,
+      content: "Thinking...",
+      sender: MessageSender.ai,
+      timestamp: DateTime.now(),
+      status: MessageStatus.thinking,
+    );
+
+    state = state.copyWith(messages: [...state.messages, placeholderMsg]);
+
+    // 3. Call API
+    final result = await ref.read(brainServiceProvider).askBrain(text);
+    final answer = result['answer'];
+
+    // 4. Update placeholder with real answer
+    state = state.copyWith(
+      messages: state.messages.map((msg) {
+        if (msg.id == aiMsgId) {
+          return ChatMessage(
+            id: msg.id,
+            content: answer,
+            sender: MessageSender.ai,
+            timestamp: DateTime.now(),
+            status: MessageStatus.sent,
+          );
+        }
+        return msg;
+      }).toList(),
+    );
   }
 
-  /*
-  4 : _saveNote: Uses NoteService to persist the thought to the cloud vault.
-  */
   Future<void> _saveNote(String text) async {
-    await ref.read(noteServiceProvider).saveNote(text);
+    // Remove the user's note message immediately (keep canvas clean)
+    final userNoteId = state.messages.last.id;
+
+    // 2. Add "Memorizing..." placeholder
+    final systemMsgId = _uuid.v4();
+    final placeholderMsg = ChatMessage(
+      id: systemMsgId,
+      content: "Memorizing...",
+      sender: MessageSender.system,
+      timestamp: DateTime.now(),
+      status: MessageStatus.memorizing,
+    );
+
+    state = state.copyWith(messages: [...state.messages, placeholderMsg]);
+
+    // 3. Call API
+    await ref.read(brainServiceProvider).saveNote(text);
+
+    // 4. Update placeholder to "Memorized ✓"
+    state = state.copyWith(
+      messages: state.messages.map((msg) {
+        if (msg.id == systemMsgId) {
+          return ChatMessage(
+            id: msg.id,
+            content: "Memorized ✓",
+            sender: MessageSender.system,
+            timestamp: DateTime.now(),
+            status: MessageStatus.memorized,
+          );
+        }
+        return msg;
+      }).toList(),
+    );
+
+    // 5. Remove both user note and "Memorized ✓" after 1.5 seconds
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      state = state.copyWith(
+        messages: state.messages
+            .where((msg) => msg.id != userNoteId && msg.id != systemMsgId)
+            .toList(),
+        isProcessing: false,
+      );
+    });
   }
 }

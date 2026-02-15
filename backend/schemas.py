@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 class UserBase(BaseModel):
@@ -42,6 +42,21 @@ class NoteResponse(BaseModel):
     id: int
     content: str
     is_favorite: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ChatRequest(BaseModel):
+    query: str
+
+class ChatResponse(BaseModel):
+    answer: str
+    sources: List[str]
+
+class StoredFileResponse(BaseModel):
+    id: int
+    filename: str
     created_at: datetime
 
     class Config:

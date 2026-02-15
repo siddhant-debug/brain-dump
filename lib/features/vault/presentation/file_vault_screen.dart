@@ -11,7 +11,8 @@ import '../../notes/services/note_service.dart';
 It uses a TabController to switch between file storage and note history.
 */
 class FileVaultScreen extends ConsumerStatefulWidget {
-  const FileVaultScreen({super.key});
+  final bool isEmbedded;
+  const FileVaultScreen({super.key, this.isEmbedded = false});
 
   @override
   ConsumerState<FileVaultScreen> createState() => _FileVaultScreenState();
@@ -106,51 +107,165 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen>
 
   @override
   Widget build(BuildContext context) {
-    /*
-    5 : filesState and notesState watch their respective providers 
-    to reactive update when data is fetched or refreshed.
-    */
-    final filesState = ref.watch(filesProvider);
     final notesState = ref.watch(notesProvider);
+    final filesState = ref.watch(filesProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
-      appBar: AppBar(
-        title: const Text(
-          'The Vault',
-          style: TextStyle(fontWeight: FontWeight.bold),
+      backgroundColor: const Color(0xFF0D0D0D), // Match minimal theme
+      appBar: widget.isEmbedded
+          ? null // No AppBar if embedded
+          : AppBar(
+              title: const Text(
+                'The Vault',
+                style: TextStyle(color: Colors.white),
+              ),
+              backgroundColor: Colors.transparent,
+              iconTheme: const IconThemeData(color: Colors.white),
+            ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(notesProvider);
+          ref.invalidate(filesProvider);
+        },
+        child: SingleChildScrollView(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: widget.isEmbedded ? 60 : 20, // Add top padding if no AppBar
+            bottom: widget.isEmbedded ? 120 : 20, // Space for Dock
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (widget.isEmbedded) ...[
+                const Text(
+                  'Library',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              _buildSectionHeader(
+                'Thoughts',
+                onAdd: () => _showAddNoteDialog(context, ref),
+              ),
+              const SizedBox(height: 10),
+              _buildNotesList(notesState),
+
+              const SizedBox(height: 30),
+
+              _buildSectionHeader(
+                'Documents',
+                onAdd: () => _pickAndUploadFile(),
+              ),
+              const SizedBox(height: 10),
+              _buildFilesList(filesState),
+            ],
+          ),
         ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.blueAccent,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white38,
-          tabs: const [
-            Tab(text: 'Files'),
-            Tab(text: 'Thoughts'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          // 6 : Tab 1: Render the searchable file list
-          _buildFileList(filesState),
-          // 7 : Tab 2: Render the thoughts (saved notes) list
-          _buildNotesList(notesState),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _pickAndUploadFile,
-        backgroundColor: Colors.white,
-        child: const Icon(Icons.add, color: Colors.black),
       ),
     );
   }
 
-  Widget _buildFileList(AsyncValue<List<Map<String, dynamic>>> filesState) {
+  Widget _buildSectionHeader(String title, {VoidCallback? onAdd}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        if (onAdd != null)
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline, color: Colors.white70),
+            onPressed: onAdd,
+          ),
+      ],
+    );
+  }
+
+  Future<void> _showAddNoteDialog(BuildContext context, WidgetRef ref) async {
+    final TextEditingController noteController = TextEditingController();
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: const Text(
+            'Add New Thought',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: TextField(
+            controller: noteController,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Type your thought here...',
+              hintStyle: const TextStyle(color: Colors.white38),
+              filled: true,
+              fillColor: Colors.white.withOpacity(0.05),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            maxLines: 5,
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white54),
+              ),
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+            ),
+            TextButton(
+              child: const Text(
+                'Save',
+                style: TextStyle(color: Colors.blueAccent),
+              ),
+              onPressed: () async {
+                if (noteController.text.isNotEmpty) {
+                  try {
+                    await ref
+                        .read(noteServiceProvider)
+                        .saveNote(noteController.text);
+                    ref.invalidate(notesProvider);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Thought saved successfully'),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Failed to save thought: $e')),
+                      );
+                    }
+                  }
+                  Navigator.of(dialogContext).pop();
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildFilesList(AsyncValue<List<Map<String, dynamic>>> filesState) {
     return Column(
       children: [
         Padding(
@@ -173,8 +288,8 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen>
             ),
           ),
         ),
-        Expanded(
-          child: filesState.when(
+        // Removed Expanded
+        filesState.when(
             data: (files) {
               final filteredFiles = files
                   .where(
@@ -194,6 +309,8 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen>
               }
 
               return ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
                 itemCount: filteredFiles.length,
                 itemBuilder: (context, index) {
                   final file = filteredFiles[index];
@@ -219,9 +336,66 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen>
                         fontSize: 12,
                       ),
                     ),
-                    trailing: const Icon(
-                      Icons.chevron_right,
-                      color: Colors.white24,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.white24,
+                          ),
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                backgroundColor: const Color(0xFF1E1E1E),
+                                title: const Text(
+                                  'Delete File?',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                                content: Text(
+                                  'Permantly delete "${file['filename']}"?',
+                                  style: const TextStyle(color: Colors.white70),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text(
+                                      'Cancel',
+                                      style: TextStyle(color: Colors.white54),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text(
+                                      'Delete',
+                                      style: TextStyle(color: Colors.redAccent),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (confirm == true) {
+                              try {
+                                await ref
+                                    .read(fileServiceProvider)
+                                    .deleteFile(file['id']);
+                                ref.invalidate(filesProvider);
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Failed to delete: $e'),
+                                    ),
+                                  );
+                                }
+                              }
+                            }
+                          },
+                        ),
+                        const Icon(Icons.chevron_right, color: Colors.white24),
+                      ],
                     ),
                   );
                 },
@@ -236,8 +410,7 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen>
                 style: const TextStyle(color: Colors.redAccent),
               ),
             ),
-          ),
-        ),
+        )
       ],
     );
   }
@@ -255,9 +428,13 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen>
         }
 
         return ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
           itemCount: notes.length,
           itemBuilder: (context, index) {
             final note = notes[index];
+            final noteId = note['id']; // Important: Use unique ID for Key
+
             return Card(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               color: Colors.white.withValues(alpha: 0.05),
@@ -273,11 +450,65 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen>
                   'Saved on ${note['created_at'].toString().split('T')[0]}',
                   style: const TextStyle(color: Colors.white38, fontSize: 12),
                 ),
-                trailing: Icon(
-                  note['is_favorite'] == true ? Icons.star : Icons.star_border,
-                  color: note['is_favorite'] == true
-                      ? Colors.yellowAccent
-                      : Colors.white24,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.white24,
+                      ),
+                      onPressed: () async {
+                        // No confirmation for notes (quick delete), or maybe minimal one?
+                        // Let's add confirmation to be safe and consistent.
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: const Color(0xFF1E1E1E),
+                            title: const Text(
+                              'Delete Thought?',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                            content: const Text(
+                              'This cannot be undone.',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(color: Colors.white54),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text(
+                                  'Delete',
+                                  style: TextStyle(color: Colors.redAccent),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirm == true) {
+                          await ref
+                              .read(noteServiceProvider)
+                              .deleteNote(noteId);
+                          ref.invalidate(notesProvider);
+                        }
+                      },
+                    ),
+                    Icon(
+                      note['is_favorite'] == true
+                          ? Icons.star
+                          : Icons.star_border,
+                      color: note['is_favorite'] == true
+                          ? Colors.yellowAccent
+                          : Colors.white24,
+                    ),
+                  ],
                 ),
               ),
             );
