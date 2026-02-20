@@ -453,49 +453,52 @@ TONE: His subconscious speaking truth without filter.
         print(f"AI Streaming Error: {e}")
         yield None
 
-# --- HYBRID SEARCH GLOBALS ---
+# --- HYBRID SEARCH GLOBALS (Per-User) ---
 from rank_bm25 import BM25Okapi
 import string
 
-_bm25_model = None
-_bm25_doc_registry = {} # Map index -> doc_id
-_bm25_doc_content = {}  # Map doc_id -> content
-_bm25_doc_metadata = {} # Map doc_id -> metadata
+# Keyed by user_id (int) — each user gets a completely isolated BM25 index
+_bm25_models: dict = {}          # user_id -> BM25Okapi
+_bm25_doc_registry: dict = {}    # user_id -> {idx: doc_id}
+_bm25_doc_content: dict = {}     # user_id -> {doc_id: content}
+_bm25_doc_metadata: dict = {}    # user_id -> {doc_id: metadata}
 
 def _tokenize(text):
     """Simple tokenizer for BM25"""
     return text.lower().translate(str.maketrans("", "", string.punctuation)).split()
 
-def get_bm25():
-    """Lazy load BM25 index from ChromaDB"""
-    global _bm25_model, _bm25_doc_registry, _bm25_doc_content, _bm25_doc_metadata
-    
-    if _bm25_model is None:
-        print(f"[INFO] Building BM25 index from ChromaDB...")
+def get_bm25(user_id: int):
+    """Lazy-load a per-user BM25 index — only indexes that user's documents"""
+    global _bm25_models, _bm25_doc_registry, _bm25_doc_content, _bm25_doc_metadata
+
+    if user_id not in _bm25_models:
+        print(f"[INFO] Building BM25 index for user {user_id}...")
         collection = get_db_collection()
-        
-        # Fetch all documents
-        # NOTE: For production, this should be cached or incremental
-        all_docs = collection.get()
-        
+
+        # Fetch ONLY this user's documents
+        user_docs = collection.get(where={"user_id": user_id})
+
         tokenized_corpus = []
-        _bm25_doc_registry = {}
-        _bm25_doc_content = {}
-        _bm25_doc_metadata = {}
-        
-        if all_docs['ids']:
-            for idx, (doc_id, content, metadata) in enumerate(zip(all_docs['ids'], all_docs['documents'], all_docs['metadatas'])):
-                _bm25_doc_registry[idx] = doc_id
-                _bm25_doc_content[doc_id] = content
-                _bm25_doc_metadata[doc_id] = metadata
+        _bm25_doc_registry[user_id] = {}
+        _bm25_doc_content[user_id] = {}
+        _bm25_doc_metadata[user_id] = {}
+
+        if user_docs['ids']:
+            for idx, (doc_id, content, metadata) in enumerate(
+                zip(user_docs['ids'], user_docs['documents'], user_docs['metadatas'])
+            ):
+                _bm25_doc_registry[user_id][idx] = doc_id
+                _bm25_doc_content[user_id][doc_id] = content
+                _bm25_doc_metadata[user_id][doc_id] = metadata
                 tokenized_corpus.append(_tokenize(content))
-            
-            _bm25_model = BM25Okapi(tokenized_corpus)
-            print(f"[INFO] BM25 index built with {len(tokenized_corpus)} documents")
+
+            _bm25_models[user_id] = BM25Okapi(tokenized_corpus)
+            print(f"[INFO] BM25 index built for user {user_id} with {len(tokenized_corpus)} documents")
         else:
-            print(f"[WARN] ChromaDB is empty, skipping BM25 build")
-            
-    return _bm25_model
+            print(f"[WARN] No documents for user {user_id}, skipping BM25 build")
+            _bm25_models[user_id] = None  # Cache the miss to avoid repeated DB calls
+
+    return _bm25_models.get(user_id)
 
 def retrieve_context(query: str, user_id: int, current_location: dict = None):
     """Retrieves relevant context using Hybrid Search (Vector + BM25) + RRF Fusion"""
@@ -518,27 +521,21 @@ def retrieve_context(query: str, user_id: int, current_location: dict = None):
         vector_candidates = vector_results['ids'][0]
     
     # 2. KEYWORD SEARCH (Sparse - BM25)
-    print(f"DEBUG: [BM25] Querying BM25...")
-    bm25 = get_bm25()
+    print(f"DEBUG: [BM25] Querying BM25 for user {user_id}...")
+    bm25 = get_bm25(user_id)  # Per-user index — no cross-user data
     bm25_candidates = []
-    
+
     if bm25:
         tokenized_query = _tokenize(query)
-        # Get scores for all docs
         doc_scores = bm25.get_scores(tokenized_query)
-        # Filter for user_id (since BM25 is global currently)
-        # This is inefficient but functional for prototype. 
-        # Ideally BM25 should be sharded by user or filtered.
-        
+        user_registry = _bm25_doc_registry.get(user_id, {})
+
         user_doc_scores = []
         for idx, score in enumerate(doc_scores):
-            if score > 0:
-                doc_id = _bm25_doc_registry[idx]
-                # Check ownership in metadata
-                if _bm25_doc_metadata[doc_id]['user_id'] == user_id:
-                    user_doc_scores.append((doc_id, score))
-        
-        # Sort by score desc
+            if score > 0 and idx in user_registry:
+                doc_id = user_registry[idx]
+                user_doc_scores.append((doc_id, score))
+
         user_doc_scores.sort(key=lambda x: x[1], reverse=True)
         bm25_candidates = [doc_id for doc_id, score in user_doc_scores[:n_results]]
         
@@ -579,11 +576,15 @@ def retrieve_context(query: str, user_id: int, current_location: dict = None):
     # Since we have _bm25_doc_content populated, we can look up there if BM25 built.
     # If using vector-only fallback (BM25 fail), we rely on vector_results.
     
-    # Efficient strategy: Use _bm25_doc_content as cache since it has everything.
-    if _bm25_doc_content:
+    # Hydrate documents — use per-user content cache
+    user_content = _bm25_doc_content.get(user_id, {})
+    user_meta = _bm25_doc_metadata.get(user_id, {})
+
+    if user_content:
         for doc_id in top_n_candidates:
-            docs.append(_bm25_doc_content[doc_id])
-            metadatas.append(_bm25_doc_metadata[doc_id])
+            if doc_id in user_content:
+                docs.append(user_content[doc_id])
+                metadatas.append(user_meta.get(doc_id, {}))
     else:
         # Fallback if BM25 failed (shouldn't happen if we reached here with candidates)
          # Re-fetch from collection by IDs

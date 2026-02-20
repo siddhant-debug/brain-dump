@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, BackgroundTasks, Request
 import shutil
 import os
 from pathlib import Path
@@ -9,13 +9,19 @@ from app.models import models
 from app.schemas import schemas
 from app.core import database
 from app.services import rag_engine
+from app.core.limiter import limiter
 from . import auth
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
+# 50 MB hard cap on uploads
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
 # --- RAG ENDPOINT 1: UPLOAD (The Eyes) ---
 @router.post("/upload-to-brain")
+@limiter.limit("20/hour")
 async def upload_to_brain(
+    request: Request,
     file: UploadFile = File(...),
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(database.get_db),
@@ -35,6 +41,15 @@ async def upload_to_brain(
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     print(f"[DEBUG] ✅ Milestone 1 Complete: File saved to disk")
+
+    # Enforce upload size limit before any processing
+    file_size_bytes = os.path.getsize(temp_path)
+    if file_size_bytes > MAX_UPLOAD_BYTES:
+        os.remove(temp_path)
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum allowed size is 50 MB."
+        )
 
     # 2. Process file — temp file is ALWAYS cleaned up in finally block
     try:
@@ -120,23 +135,25 @@ async def upload_to_brain(
 
 # --- RAG ENDPOINT 2: CHAT (The Mouth) ---
 @router.post("/chat")
+@limiter.limit("60/hour")
 async def chat_endpoint(
-    request: schemas.ChatRequest,
+    request: Request,
+    request_body: schemas.ChatRequest,
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(database.get_db)
 ):
     """Streaming chat endpoint - returns Server-Sent Events (SSE)"""
     print(f"\n{'='*60}")
     print(f"[DEBUG] 💬 CHAT QUERY STARTED (STREAMING)")
-    print(f"[DEBUG] User: {current_user.email} (ID: {current_user.id})")
-    print(f"[DEBUG] Query: {request.query}")
+    print(f"[DEBUG] User ID: {current_user.id}")            # email omitted (PII)
+    print(f"[DEBUG] Query length: {len(request_body.query)} chars")  # content omitted (PII)
     print(f"{'='*60}\n")
     
     # 1. Save User Message to History
     try:
         user_msg = models.ChatMessage(
             user_id=current_user.id,
-            content=request.query,
+            content=request_body.query,
             sender='user'
         )
         db.add(user_msg)
@@ -151,9 +168,9 @@ async def chat_endpoint(
             print(f"[DEBUG] 🔍 Searching brain for relevant context...")
             
             # Extract location if present
-            location_dict = request.location.dict() if request.location else None
+            location_dict = request_body.location.dict() if request_body.location else None
             
-            context_text, sources = await rag_engine.async_retrieve_context(request.query, current_user.id, current_location=location_dict)
+            context_text, sources = await rag_engine.async_retrieve_context(request_body.query, current_user.id, current_location=location_dict)
             
             if not context_text:
                 print(f"[DEBUG] No documents found for query")
@@ -164,7 +181,7 @@ async def chat_endpoint(
             
             # 3. Stream AI response
             full_response = ""
-            for chunk in rag_engine.ask_gemini_stream(context_text, request.query, location_context=location_dict):
+            for chunk in rag_engine.ask_gemini_stream(context_text, request_body.query, location_context=location_dict):
                 if chunk is None:
                     # Error occurred
                     fallback = f"**AI Offline.**\n\nHere are the relevant notes:\n\n{context_text}"
@@ -201,9 +218,9 @@ async def chat_endpoint(
                 print(f"[ERROR] Failed to save AI message: {e}")
             
         except Exception as e:
-            print(f"[DEBUG] ❌ Streaming error: {str(e)}")
+            print(f"[DEBUG] ❌ Streaming error: {type(e).__name__}")
             import json
-            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+            yield f"data: {json.dumps({'error': 'An internal error occurred.', 'done': True})}\n\n"
     
     from fastapi.responses import StreamingResponse
     return StreamingResponse(
@@ -229,14 +246,16 @@ async def list_files(
 def get_chat_history(
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(database.get_db),
-    limit: int = 50
+    limit: int = 50,
+    offset: int = 0
 ):
     """Retrieve chat history for the current user"""
+    limit = min(limit, 100)  # MED-3: hard cap — client cannot exceed 100
     messages = db.query(models.ChatMessage).filter(
         models.ChatMessage.user_id == current_user.id
-    ).order_by(models.ChatMessage.timestamp.desc()).limit(limit).all()
-    
-    # Return reversed list (chronological order)
+    ).order_by(models.ChatMessage.timestamp.desc()).offset(offset).limit(limit).all()
+
+    # Return in chronological order
     return messages[::-1]
 
 @router.delete("/files/{file_id}", status_code=204)

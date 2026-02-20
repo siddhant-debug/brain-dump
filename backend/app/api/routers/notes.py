@@ -1,16 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from typing import List
 from app.models import models
 from app.schemas import schemas
 from app.core import database
+from app.core.limiter import limiter
 from app.services import rag_engine
 from . import auth
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
 @router.post("/", response_model=schemas.NoteResponse)
+@limiter.limit("30/minute")
 async def create_note(
+    request: Request,
     note: schemas.NoteCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(database.get_db),
@@ -65,7 +68,9 @@ async def create_note(
     return db_note
 
 @router.get("/", response_model=List[schemas.NoteResponse])
+@limiter.limit("60/minute")
 def get_notes(
+    request: Request,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
@@ -76,7 +81,9 @@ def get_notes(
     return notes
 
 @router.delete("/{note_id}", status_code=204)
+@limiter.limit("20/minute")
 def delete_note(
+    request: Request,
     note_id: int,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user)
