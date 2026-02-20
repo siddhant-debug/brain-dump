@@ -3,6 +3,19 @@
 *.log
 *.pyc
 *.swp
+.env
+.env.local
+*.key
+*.pem
+credentials.json
+
+# User uploads and generated temp files (contain personal data)
+backend/uploads/
+backend/brain_storage/
+temp_*.pdf
+temp_*.txt
+temp_*.md
+
 .DS_Store
 .atom/
 .build/

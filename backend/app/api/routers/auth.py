@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
@@ -5,12 +6,16 @@ from sqlalchemy.orm import Session
 from jose import jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
-from . import models, schemas, database
+from app.models import models
+from app.schemas import schemas
+from app.core import database
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Configuration (In production, use environment variables)
-SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
+# Secret key loaded from environment — never hard-code this
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("JWT_SECRET_KEY environment variable is not set. Check your .env file.")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
 

@@ -1,21 +1,18 @@
 import 'dart:ui';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart'; // For ScrollDirection
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import '../features/brain_dump/models/chat_message.dart';
 import '../features/brain_dump/providers/brain_dump_provider.dart';
 import '../features/auth/controllers/auth_controller.dart';
 import '../features/vault/presentation/file_vault_screen.dart';
+import '../features/vault/presentation/thoughts_screen.dart';
+import '../core/widgets/persistent_header.dart';
 
-// [Architect] TermiChat-Style Terminal UI
-// Design Philosophy:
-// 1. Authentic Terminal: Header, version, initialization message
-// 2. Command-line Prompts: username@terminal:~$ format
-// 3. Timestamps: HH:mm:ss format for all messages
-// 4. Debug Logging: Show API endpoint status
-
+/// Black Canvas - Minimalist Digital Notebook
+/// Design: Pure black background, invisible list, hand-drawn spacing
 class BrainDumpScreen extends ConsumerStatefulWidget {
   const BrainDumpScreen({super.key});
 
@@ -30,74 +27,30 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
   final ScrollController _scrollController = ScrollController();
 
   // Navigation State
-  int _selectedIndex = 0; // 0: Chat (Home), 1: Vault (Library)
+  int _selectedIndex = 0; // 0: Chat (Home), 1: Vault
 
   // Message tracking
   int _previousMessageCount = 0;
 
-  // Dock Animation
-  double _dockOpacity = 1.0;
-  double _dockBottomPosition = 20.0;
-
-  // Typing indicator animation
-  late AnimationController _typingAnimationController;
-
-  // Username for terminal prompt
-  String _username = 'guest';
+  // Checkmark animation for saved notes
+  bool _showCheckmark = false;
+  late AnimationController _checkmarkController;
 
   @override
   void initState() {
     super.initState();
 
-    // Typing indicator animation
-    _typingAnimationController = AnimationController(
+    _checkmarkController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-
-    // Scroll listener for dock animation
-    _scrollController.addListener(_handleScroll);
+      duration: const Duration(milliseconds: 1000),
+    );
 
     // Auto-focus on load
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_selectedIndex == 0) {
         _focusNode.requestFocus();
       }
-      _loadUsername();
     });
-  }
-
-  Future<void> _loadUsername() async {
-    // Try to get user email from auth
-    try {
-      final storage = const FlutterSecureStorage();
-      final email = await storage.read(key: 'user_email');
-      if (email != null && mounted) {
-        setState(() {
-          _username = email.split('@')[0]; // Use email prefix as username
-        });
-      }
-    } catch (e) {
-      // Keep default 'guest'
-    }
-  }
-
-  void _handleScroll() {
-    if (_scrollController.hasClients) {
-      final scrollPosition = _scrollController.position;
-      final isScrollingDown =
-          scrollPosition.userScrollDirection == ScrollDirection.reverse;
-
-      setState(() {
-        if (isScrollingDown) {
-          _dockOpacity = 0.3;
-          _dockBottomPosition = 10.0;
-        } else {
-          _dockOpacity = 1.0;
-          _dockBottomPosition = 20.0;
-        }
-      });
-    }
   }
 
   @override
@@ -105,7 +58,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     _controller.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
-    _typingAnimationController.dispose();
+    _checkmarkController.dispose();
     super.dispose();
   }
 
@@ -133,13 +86,46 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
-    try {
-      await ref.read(brainDumpProvider.notifier).processInput(text);
-      if (!mounted) return;
-      _controller.clear();
+    // [Architect] UX FIX: CLEAN INPUT EARLY
+    // We clear the input field immediately so the user doesn't feel "blocked".
+    // The previous logic waited for the AI stream to finish, which was bad UX.
+    _controller.clear();
+
+    // Maintain focus for rapid-fire thoughts
+    if (_selectedIndex == 0) {
       _focusNode.requestFocus();
+    }
+
+    final isQuery = text.endsWith('?');
+
+    try {
+      if (isQuery) {
+        // Query: Show in chat and get AI response
+        await ref.read(brainDumpProvider.notifier).processInput(text);
+      } else {
+        // Note: Save silently with checkmark feedback
+        await ref.read(brainDumpProvider.notifier).saveNoteSilently(text);
+        if (!mounted) return;
+
+        // Show checkmark animation
+        setState(() => _showCheckmark = true);
+        _checkmarkController.forward();
+
+        // Hide checkmark after 1 second
+        Future.delayed(const Duration(milliseconds: 1000), () {
+          if (mounted) {
+            setState(() => _showCheckmark = false);
+            _checkmarkController.reset();
+          }
+        });
+      }
     } catch (e) {
       debugPrint('[DEBUG] Error: $e');
+      if (!mounted) return;
+      // Show error in chat
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+      );
     }
   }
 
@@ -147,11 +133,11 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
   Widget build(BuildContext context) {
     final brainDumpState = ref.watch(brainDumpProvider);
 
-    // Auto-scroll and auto-focus when new messages arrive
+    // Auto-scroll when new messages arrive
     if (brainDumpState.messages.length > _previousMessageCount) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToBottom();
-        // Only auto-focus if the last message is from AI (response received)
+        // Auto-focus if the last message is from AI
         if (brainDumpState.messages.isNotEmpty &&
             brainDumpState.messages.last.sender == MessageSender.ai &&
             brainDumpState.messages.last.status == MessageStatus.sent) {
@@ -173,57 +159,41 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
               child: IndexedStack(
                 index: _selectedIndex,
                 children: [
-                  _buildChatLayer(),
+                  _buildChatLayer(brainDumpState),
+                  const ThoughtsScreen(isEmbedded: true),
                   const FileVaultScreen(isEmbedded: true),
                 ],
               ),
             ),
 
-            // LAYER 2: TERMINAL INPUT (Only visible on Chat screen)
+            // LAYER 2: MINIMAL INPUT (Only visible on Chat screen)
             if (_selectedIndex == 0)
               Positioned(
                 bottom: 100, // Above dock
-                left: 20,
-                right: 20,
-                child: _buildTerminalInput(),
+                left: 24,
+                right: 24,
+                child: _buildMinimalInput(),
               ),
 
-            // LAYER 3: iOS-STYLE GLASS DOCK
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-              bottom: _dockBottomPosition,
+            // LAYER 3: PILL-SHAPED DOCK
+            Positioned(
+              bottom: 20,
               left: 0,
               right: 0,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 300),
-                opacity: _dockOpacity,
-                child: Center(
-                  child: _GlassDock(
-                    selectedIndex: _selectedIndex,
-                    onTabSelected: (index) {
-                      setState(() {
-                        _selectedIndex = index;
-                        if (index == 0) {
-                          Future.delayed(const Duration(milliseconds: 100), () {
-                            _focusNode.requestFocus();
-                          });
-                        }
-                      });
-                    },
-                  ),
+              child: Center(
+                child: _PillDock(
+                  selectedIndex: _selectedIndex,
+                  onTabSelected: (index) {
+                    setState(() {
+                      _selectedIndex = index;
+                      if (index == 0) {
+                        Future.delayed(const Duration(milliseconds: 100), () {
+                          _focusNode.requestFocus();
+                        });
+                      }
+                    });
+                  },
                 ),
-              ),
-            ),
-
-            // LAYER 4: LOGOUT (Top Right - Minimal)
-            Positioned(
-              top: 50,
-              right: 20,
-              child: IconButton(
-                icon: const Icon(Icons.logout_rounded, color: Colors.white24),
-                onPressed: () =>
-                    ref.read(authControllerProvider.notifier).signOut(),
               ),
             ),
           ],
@@ -232,35 +202,85 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     );
   }
 
-  Widget _buildChatLayer() {
-    final brainDumpState = ref.watch(brainDumpProvider);
-    final hasMessages = brainDumpState.messages.isNotEmpty;
-
+  Widget _buildChatLayer(BrainDumpState state) {
     return Column(
       children: [
-        // Terminal Header
-        _buildTerminalHeader(),
-
-        // Initialization Message (only show if no messages)
-        if (!hasMessages) _buildInitMessage(),
-
-        // Chat Messages
+        PersistentHeader(
+          title: 'BrainDumps',
+          actions: [
+            // Clear History Button - Local only
+            IconButton(
+              icon: const Icon(
+                Icons.cleaning_services_rounded,
+                color: Colors.white24,
+                size: 20,
+              ),
+              onPressed: () {
+                // Confirm before clearing
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    backgroundColor: const Color(0xFF1C1C1E),
+                    title: const Text(
+                      'Clear Screen?',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    content: const Text(
+                      'This will clear messages from your screen but keep them in your brain.',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                    actions: [
+                      TextButton(
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(color: Colors.white54),
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      TextButton(
+                        child: const Text(
+                          'Clear',
+                          style: TextStyle(color: Colors.redAccent),
+                        ),
+                        onPressed: () {
+                          ref
+                              .read(brainDumpProvider.notifier)
+                              .clearLocalHistory();
+                          Navigator.pop(context);
+                        },
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            // Logout Button
+            IconButton(
+              icon: const Icon(Icons.logout_rounded, color: Colors.white24),
+              onPressed: () =>
+                  ref.read(authControllerProvider.notifier).signOut(),
+            ),
+          ],
+        ),
         Expanded(
           child: ListView.builder(
             controller: _scrollController,
             padding: const EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: 20,
+              left: 24,
+              right: 24,
+              top: 0,
               bottom: 180, // Space for input + dock
             ),
-            itemCount: brainDumpState.messages.length,
+            itemCount: state.messages.length,
             itemBuilder: (context, index) {
-              final msg = brainDumpState.messages[index];
-              return _MessageRow(
-                msg: msg,
-                username: _username,
-                typingAnimation: _typingAnimationController,
+              final msg = state.messages[index];
+              final isLast = index == state.messages.length - 1;
+
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: isLast ? 0 : 40,
+                ), // 40px spacing between Q&A pairs
+                child: _MinimalMessageRow(msg: msg),
               );
             },
           ),
@@ -269,303 +289,206 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     );
   }
 
-  // Terminal Header (TermiChat style)
-  Widget _buildTerminalHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Row(
-        children: [
-          // Green dot indicator
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: Color(0xFF00FF00),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 12),
-          // App name
-          const Text(
-            'BRAIN',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontFamily: 'Courier',
-              fontWeight: FontWeight.bold,
-              letterSpacing: 2,
-            ),
-          ),
-          const Text(
-            'DUMP',
-            style: TextStyle(
-              color: Color(0xFF666666),
-              fontSize: 16,
-              fontFamily: 'Courier',
-              fontWeight: FontWeight.bold,
-              letterSpacing: 2,
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Version badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFF00FF00)),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Text(
-              'v1.0.0',
-              style: TextStyle(
-                color: Color(0xFF00FF00),
-                fontSize: 10,
-                fontFamily: 'Courier',
+  Widget _buildMinimalInput() {
+    return Row(
+      children: [
+        Expanded(
+          child: Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              // Custom Animated Hint
+              ValueListenableBuilder(
+                valueListenable: _controller,
+                builder: (context, value, child) {
+                  return value.text.isEmpty
+                      ? const _AnimatedHintText()
+                      : const SizedBox.shrink();
+                },
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Initialization Message
-  Widget _buildInitMessage() {
-    final now = DateFormat('HH:mm:ss').format(DateTime.now());
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '[INFO] System initialized. Secure',
-            style: TextStyle(
-              color: Color(0xFF888888),
-              fontSize: 14,
-              fontFamily: 'Courier',
-              height: 1.5,
-            ),
-          ),
-          const Text(
-            '       connection established via',
-            style: TextStyle(
-              color: Color(0xFF888888),
-              fontSize: 14,
-              fontFamily: 'Courier',
-              height: 1.5,
-            ),
-          ),
-          const Text(
-            '       RAG Engine. Awaiting input.',
-            style: TextStyle(
-              color: Color(0xFF888888),
-              fontSize: 14,
-              fontFamily: 'Courier',
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            now,
-            style: const TextStyle(
-              color: Color(0xFF444444),
-              fontSize: 12,
-              fontFamily: 'Courier',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Terminal-style Input Field with username@terminal:~$ prompt
-  Widget _buildTerminalInput() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0A0A0A),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: const Color(0xFF00FF00).withValues(alpha: 0.3),
-        ),
-      ),
-      child: Row(
-        children: [
-          // Terminal prompt: username@terminal:~$
-          Text(
-            '$_username@terminal:~\$',
-            style: const TextStyle(
-              color: Color(0xFF00FF00),
-              fontSize: 14,
-              fontFamily: 'Courier',
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _controller,
-              focusNode: _focusNode,
-              maxLines: null,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _onSubmitted(),
-              style: const TextStyle(
-                color: Color(0xFF00FFFF), // Cyan for user input
-                fontSize: 14,
-                fontFamily: 'Courier',
-              ),
-              cursorColor: const Color(0xFF00FF00),
-              decoration: const InputDecoration(
-                hintText: 'Type command or message',
-                hintStyle: TextStyle(
-                  color: Color(0xFF444444),
-                  fontFamily: 'Courier',
-                  fontSize: 14,
+              // Actual Input
+              TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                maxLines: null,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _onSubmitted(),
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+                cursorColor: Colors.white,
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
+                  hintText: null, // Disabled in favor of animated hint
                 ),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
               ),
+            ],
+          ),
+        ),
+        // Checkmark indicator
+        if (_showCheckmark)
+          FadeTransition(
+            opacity: _checkmarkController,
+            child: const Padding(
+              padding: EdgeInsets.only(left: 8),
+              child: Icon(Icons.check, color: Colors.white, size: 20),
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 }
 
-// Terminal-style Message Row with Timestamp
-class _MessageRow extends StatelessWidget {
-  final ChatMessage msg;
-  final String username;
-  final AnimationController typingAnimation;
+// [Architect] NEW COMPONENT: Visible Thinking Indicator
+// Replaces the invisible/subtle text with a clear animation
+class ThinkingIndicator extends StatefulWidget {
+  const ThinkingIndicator({super.key});
 
-  const _MessageRow({
-    required this.msg,
-    required this.username,
-    required this.typingAnimation,
-  });
+  @override
+  State<ThinkingIndicator> createState() => _ThinkingIndicatorState();
+}
+
+class _ThinkingIndicatorState extends State<ThinkingIndicator>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final dotCount = (_controller.value * 4).floor() % 4; // 0 to 3 dots
+        final dots = '.' * dotCount;
+        return Text(
+          'thinking$dots',
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 14,
+            fontStyle: FontStyle.italic,
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Minimal Message Row - No cards, no bubbles, just text
+class _MinimalMessageRow extends StatelessWidget {
+  final ChatMessage msg;
+
+  const _MinimalMessageRow({required this.msg});
 
   @override
   Widget build(BuildContext context) {
     final isUser = msg.sender == MessageSender.user;
     final isThinking = msg.status == MessageStatus.thinking;
-    final isMemorizing = msg.status == MessageStatus.memorizing;
 
-    // Terminal color scheme
-    Color textColor = const Color(0xFF00FF00); // AI: Terminal green
-    if (isUser) textColor = const Color(0xFF00FFFF); // User: Cyan
-    if (isMemorizing) textColor = const Color(0xFFFFFF00); // Memorizing: Yellow
-    if (msg.content.startsWith('Error:'))
-      textColor = const Color(0xFFFF0000); // Error: Red
-
-    // Debug log prefix
-    String debugPrefix = '';
-    if (msg.content.startsWith('Error:')) {
-      debugPrefix = '[ERROR] ';
-    } else if (isMemorizing || msg.content.contains('Memorized')) {
-      debugPrefix = '[DEBUG] ';
-    }
-
-    // Timestamp
-    final timestamp = DateFormat('HH:mm:ss').format(msg.timestamp);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Message with prompt
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Terminal prompt
-              Text(
-                isUser ? '$username@terminal:~\$' : r'system@brain:~$',
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 14,
-                  fontFamily: 'Courier',
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Message content
-              Expanded(
-                child: isThinking
-                    ? _TypingIndicator(animation: typingAnimation)
-                    : Text(
-                        '$debugPrefix${msg.content}',
-                        style: TextStyle(
-                          color: textColor,
-                          fontSize: 14,
-                          fontFamily: 'Courier',
-                          height: 1.4,
-                        ),
-                      ),
-              ),
-            ],
-          ),
-          // Timestamp
-          Padding(
-            padding: const EdgeInsets.only(left: 0, top: 2),
-            child: Text(
-              timestamp,
-              style: const TextStyle(
-                color: Color(0xFF444444),
-                fontSize: 11,
-                fontFamily: 'Courier',
-              ),
+    return Row(
+      mainAxisAlignment: isUser
+          ? MainAxisAlignment.end
+          : MainAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start, // Align to top
+      children: [
+        // AI AVATAR (Left)
+        if (!isUser) ...[
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: Colors.white12,
+            child: const Icon(
+              Icons.psychology,
+              size: 18,
+              color: Colors.white70,
             ),
           ),
+          const SizedBox(width: 12),
         ],
-      ),
-    );
-  }
-}
 
-// Terminal-style Typing Indicator
-class _TypingIndicator extends StatelessWidget {
-  final AnimationController animation;
+        // MESSAGE CONTENT
+        Flexible(
+          // Use Flexible to allow wrapping
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth:
+                  MediaQuery.of(context).size.width *
+                  0.75, // Slightly reduced width to fit avatars
+            ),
+            child: Column(
+              crossAxisAlignment: isUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                isThinking
+                    ? const ThinkingIndicator()
+                    : Text(
+                        msg.content,
+                        textAlign: isUser ? TextAlign.right : TextAlign.left,
+                        style: TextStyle(
+                          color: isUser
+                              ? Colors.white
+                              : const Color(0xFFE0E0E0), // [Architect] AI Color
+                          fontSize: 16,
+                          height: 1.5,
+                        ),
+                      ),
 
-  const _TypingIndicator({required this.animation});
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: animation,
-      child: const Text(
-        '...',
-        style: TextStyle(
-          color: Color(0xFF00FF00), // Terminal green
-          fontSize: 14,
-          fontFamily: 'Courier',
-          letterSpacing: 4,
+                // SOURCES (If AI and has sources)
+                if (!isUser && msg.sources.isNotEmpty)
+                  _CollapsibleSources(
+                    sources: msg.sources,
+                    locationContext: msg.locationContext,
+                  ),
+              ],
+            ),
+          ),
         ),
-      ),
+
+        // USER AVATAR (Right)
+        if (isUser) ...[
+          const SizedBox(width: 12),
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: Colors.blueGrey.withOpacity(0.2),
+            child: const Icon(Icons.person, size: 18, color: Colors.blueGrey),
+          ),
+        ],
+      ],
     );
   }
 }
 
-// iOS-Style Glass Dock
-class _GlassDock extends StatelessWidget {
+/// Pill-Shaped Dock - Minimal, glass effect
+class _PillDock extends StatelessWidget {
   final int selectedIndex;
   final Function(int) onTabSelected;
 
-  const _GlassDock({required this.selectedIndex, required this.onTabSelected});
+  const _PillDock({required this.selectedIndex, required this.onTabSelected});
 
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(35),
+      borderRadius: BorderRadius.circular(30),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
-          width: 320,
-          height: 75,
+          width: 280,
+          height: 60,
           decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E).withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(35),
+            color: const Color(0xFF1C1C1E).withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(30),
             border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
           ),
           child: Row(
@@ -578,16 +501,16 @@ class _GlassDock extends StatelessWidget {
                 onTap: () => onTabSelected(0),
               ),
               _DockItem(
-                icon: Icons.grid_view_rounded,
-                label: 'Library',
+                icon: Icons.lightbulb_outline,
+                label: 'Thoughts',
                 isSelected: selectedIndex == 1,
                 onTap: () => onTabSelected(1),
               ),
               _DockItem(
-                icon: Icons.stream,
-                label: 'Flow',
-                isSelected: false,
-                onTap: () {},
+                icon: Icons.folder_copy_rounded,
+                label: 'Vault',
+                isSelected: selectedIndex == 2,
+                onTap: () => onTabSelected(2),
               ),
             ],
           ),
@@ -619,19 +542,190 @@ class _DockItem extends StatelessWidget {
         children: [
           Icon(
             icon,
-            color: isSelected ? const Color(0xFFFA2D48) : Colors.white24,
-            size: 28,
+            color: isSelected
+                ? Colors.white
+                : Colors.white.withValues(alpha: 0.4),
+            size: 24,
           ),
           const SizedBox(height: 4),
           Text(
             label,
             style: TextStyle(
-              color: isSelected ? Colors.white : Colors.white24,
+              color: isSelected
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.4),
               fontSize: 11,
               fontWeight: FontWeight.w500,
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Collapsible Sources Widget - Handles Option A and B for source display
+class _CollapsibleSources extends StatefulWidget {
+  final List<String> sources;
+  final Map<String, dynamic>? locationContext;
+
+  const _CollapsibleSources({
+    super.key,
+    required this.sources,
+    this.locationContext,
+  });
+
+  @override
+  State<_CollapsibleSources> createState() => _CollapsibleSourcesState();
+}
+
+class _CollapsibleSourcesState extends State<_CollapsibleSources> {
+  // Toggle this to switch between Option A and Option B
+  static const bool _useOptionA = true;
+
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.sources.isEmpty) return const SizedBox.shrink();
+
+    // Format location string
+    String locationText = "";
+    if (widget.locationContext != null) {
+      final city = widget.locationContext!['city'] as String?;
+      final type = widget.locationContext!['location_type'] as String?;
+
+      if (city != null) {
+        locationText = " • at $city";
+        if (type != null && type != 'outdoor' && type != 'Unknown Place') {
+          locationText += " ($type)";
+        }
+      }
+    }
+
+    // OPTION A: Subtle text "from X memories"
+    if (_useOptionA) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          'from ${widget.sources.length} memories$locationText',
+          style: TextStyle(
+            color: Colors.grey[500],
+            fontSize: 11,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      );
+    }
+
+    // OPTION B: Collapsed button (Default)
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _isExpanded = !_isExpanded;
+            });
+          },
+          child: Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 4),
+            child: Text(
+              _isExpanded ? '↑ sources' : '↓ sources',
+              style: TextStyle(color: Colors.grey[500], fontSize: 11),
+            ),
+          ),
+        ),
+        if (_isExpanded)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: widget.sources.map((source) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.1),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.description,
+                        color: Colors.white54,
+                        size: 12,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        source, // Filename (e.g., notes.txt)
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Animated Hint Text - Breathing effect + optional typewriter animation
+class _AnimatedHintText extends StatefulWidget {
+  const _AnimatedHintText({super.key});
+
+  @override
+  State<_AnimatedHintText> createState() => _AnimatedHintTextState();
+}
+
+class _AnimatedHintTextState extends State<_AnimatedHintText>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+    _opacity = Tween<double>(
+      begin: 0.2,
+      end: 0.8,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: const Text(
+        'start typing ...',
+        style: TextStyle(
+          color: Colors.white, // Opacity handles the dimming
+          fontSize: 20,
+          fontWeight: FontWeight.w300,
+          fontStyle: FontStyle.italic,
+        ),
       ),
     );
   }

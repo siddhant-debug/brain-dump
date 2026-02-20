@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from sqlalchemy.sql import func
-from .database import Base
+from app.core.database import Base
 
 class User(Base):
     __tablename__ = "users"
@@ -32,3 +32,14 @@ class Note(Base):
     content = Column(String, nullable=False)
     is_favorite = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True) # Linked to User.id
+    content = Column(String, nullable=False)
+    sender = Column(String, nullable=False) # 'user' or 'ai'
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    # Optional: store which notes were cited
+    context_sources = Column(String, nullable=True)

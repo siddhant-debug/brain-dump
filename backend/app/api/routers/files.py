@@ -4,7 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
-from . import models, schemas, database, auth
+from app.models import models
+from app.schemas import schemas
+from app.core import database
+from . import auth
 
 router = APIRouter(prefix="/files", tags=["files"])
 

@@ -35,8 +35,16 @@ class FileResponseSchema(BaseModel):
     class Config:
         from_attributes = True
 
+class LocationContext(BaseModel):
+    latitude: float
+    longitude: float
+    city: Optional[str] = None
+    country: Optional[str] = None
+    location_type: Optional[str] = None # home, cafe, gym, office, outdoor
+
 class NoteCreate(BaseModel):
     content: str
+    location: Optional[LocationContext] = None
 
 class NoteResponse(BaseModel):
     id: int
@@ -49,6 +57,7 @@ class NoteResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     query: str
+    location: Optional[LocationContext] = None
 
 class ChatResponse(BaseModel):
     answer: str
@@ -58,6 +67,16 @@ class StoredFileResponse(BaseModel):
     id: int
     filename: str
     created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ChatMessageResponse(BaseModel):
+    id: int
+    content: str
+    sender: str
+    timestamp: datetime
+    context_sources: Optional[str] = None
 
     class Config:
         from_attributes = True

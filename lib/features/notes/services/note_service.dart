@@ -59,14 +59,17 @@ class NoteService {
   4 : saveNote sends a new text thought to the API.
   It requires an authenticated session.
   */
-  Future<Map<String, dynamic>> saveNote(String content) async {
+  Future<Map<String, dynamic>> saveNote(
+    String content, {
+    Map<String, dynamic>? location,
+  }) async {
     final token = await _getTokenWithRetry();
     if (token == null) throw Exception('Not authenticated');
 
     try {
       final response = await _dio.post(
         '/notes/',
-        data: {'content': content},
+        data: {'content': content, if (location != null) 'location': location},
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return response.data;

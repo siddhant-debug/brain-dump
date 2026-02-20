@@ -1,0 +1,104 @@
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from sqlalchemy.orm import Session
+from typing import List
+from app.models import models
+from app.schemas import schemas
+from app.core import database
+from app.services import rag_engine
+from . import auth
+
+router = APIRouter(prefix="/notes", tags=["notes"])
+
+@router.post("/", response_model=schemas.NoteResponse)
+async def create_note(
+    note: schemas.NoteCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    # 1. Store in SQL (The Vault)
+    db_note = models.Note(
+        content=note.content,
+        user_id=current_user.id
+    )
+    db.add(db_note)
+    db.commit()
+    db.refresh(db_note)
+
+    # 1.5. Save to Chat History (DISABLED: Thoughts should be isolated from Chat)
+    # try:
+    #     chat_msg = models.ChatMessage(
+    #         user_id=current_user.id,
+    #         content=note.content,
+    #         sender='user'
+    #     )
+    #     db.add(chat_msg)
+    #     db.commit()
+    # except Exception as e:
+    #     print(f"[ERROR] Failed to save note to chat history: {e}")
+
+    # 2. Index in Vector DB (The Brain) - Background Task
+    # We use a unique filename convention for notes: "note_{id}"
+    def index_note_background(note_id: int, content: str, user_id: int, location_context: dict = None):
+        try:
+            rag_engine.index_text(
+                filename=f"note_{note_id}", 
+                text=content, 
+                user_id=user_id,
+                location_context=location_context
+            )
+            print(f"[INFO] Indexed note {note_id} for user {user_id}")
+        except Exception as e:
+            print(f"[ERROR] Failed to index note {note_id}: {e}")
+
+    # Extract location if present
+    location_dict = note.location.dict() if note.location else None
+
+    background_tasks.add_task(
+        index_note_background, 
+        db_note.id, 
+        db_note.content, 
+        current_user.id,
+        location_dict
+    )
+
+    return db_note
+
+@router.get("/", response_model=List[schemas.NoteResponse])
+def get_notes(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    notes = db.query(models.Note)\
+        .filter(models.Note.user_id == current_user.id)\
+        .order_by(models.Note.created_at.desc())\
+        .all()
+    return notes
+
+@router.delete("/{note_id}", status_code=204)
+def delete_note(
+    note_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    note = db.query(models.Note).filter(
+        models.Note.id == note_id,
+        models.Note.user_id == current_user.id
+    ).first()
+
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    # 1. Delete from Vector DB (The Brain)
+    try:
+        rag_engine.delete_document(
+            filename=f"note_{note_id}", 
+            user_id=current_user.id
+        )
+    except Exception as e:
+        print(f"[WARNING] Failed to delete note {note_id} from vector DB: {e}")
+
+    # 2. Delete from SQL (The Vault)
+    db.delete(note)
+    db.commit()
+    return None

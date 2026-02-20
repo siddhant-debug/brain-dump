@@ -7,7 +7,9 @@ from sqlalchemy.orm import sessionmaker
 # Load environment variables
 load_dotenv()
 
-SQL_DB_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://postgres:password123@127.0.0.1/postgres")
+SQL_DB_URL = os.getenv("DATABASE_URL")
+if not SQL_DB_URL:
+    raise ValueError("DATABASE_URL environment variable is not set. Check your .env file.")
 
 
 engine = create_engine(SQL_DB_URL)
