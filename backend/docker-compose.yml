@@ -18,7 +18,8 @@ services:
       - ../brain_storage:/brain_storage
       - ./uploads:/app/uploads
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   # The Relational Database
   postgres:
@@ -30,7 +31,13 @@ services:
       POSTGRES_PASSWORD: password123
       POSTGRES_DB: postgres
     ports:
+      # Exposing on 5433 to avoid conflict with local Mac Postgres on 5432
       - "5433:5432"
     volumes:
       # Save the Postgres data locally so it survives container restarts
       - ./postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5

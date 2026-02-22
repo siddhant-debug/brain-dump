@@ -17,9 +17,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code
 COPY . .
 
+# Ensure Python can find the 'app' module
+ENV PYTHONPATH=/app
+
 # Expose the API port
 EXPOSE 8000
 
-# Start Uvicorn
+# Start Uvicorn pointing directly at the app directory
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
