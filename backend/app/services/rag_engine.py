@@ -36,6 +36,18 @@ CROSS_ENCODER_MODEL = 'cross-encoder/ms-marco-MiniLM-L-6-v2'  # Best accuracy/sp
 
 # --- GLOBAL MODELS (Lazy Loading handled via explicit init now) ---
 _cross_encoder = None  # Initialized on first use
+_emb_fn = None
+
+def get_emb_fn():
+    """Lazy-load embedding function to avoid tokenizer deadlocks in threads"""
+    global _emb_fn
+    if _emb_fn is None:
+        print(f"[INFO] Loading BGE embedding model...")
+        _emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="BAAI/bge-base-en-v1.5"
+        )
+        print(f"[INFO] BGE embedding model loaded successfully")
+    return _emb_fn
 
 def get_cross_encoder():
     """Lazy-load cross-encoder model to avoid startup delays"""
@@ -49,7 +61,9 @@ def get_cross_encoder():
 def initialize_models():
     """Pre-load heavy models during startup"""
     print("[INFO] Pre-loading RAG models...")
+    os.environ["TOKENIZERS_PARALLELISM"] = "false" # Prevent Rust tokenizer deadlocks
     get_cross_encoder()
+    get_emb_fn()
     # We can also pre-build BM25 if needed, but it might be fast enough
     # get_bm25() 
     print("[INFO] RAG models ready.")
@@ -148,9 +162,7 @@ def get_db_collection():
     """Connects to the Brain (Vector DB)"""
     client = chromadb.PersistentClient(path=DB_PATH)
     # [Upgrade] Switching to BGE-Base (Leaderboard SOTA for size)
-    emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name="BAAI/bge-base-en-v1.5"
-    )
+    emb_fn = get_emb_fn()
     return client.get_or_create_collection(
         name=COLLECTION_NAME, embedding_function=emb_fn
     )
