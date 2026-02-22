@@ -15,11 +15,16 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.models import models
 from app.core import database
+from app.models import models
 from app.core.limiter import limiter
 from app.services import rag_engine
 from . import auth
+
+import logging
+from collections import defaultdict
+from itertools import combinations
+import yake
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 logger = logging.getLogger(__name__)
@@ -237,8 +242,9 @@ def get_themes(
 # 3. RECURRING LOOPS
 # ─────────────────────────────────────────────────────────────────────────────
 
-SIMILARITY_THRESHOLD = 0.82   # ChromaDB distance < (1 - 0.82) = 0.18
+L2_DISTANCE_CUTOFF = 0.5      # Empirical L2 distance for sentence transformers
 MAX_NOTES_TO_SCAN = 100       # cap to avoid O(n²) — most users have far fewer
+MIN_NOTE_LENGTH = 40          # Ignore short notes (e.g. "Buy milk") to avoid garbage clusters
 LOOP_PATH_TEMPLATES = {
     "high":   "You've revisited this {n} times without resolving it. Set a deadline — even flipping a coin beats endless circling.",
     "medium": "This keeps coming back. Give it 10 focused minutes today instead of another open loop.",
@@ -278,38 +284,60 @@ def get_loops(
             logger.warning("Vector DB unavailable for /loops: %s", e)
             return {"loops": [], "notes_scanned": 0, "error": "Vector DB unavailable"}
 
-        # Build adjacency: note_id → set of similar note_ids
-        adjacency: dict[int, set[int]] = {n.id: set() for n in scan_notes}
-        note_by_id = {n.id: n for n in scan_notes}
-
-        # Query ChromaDB once per note to find similar neighbors
-        distance_cutoff = 1.0 - SIMILARITY_THRESHOLD
-
+        # 1. Filter out garbage notes
+        valid_notes = []
         for note in scan_notes:
-            if not note.content or len(note.content.strip()) < 10:
-                continue
-            try:
-                results = collection.query(
-                    query_texts=[note.content],
-                    n_results=5,
-                    where={"user_id": uid},
-                    include=["metadatas", "distances", "documents"],
-                )
-                if not results["ids"] or not results["ids"][0]:
-                    continue
+            content = note.content.strip() if note.content else ""
+            if len(content) >= MIN_NOTE_LENGTH:
+                valid_notes.append(note)
 
-                for i, doc_id in enumerate(results["ids"][0]):
-                    dist = results["distances"][0][i]
-                    if dist < distance_cutoff:
-                        meta = results["metadatas"][0][i] if results["metadatas"] else {}
-                        neighbor_note_id = meta.get("note_id")
-                        if neighbor_note_id and neighbor_note_id != note.id:
-                            if neighbor_note_id in adjacency:
-                                adjacency[note.id].add(neighbor_note_id)
-                                adjacency[neighbor_note_id].add(note.id)
-            except (KeyError, IndexError, TypeError) as e:
-                logger.debug("Skipping note %d in loop scan: %s", note.id, e)
-                continue
+        if not valid_notes:
+            return {"loops": [], "notes_scanned": len(scan_notes)}
+
+        # Build adjacency: note_id → set of similar note_ids
+        adjacency: dict[int, set[int]] = {n.id: set() for n in valid_notes}
+        note_by_id = {n.id: n for n in valid_notes}
+
+        # 2. Batched Query to ChromaDB
+        query_texts = [n.content for n in valid_notes]
+        
+        try:
+            results = collection.query(
+                query_texts=query_texts,
+                n_results=5,
+                where={"user_id": uid},
+                include=["metadatas", "distances", "documents"],
+            )
+            
+            if results and "ids" in results and results["ids"]:
+                # results["ids"] is a list of lists, one per query
+                for query_idx, query_note in enumerate(valid_notes):
+                    try:
+                        neighbor_ids = results["ids"][query_idx]
+                        distances = results["distances"][query_idx]
+                        metadatas = results["metadatas"][query_idx] if "metadatas" in results and results["metadatas"] else []
+
+                        for i, doc_id in enumerate(neighbor_ids):
+                            dist = distances[i]
+                            if dist < L2_DISTANCE_CUTOFF:
+                                meta = metadatas[i] if metadatas and i < len(metadatas) else {}
+                                source = meta.get("source", "")
+                                neighbor_note_id = None
+                                if source.startswith("note_"):
+                                    try:
+                                        neighbor_note_id = int(source.replace("note_", ""))
+                                    except ValueError:
+                                        pass
+                                
+                                if neighbor_note_id and neighbor_note_id != query_note.id:
+                                    if neighbor_note_id in adjacency:
+                                        adjacency[query_note.id].add(neighbor_note_id)
+                                        adjacency[neighbor_note_id].add(query_note.id)
+                    except (IndexError, TypeError):
+                        continue
+        except Exception as e:
+            logger.error("Batch query to ChromaDB failed: %s", e)
+            return {"loops": [], "notes_scanned": len(scan_notes)}
 
         # Union-Find to cluster connected notes into loops
         clusters = _union_find_clusters(adjacency)
@@ -335,8 +363,45 @@ def get_loops(
 
             path = LOOP_PATH_TEMPLATES[severity].format(n=n)
 
+            # 3. Offline Keyword Extraction for Theme Guess
+            # Combine all text in the cluster
+            full_cluster_text = " ".join([n.content for n in cluster_notes if n.content])
+            
+            theme_guess = ""
+            if full_cluster_text.strip():
+                try:
+                    # YAKE configuration
+                    kw_extractor = yake.KeywordExtractor(lan="en", n=2, dedupLim=0.9, top=1, features=None)
+                    keywords = kw_extractor.extract_keywords(full_cluster_text)
+                    if keywords:
+                        # Grab the highest-ranked phrase
+                        top_phrase = keywords[0][0]
+                        theme_guess = f"Pattern: {top_phrase.title()}"
+                except Exception as e:
+                    logger.debug(f"YAKE extraction failed for loop: {e}")
+            
+            # Fallback to centroid logic if YAKE fails or returns empty
+            if not theme_guess:
+                cluster_set = set(cluster_ids)
+                best_note_id = None
+                max_connections = -1
+                
+                for nid in cluster_ids:
+                    if nid not in adjacency:
+                        continue
+                    # Count internal edges
+                    internal_connections = len(adjacency[nid].intersection(cluster_set))
+                    if internal_connections > max_connections:
+                        max_connections = internal_connections
+                        best_note_id = nid
+                
+                centroid_note = note_by_id.get(best_note_id, cluster_notes[0])
+                theme_guess = centroid_note.content[:60].strip()
+                if len(centroid_note.content) > 60:
+                    theme_guess += "..."
+
             loops.append({
-                "theme_guess": cluster_notes[0].content[:60],
+                "theme_guess": theme_guess,
                 "occurrences": n,
                 "severity": severity,
                 "first_seen": cluster_notes[0].created_at.date().isoformat(),
@@ -344,7 +409,7 @@ def get_loops(
                 "notes": [
                     {
                         "date": note.created_at.strftime("%b %d"),
-                        "preview": note.content[:80] + ("…" if len(note.content) > 80 else ""),
+                        "preview": note.content[:80].replace('\n', ' ') + ("…" if len(note.content) > 80 else ""),
                     }
                     for note in cluster_notes
                 ],

@@ -25,9 +25,20 @@ async def startup_event():
     print("Starting up... Loading RAG models.")
     rag_engine.initialize_models()
 
+import logging
+logger = logging.getLogger("api.cors")
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    origin = request.headers.get("origin", "unknown")
+    logger.info(f"Incoming request from Origin: {origin} | Path: {request.url.path}")
+    response = await call_next(request)
+    return response
+
 # Configure CORS
 # Mobile app uses Bearer tokens — credentials (cookies) not needed
 # allow_origins=["*"] is safe here since allow_credentials=False
+# TODO: Whitelist origins after beta
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

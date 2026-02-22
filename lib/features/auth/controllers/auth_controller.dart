@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../../core/constants/api_constants.dart';
+import '../../../core/providers/dio_provider.dart';
+import '../../../core/providers/storage_provider.dart';
 import '../../brain_dump/providers/brain_dump_provider.dart';
 import '../../notes/services/note_service.dart';
 import '../../analytics/services/analytics_service.dart';
@@ -27,7 +28,7 @@ whether the user is a new user or not.
 */
 
 final isAuthenticatedProvider = FutureProvider<bool>((ref) async {
-  final storage = const FlutterSecureStorage();
+  final storage = ref.read(secureStorageProvider);
   final token = await storage.read(key: 'jwt_token');
   if (token == null) return false;
 
@@ -50,8 +51,16 @@ final isAuthenticatedProvider = FutureProvider<bool>((ref) async {
       return false;
     }
     return true;
+  } on FormatException {
+    // Malformed token — base64 decode or json decode failed
+    await storage.delete(key: 'jwt_token');
+    return false;
+  } on RangeError {
+    // Index out of bounds (though parts.length check mitigates most of this)
+    await storage.delete(key: 'jwt_token');
+    return false;
   } catch (_) {
-    // Malformed token — clear and force re-login
+    // Catch-all for any other unexpected decoding errors
     await storage.delete(key: 'jwt_token');
     return false;
   }
@@ -131,26 +140,18 @@ final userProvider = FutureProvider<UserModel?>((ref) async {
 It exposes an AsyncValue<void> to the UI to represent loading/success/error states.
 */
 class AuthController extends StateNotifier<AsyncValue<void>> {
-  AuthController(this.ref) : super(const AsyncValue.data(null));
+  AuthController(this.ref)
+    : _dio = ref.read(dioProvider),
+      _storage = ref.read(secureStorageProvider),
+      super(const AsyncValue.data(null));
 
   /*
   10 : ref is a Ref object that is used to interact with other providers or invalidate
    them (e.g., refresh user data on login).
   */
   final Ref ref;
-
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: ApiConstants.baseUrl, // Use centralized local IP
-      connectTimeout: const Duration(seconds: 5),
-      receiveTimeout: const Duration(seconds: 3),
-    ),
-  );
-
-  /*
-  11 : _storage is a FlutterSecureStorage object that is used to store the JWT token.
-  */
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  final Dio _dio;
+  late final FlutterSecureStorage _storage;
 
   /*
   12 : login is a method that is used to login the user.

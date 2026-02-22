@@ -19,8 +19,18 @@ UPLOAD_DIR = "uploads"
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
-# 50 MB hard cap — consistent with rag.py
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+import mimetypes
+
+# 10 MB limit for beta
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+ALLOWED_MIMETYPES = {
+    'application/pdf', 
+    'text/plain', 
+    'text/markdown', 
+    'text/csv', 
+    'application/json'
+}
 
 @router.post("/upload", response_model=schemas.FileResponseSchema)
 @limiter.limit("20/hour")
@@ -34,25 +44,35 @@ async def upload_file(
         file_content = await file.read()
         file_size = len(file_content)
 
-        # HIGH-1: Enforce upload size limit
+        # HIGH-1: Enforce upload size limit (10MB)
         if file_size > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="File too large. Maximum allowed size is 50 MB.")
+            raise HTTPException(status_code=413, detail="File too large. Maximum allowed size is 10 MB.")
 
-        file_type = file.content_type
-        # HIGH-2: Strip path traversal characters from user-supplied filename
-        filename = Path(file.filename).name
+        # HIGH-2: Validate MIME type
+        content_type = file.content_type
+        if not content_type or content_type not in ALLOWED_MIMETYPES:
+            # Fallback to guessing from extension if missing/generic
+            guessed_type, _ = mimetypes.guess_type(file.filename)
+            if not guessed_type or guessed_type not in ALLOWED_MIMETYPES:
+                raise HTTPException(status_code=415, detail=f"Unsupported file type. Allowed: PDF, TXT, MD, CSV, JSON.")
+            content_type = guessed_type
 
-        content_text = None
-        file_path = None
-
-        # Logic for text-based files
-        if filename.endswith(('.md', '.txt')):
+        # HIGH-3: Binary check for text files (reject null bytes masquerading as text)
+        if content_type.startswith('text/') or content_type == 'application/json':
+            if b'\x00' in file_content:
+                raise HTTPException(status_code=400, detail="Corrupted or invalid text file.")
             try:
                 content_text = file_content.decode("utf-8")
             except UnicodeDecodeError:
-                raise HTTPException(status_code=400, detail="Text file must be UTF-8 encoded")
+                raise HTTPException(status_code=400, detail="Text file must be valid UTF-8.")
         else:
-            # Logic for binary files (e.g., PDF)
+            content_text = None
+
+        # HIGH-4: Strip path traversal characters
+        filename = Path(file.filename).name
+        file_path = None
+
+        if content_type == 'application/pdf':
             file_path = os.path.join(UPLOAD_DIR, f"{current_user.id}_{filename}")
             with open(file_path, "wb") as buffer:
                 buffer.write(file_content)

@@ -349,41 +349,38 @@ class ThinkingIndicator extends StatefulWidget {
   State<ThinkingIndicator> createState() => _ThinkingIndicatorState();
 }
 
-class _ThinkingIndicatorState extends State<ThinkingIndicator>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+class _ThinkingIndicatorState extends State<ThinkingIndicator> {
+  late Timer _timer;
+  int _dotCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    )..repeat();
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (mounted) {
+        setState(() {
+          _dotCount = (_dotCount + 1) % 4;
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _timer.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        final dotCount = (_controller.value * 4).floor() % 4; // 0 to 3 dots
-        final dots = '.' * dotCount;
-        return Text(
-          'thinking$dots',
-          style: const TextStyle(
-            color: Colors.white54,
-            fontSize: 14,
-            fontStyle: FontStyle.italic,
-          ),
-        );
-      },
+    final dots = '.' * _dotCount;
+    return Text(
+      'thinking$dots',
+      style: const TextStyle(
+        color: Colors.white54,
+        fontSize: 14,
+        fontStyle: FontStyle.italic,
+      ),
     );
   }
 }

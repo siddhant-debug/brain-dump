@@ -1,13 +1,13 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../../core/constants/api_constants.dart';
+import '../../../core/providers/dio_provider.dart';
 import '../models/analytics_models.dart';
 import '../models/pipeline_models.dart';
 
 // ─── Provider (stateless service) ────────────────────────────────────────────
 final analyticsServiceProvider = Provider<AnalyticsService>((ref) {
-  return AnalyticsService();
+  return AnalyticsService(ref.read(dioProvider));
 });
 
 // ─── Data providers (independent — slow loops won't block streak) ─────────────
@@ -39,38 +39,23 @@ Follows the same pattern as BrainService / NoteService:
   - All errors re-thrown as friendly Exception messages
 */
 class AnalyticsService {
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: ApiConstants.baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 15), // loops can be slower
-    ),
-  );
+  final Dio _dio;
 
-  /*
-  _getTokenWithRetry: reads JWT from secure storage.
-  Retries up to 3× (500ms apart) to tolerate post-login disk-write latency,
-  matching the pattern used by NoteService.
-  */
-  Future<String?> _getTokenWithRetry() async {
+  AnalyticsService(this._dio);
+
+  Future<String?> _getToken() async {
     const storage = FlutterSecureStorage();
-    String? token;
-    int attempts = 0;
-    while (attempts < 3) {
-      token = await storage.read(key: 'jwt_token');
-      if (token != null) return token;
-      await Future.delayed(const Duration(milliseconds: 500));
-      attempts++;
-    }
-    return null;
+    return await storage.read(key: 'jwt_token');
   }
 
-  Options _authOptions(String token) =>
-      Options(headers: {'Authorization': 'Bearer $token'});
+  Options _authOptions(String token) => Options(
+    headers: {'Authorization': 'Bearer $token'},
+    receiveTimeout: const Duration(seconds: 15),
+  );
 
   // ── GET /analytics/consistency ─────────────────────────────────────────────
   Future<ConsistencyData> getConsistency() async {
-    final token = await _getTokenWithRetry();
+    final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
     try {
@@ -88,7 +73,7 @@ class AnalyticsService {
 
   // ── GET /analytics/themes ─────────────────────────────────────────────────
   Future<ThemesData> getThemes({int days = 30}) async {
-    final token = await _getTokenWithRetry();
+    final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
     try {
@@ -107,7 +92,7 @@ class AnalyticsService {
 
   // ── GET /analytics/loops ──────────────────────────────────────────────────
   Future<LoopsData> getLoops({int days = 30}) async {
-    final token = await _getTokenWithRetry();
+    final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
     try {
@@ -126,7 +111,7 @@ class AnalyticsService {
 
   // ── GET /analytics/pipeline ───────────────────────────────────────────────
   Future<PipelineData> getPipeline({int days = 30}) async {
-    final token = await _getTokenWithRetry();
+    final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
     try {

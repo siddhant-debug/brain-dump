@@ -14,8 +14,18 @@ from . import auth
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-# 50 MB hard cap on uploads
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+import mimetypes
+
+# 10 MB limit for beta
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+ALLOWED_MIMETYPES = {
+    'application/pdf', 
+    'text/plain', 
+    'text/markdown', 
+    'text/csv', 
+    'application/json'
+}
 
 # --- RAG ENDPOINT 1: UPLOAD (The Eyes) ---
 @router.post("/upload-to-brain")
@@ -34,22 +44,32 @@ async def upload_to_brain(
     print(f"[DEBUG] Content Type: {file.content_type}")
     print(f"{'='*60}\n")
     
-    # 1. Save temp file to disk — sanitize filename to prevent path traversal
+    # 1. Enforce upload size limit (10MB) before saving to disk
+    file_content = await file.read()
+    file_size = len(file_content)
+    if file_size > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large. Maximum allowed size is 10 MB.")
+
+    # 2. Validate MIME type
+    content_type = file.content_type
+    if not content_type or content_type not in ALLOWED_MIMETYPES:
+        guessed_type, _ = mimetypes.guess_type(file.filename)
+        if not guessed_type or guessed_type not in ALLOWED_MIMETYPES:
+            raise HTTPException(status_code=415, detail=f"Unsupported file type. Allowed: PDF, TXT, MD, CSV, JSON.")
+        content_type = guessed_type
+
+    # 3. Binary check for text files
+    if content_type.startswith('text/') or content_type == 'application/json':
+        if b'\x00' in file_content:
+            raise HTTPException(status_code=400, detail="Corrupted or invalid text file.")
+        
+    # 4. Save temp file to disk — sanitize filename to prevent path traversal
     safe_filename = Path(file.filename).name
     temp_path = f"temp_{current_user.id}_{safe_filename}"
     print(f"[DEBUG] ⬇️  Milestone 1: Saving to temp path: {temp_path}")
     with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        buffer.write(file_content)
     print(f"[DEBUG] ✅ Milestone 1 Complete: File saved to disk")
-
-    # Enforce upload size limit before any processing
-    file_size_bytes = os.path.getsize(temp_path)
-    if file_size_bytes > MAX_UPLOAD_BYTES:
-        os.remove(temp_path)
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large. Maximum allowed size is 50 MB."
-        )
 
     # 2. Process file — temp file is ALWAYS cleaned up in finally block
     try:
@@ -181,7 +201,7 @@ async def chat_endpoint(
             
             # 3. Stream AI response
             full_response = ""
-            for chunk in rag_engine.ask_gemini_stream(context_text, request_body.query, location_context=location_dict):
+            async for chunk in rag_engine.ask_gemini_stream_async(context_text, request_body.query, location_context=location_dict):
                 if chunk is None:
                     # Error occurred
                     fallback = f"**AI Offline.**\n\nHere are the relevant notes:\n\n{context_text}"

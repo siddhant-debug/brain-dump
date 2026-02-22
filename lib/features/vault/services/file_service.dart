@@ -2,9 +2,11 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/controllers/auth_controller.dart';
-import '../../../core/constants/api_constants.dart';
+import '../../../core/providers/dio_provider.dart';
 
-final fileServiceProvider = Provider((ref) => FileService(ref));
+final fileServiceProvider = Provider(
+  (ref) => FileService(ref, ref.read(dioProvider)),
+);
 
 /*
 1 : FileService manages binary data (PDF/TXT/MD) interactions with the backend.
@@ -12,16 +14,9 @@ It uses MultipartFormData for uploads and JSON for metadata/content retrieval.
 */
 class FileService {
   final Ref _ref;
+  final Dio _dio;
 
-  FileService(this._ref);
-
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: ApiConstants.baseUrl,
-      connectTimeout: const Duration(seconds: 60),
-      receiveTimeout: const Duration(seconds: 60),
-    ),
-  );
+  FileService(this._ref, this._dio);
 
   /*
   2 : _getToken helper ensures every request is authorized by the current user session.
@@ -47,7 +42,11 @@ class FileService {
     await _dio.post(
       '/chat/upload-to-brain',
       data: formData,
-      options: Options(headers: {'Authorization': 'Bearer $token'}),
+      options: Options(
+        headers: {'Authorization': 'Bearer $token'},
+        receiveTimeout: const Duration(seconds: 60),
+        sendTimeout: const Duration(seconds: 60),
+      ),
     );
   }
 

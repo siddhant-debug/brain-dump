@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:ui' as ui; // For glassmorphism
 
+import '../core/theme/app_theme.dart';
+
 // Screens
 import 'brain_dump_screen.dart';
-import '../features/brain_dump/services/brain_service.dart'; // To fetch files
+import '../features/vault/services/file_service.dart'; // To fetch files
 import '../features/music/providers/music_provider.dart'; // For Connected Apps status
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -64,35 +66,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 }
 
-class _HomeTab extends ConsumerStatefulWidget {
+class _HomeTab extends ConsumerWidget {
   const _HomeTab();
 
   @override
-  ConsumerState<_HomeTab> createState() => _HomeTabState();
-}
-
-class _HomeTabState extends ConsumerState<_HomeTab> {
-  late Future<List<Map<String, dynamic>>> _futureFiles;
-
-  @override
-  void initState() {
-    super.initState();
-    _refreshFiles();
-  }
-
-  void _refreshFiles() {
-    setState(() {
-      _futureFiles = ref.read(brainServiceProvider).listFiles();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final musicState = ref.watch(musicProvider);
+    final filesAsync = ref.watch(filesProvider);
 
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppTheme.pagePadding),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -162,28 +146,18 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.refresh, color: Colors.white38),
-                  onPressed: _refreshFiles,
+                  onPressed: () => ref.invalidate(filesProvider),
                   tooltip: "Refresh Files",
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            FutureBuilder<List<Map<String, dynamic>>>(
-              future: _futureFiles,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                } else if (snapshot.hasError) {
-                  return Center(
-                    child: Text(
-                      "Error loading files: ${snapshot.error}",
-                      style: const TextStyle(color: Colors.redAccent),
-                    ),
-                  );
-                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            filesAsync.when(
+              data: (files) {
+                if (files.isEmpty) {
                   return Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.all(AppTheme.pagePadding),
                     decoration: BoxDecoration(
                       color: const Color(0xFF1E1E1E),
                       borderRadius: BorderRadius.circular(16),
@@ -209,15 +183,21 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
                 return ListView.separated(
                   physics: const NeverScrollableScrollPhysics(),
                   shrinkWrap: true,
-                  itemCount: snapshot.data!.length,
+                  itemCount: files.length,
                   separatorBuilder: (context, index) =>
                       const SizedBox(height: 12),
                   itemBuilder: (context, index) {
-                    final file = snapshot.data![index];
-                    return _buildFileCard(file);
+                    return _buildFileCard(files[index]);
                   },
                 );
               },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, stack) => Center(
+                child: Text(
+                  "Error loading files: $err",
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
+              ),
             ),
           ],
         ),
@@ -228,7 +208,7 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
   Widget _buildAppCard(String name, IconData icon, Color color, String status) {
     return Container(
       width: 140,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppTheme.cardPadding),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(20),
@@ -267,7 +247,7 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
 
   Widget _buildFileCard(Map<String, dynamic> file) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppTheme.cardPadding),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(16),

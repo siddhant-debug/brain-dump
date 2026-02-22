@@ -3,22 +3,18 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../../core/constants/api_constants.dart';
 import '../../../core/constants/timeout_constants.dart';
+import '../../../core/providers/dio_provider.dart';
 import '../models/chat_message.dart';
 
 final brainServiceProvider = Provider<BrainService>((ref) {
-  return BrainService();
+  return BrainService(ref.read(dioProvider));
 });
 
 class BrainService {
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: ApiConstants.baseUrl,
-      connectTimeout: TimeoutConstants.connectionTimeout,
-      receiveTimeout: TimeoutConstants.receiveTimeout,
-    ),
-  );
+  final Dio _dio;
+
+  BrainService(this._dio);
 
   Future<String?> _getToken() async {
     const storage = FlutterSecureStorage();
@@ -145,23 +141,6 @@ class BrainService {
       return response.data;
     } catch (e) {
       throw Exception('Memory upload failed: $e');
-    }
-  }
-
-  /// LIST FILES: GET /chat/files
-  Future<List<Map<String, dynamic>>> listFiles() async {
-    final token = await _getToken();
-    if (token == null) throw Exception('User not authenticated');
-
-    try {
-      final response = await _dio.get(
-        '/chat/files',
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
-      );
-
-      return List<Map<String, dynamic>>.from(response.data);
-    } catch (e) {
-      throw Exception('Failed to fetch file list: $e');
     }
   }
 

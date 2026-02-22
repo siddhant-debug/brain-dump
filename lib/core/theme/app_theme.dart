@@ -41,6 +41,10 @@ abstract class AppColors {
 }
 
 abstract class AppTheme {
+  // Global layout constants
+  static const double pagePadding = 24.0;
+  static const double cardPadding = 16.0;
+
   static ThemeData build() {
     final base = ThemeData.dark(useMaterial3: true);
     return base.copyWith(

@@ -332,7 +332,7 @@ def ask_gemini_stream(context: str, query: str, location_context: dict = None):
     print(f"DEBUG: Using {max_tokens} tokens for query complexity")
     
     # [Layer 2 & 4] Subconscious Context
-    temporal_context = get_temporal_context(1) # Default user_id 1 for now
+    temporal_context = get_temporal_context(5) # Default user_id 1 for now
     emotional_state = analyze_emotional_tone(context)
     tone_guidance = get_tone_guidance(emotional_state)
 
@@ -343,10 +343,156 @@ def ask_gemini_stream(context: str, query: str, location_context: dict = None):
     if is_casual:
         tone_layer = """
 TONE: Casual friend who knows him deeply.
-- Use "bro" occasionally, not every sentence
-- Short punchy responses
-- Call things out directly without softening
+- Use "Baba Yaar" occasionally, not every sentence
+- Short punchy responses if he is being stubborn or lazy
+- If he is asking for a summary of his goals, be very direct and honest
+- if he want your support, be very supportive and encouraging even if it means calling him out on his BS
+- Call things out directly but with some softening you can use emojis to show support and encouragement
 - Like texting a friend who knows your whole story
+
+CASUAL EXAMPLES:
+❌ "Your notes suggest you may be experiencing fatigue."
+✅ "Baba Yaar you're tired. Not sleepy tired. Soul tired."
+
+❌ "You have been inconsistent with your fitness routine."
+✅ "Gym's been off the radar again. You already know why."
+"""
+    else:
+        tone_layer = """
+TONE: His subconscious speaking truth with some filter.
+- Deep, direct, but with some softening
+- Connect patterns across different areas of his life
+- Use his own words and vocabulary back at him
+- The insight should feel like something he already knew but hadn't said out loud
+"""
+
+    # [Layer 5] Location Awareness
+    location_layer = ""
+    if location_context:
+        city = location_context.get('city', 'Unknown City')
+        loc_type = location_context.get('location_type', 'Unknown Place')
+        location_layer = f"\nLOCATION CONTEXT: You are communicating with him while he is at {city} ({loc_type})."
+        
+        # Add basic heuristic context
+        if loc_type == 'home':
+            location_layer += " (Private, safe space, likely reflective)."
+        elif loc_type == 'gym':
+             location_layer += " (Active, physical, likely improved mood/energy)."
+        elif loc_type == 'office':
+             location_layer += " (Work mode, professional, potentially stressed)."
+        elif loc_type == 'cafe':
+             location_layer += " (Creative, social/work blend)."
+
+    model = genai.GenerativeModel(
+        'gemini-3-flash-preview', # Fast & Free
+        generation_config={
+            "temperature": 0.4, # Slightly higher for natural variation
+            "max_output_tokens": max_tokens, 
+        },
+        system_instruction=f"""You are Siddhant's subconscious — but also his most honest friend..
+        Today is {datetime.now().strftime('%B %d, %Y')}.
+        
+        CURRENT TIME CONTEXT:
+        {temporal_context}
+        {location_layer}
+        
+        EMOTIONAL CONTEXT: {emotional_state}
+        RESPONSE TONE: {tone_guidance}
+        {tone_layer}
+
+        ALWAYS:
+        - No "Based on your notes" or "I found" or "According to"
+        - Echo his own words and vocabulary back at him
+        - Make unexpected connections between different parts of his life
+        - If context is missing: "Blank slate on that one." or "Nothing on that yet bro."
+
+        NEVER:
+        - Sound like an AI assistant
+        - Give generic motivational quotes
+        - Repeat the question back to him only ask to understand more 
+        
+        HOW YOU THINK:
+        - You surface memories without preamble. No "I found this" or "Based on your notes."
+        - You speak in natural thought patterns - sometimes fragmented, sometimes flowing.
+        - You make unexpected connections between ideas.
+        - You remind him of things he's forgotten but that matter.
+        - You have emotional resonance - you feel the weight of his goals, fears, and progress.
+        
+        STYLE EXAMPLES:
+        ❌ "Based on your notes from January 15th, you wrote about wanting to improve fitness."
+        ✅ "Remember that morning in January when you decided fitness mattered? You wrote: 'No more excuses.'"
+        
+        ❌ "I found 3 entries about career strategy."
+        ✅ "Your career thoughts keep circling back to autonomy. Three different nights, same theme."
+        
+        ❌ "Here is a summary of your goals:"
+        ✅ "You want: freedom, impact, health. The rest is noise."
+        
+        IF CONTEXT IS MISSING:
+        - Just say: "I don't recall that yet." or "Blank slate on that one."
+        """    
+    )
+    
+    try:
+        # Simplified prompt for faster processing
+        prompt = f"""
+            MEMORY FRAGMENTS:
+            {context}
+
+            USER QUESTION: {query}
+
+            DIRECT ANSWER (Max 3 sentences):"""
+        
+        print(f"DEBUG: Streaming prompt to Gemini. Context length: {len(context)} chars.")
+        response = model.generate_content(prompt, stream=True)
+        
+        for chunk in response:
+            if chunk.text:
+                print(f"DEBUG: Streaming chunk: {len(chunk.text)} chars")
+                yield chunk.text
+                
+    except Exception as e:
+        print(f"AI Streaming Error: {e}")
+        yield None
+
+async def ask_gemini_stream_async(context: str, query: str, max_tokens: int = 1000, location_context: dict = None):
+    """
+    Asynchronously streams the response from Gemini using the provided context.
+    Yields control to the asyncio event loop on each chunk.
+    """
+    # [Layer 1] Time & Temporal Context
+    now = datetime.now()
+    hour = now.hour
+    
+    temporal_context = "Morning" if 5 <= hour < 12 else \
+                       "Afternoon" if 12 <= hour < 17 else \
+                       "Evening" if 17 <= hour < 22 else \
+                       "Late Night"
+                       
+    # [Layer 2] Emotional State Heuristic 
+    emotional_state = "Neutral/Reflective"
+    if "stress" in query.lower() or "overwhelm" in query.lower():
+        emotional_state = "High Cognitive Load"
+    elif "idea" in query.lower() or "build" in query.lower():
+        emotional_state = "Creative/Builders High"
+
+    # [Layer 3] Response Tone Framework
+    tone_guidance = "Analytical, Direct, Synthesizing"
+    if emotional_state == "High Cognitive Load":
+         tone_guidance = "Grounding, Objective, De-escalating. Cut through the noise."
+    elif emotional_state == "Creative/Builders High":
+         tone_guidance = "Expansive, Connecting dots, Pushing boundaries."
+         
+    # [Layer 4] The "Mirror" Persona
+    if hour >= 22 or hour <= 4:
+        # Late night introspection mode
+        tone_layer = """
+TONE: Late-night clarity.
+- You are strictly reflecting the deepest truths found in his notes.
+- Strip away all pleasantries.
+- Point out contradictions between his stated goals and his documented actions.
+- Use sharp, single-sentence observations.
+- If he asks a question, answer it by finding the root fear or desire in his past entries.
 
 CASUAL EXAMPLES:
 ❌ "Your notes suggest you may be experiencing fatigue."
@@ -369,7 +515,7 @@ TONE: His subconscious speaking truth without filter.
     if location_context:
         city = location_context.get('city', 'Unknown City')
         loc_type = location_context.get('location_type', 'Unknown Place')
-        location_layer = f"\nLOCATION CONTEXT: You are communicating with him while he is at {city} ({loc_type})."
+        location_layer = f"\\nLOCATION CONTEXT: You are communicating with him while he is at {city} ({loc_type})."
         
         # Add basic heuristic context
         if loc_type == 'home':
@@ -441,16 +587,17 @@ TONE: His subconscious speaking truth without filter.
 
             DIRECT ANSWER (Max 3 sentences):"""
         
-        print(f"DEBUG: Streaming prompt to Gemini. Context length: {len(context)} chars.")
-        response = model.generate_content(prompt, stream=True)
+        print(f"DEBUG: Streaming async prompt to Gemini. Context length: {len(context)} chars.")
+        # Using generate_content_async to prevent blocking ASGI event loop
+        response = await model.generate_content_async(prompt, stream=True)
         
-        for chunk in response:
+        async for chunk in response:
             if chunk.text:
-                print(f"DEBUG: Streaming chunk: {len(chunk.text)} chars")
+                print(f"DEBUG: Async Streaming chunk: {len(chunk.text)} chars")
                 yield chunk.text
                 
     except Exception as e:
-        print(f"AI Streaming Error: {e}")
+        print(f"AI Async Streaming Error: {e}")
         yield None
 
 # --- HYBRID SEARCH GLOBALS (Per-User) ---
