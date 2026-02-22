@@ -332,7 +332,7 @@ def ask_gemini_stream(context: str, query: str, location_context: dict = None):
     print(f"DEBUG: Using {max_tokens} tokens for query complexity")
     
     # [Layer 2 & 4] Subconscious Context
-    temporal_context = get_temporal_context(1) # Default user_id 1 for now
+    temporal_context = get_temporal_context(5) # Default user_id 1 for now
     emotional_state = analyze_emotional_tone(context)
     tone_guidance = get_tone_guidance(emotional_state)
 
@@ -343,10 +343,156 @@ def ask_gemini_stream(context: str, query: str, location_context: dict = None):
     if is_casual:
         tone_layer = """
 TONE: Casual friend who knows him deeply.
-- Use "bro" occasionally, not every sentence
-- Short punchy responses
-- Call things out directly without softening
+- Use "Baba Yaar" occasionally, not every sentence
+- Short punchy responses if he is being stubborn or lazy
+- If he is asking for a summary of his goals, be very direct and honest
+- if he want your support, be very supportive and encouraging even if it means calling him out on his BS
+- Call things out directly but with some softening you can use emojis to show support and encouragement
 - Like texting a friend who knows your whole story
+
+CASUAL EXAMPLES:
+❌ "Your notes suggest you may be experiencing fatigue."
+✅ "Baba Yaar you're tired. Not sleepy tired. Soul tired."
+
+❌ "You have been inconsistent with your fitness routine."
+✅ "Gym's been off the radar again. You already know why."
+"""
+    else:
+        tone_layer = """
+TONE: His subconscious speaking truth with some filter.
+- Deep, direct, but with some softening
+- Connect patterns across different areas of his life
+- Use his own words and vocabulary back at him
+- The insight should feel like something he already knew but hadn't said out loud
+"""
+
+    # [Layer 5] Location Awareness
+    location_layer = ""
+    if location_context:
+        city = location_context.get('city', 'Unknown City')
+        loc_type = location_context.get('location_type', 'Unknown Place')
+        location_layer = f"\nLOCATION CONTEXT: You are communicating with him while he is at {city} ({loc_type})."
+        
+        # Add basic heuristic context
+        if loc_type == 'home':
+            location_layer += " (Private, safe space, likely reflective)."
+        elif loc_type == 'gym':
+             location_layer += " (Active, physical, likely improved mood/energy)."
+        elif loc_type == 'office':
+             location_layer += " (Work mode, professional, potentially stressed)."
+        elif loc_type == 'cafe':
+             location_layer += " (Creative, social/work blend)."
+
+    model = genai.GenerativeModel(
+        'gemini-3-flash-preview', # Fast & Free
+        generation_config={
+            "temperature": 0.4, # Slightly higher for natural variation
+            "max_output_tokens": max_tokens, 
+        },
+        system_instruction=f"""You are Siddhant's subconscious — but also his most honest friend..
+        Today is {datetime.now().strftime('%B %d, %Y')}.
+        
+        CURRENT TIME CONTEXT:
+        {temporal_context}
+        {location_layer}
+        
+        EMOTIONAL CONTEXT: {emotional_state}
+        RESPONSE TONE: {tone_guidance}
+        {tone_layer}
+
+        ALWAYS:
+        - No "Based on your notes" or "I found" or "According to"
+        - Echo his own words and vocabulary back at him
+        - Make unexpected connections between different parts of his life
+        - If context is missing: "Blank slate on that one." or "Nothing on that yet bro."
+
+        NEVER:
+        - Sound like an AI assistant
+        - Give generic motivational quotes
+        - Repeat the question back to him only ask to understand more 
+        
+        HOW YOU THINK:
+        - You surface memories without preamble. No "I found this" or "Based on your notes."
+        - You speak in natural thought patterns - sometimes fragmented, sometimes flowing.
+        - You make unexpected connections between ideas.
+        - You remind him of things he's forgotten but that matter.
+        - You have emotional resonance - you feel the weight of his goals, fears, and progress.
+        
+        STYLE EXAMPLES:
+        ❌ "Based on your notes from January 15th, you wrote about wanting to improve fitness."
+        ✅ "Remember that morning in January when you decided fitness mattered? You wrote: 'No more excuses.'"
+        
+        ❌ "I found 3 entries about career strategy."
+        ✅ "Your career thoughts keep circling back to autonomy. Three different nights, same theme."
+        
+        ❌ "Here is a summary of your goals:"
+        ✅ "You want: freedom, impact, health. The rest is noise."
+        
+        IF CONTEXT IS MISSING:
+        - Just say: "I don't recall that yet." or "Blank slate on that one."
+        """    
+    )
+    
+    try:
+        # Simplified prompt for faster processing
+        prompt = f"""
+            MEMORY FRAGMENTS:
+            {context}
+
+            USER QUESTION: {query}
+
+            DIRECT ANSWER (Max 3 sentences):"""
+        
+        print(f"DEBUG: Streaming prompt to Gemini. Context length: {len(context)} chars.")
+        response = model.generate_content(prompt, stream=True)
+        
+        for chunk in response:
+            if chunk.text:
+                print(f"DEBUG: Streaming chunk: {len(chunk.text)} chars")
+                yield chunk.text
+                
+    except Exception as e:
+        print(f"AI Streaming Error: {e}")
+        yield None
+
+async def ask_gemini_stream_async(context: str, query: str, max_tokens: int = 1000, location_context: dict = None):
+    """
+    Asynchronously streams the response from Gemini using the provided context.
+    Yields control to the asyncio event loop on each chunk.
+    """
+    # [Layer 1] Time & Temporal Context
+    now = datetime.now()
+    hour = now.hour
+    
+    temporal_context = "Morning" if 5 <= hour < 12 else \
+                       "Afternoon" if 12 <= hour < 17 else \
+                       "Evening" if 17 <= hour < 22 else \
+                       "Late Night"
+                       
+    # [Layer 2] Emotional State Heuristic 
+    emotional_state = "Neutral/Reflective"
+    if "stress" in query.lower() or "overwhelm" in query.lower():
+        emotional_state = "High Cognitive Load"
+    elif "idea" in query.lower() or "build" in query.lower():
+        emotional_state = "Creative/Builders High"
+
+    # [Layer 3] Response Tone Framework
+    tone_guidance = "Analytical, Direct, Synthesizing"
+    if emotional_state == "High Cognitive Load":
+         tone_guidance = "Grounding, Objective, De-escalating. Cut through the noise."
+    elif emotional_state == "Creative/Builders High":
+         tone_guidance = "Expansive, Connecting dots, Pushing boundaries."
+         
+    # [Layer 4] The "Mirror" Persona
+    if hour >= 22 or hour <= 4:
+        # Late night introspection mode
+        tone_layer = """
+TONE: Late-night clarity.
+- You are strictly reflecting the deepest truths found in his notes.
+- Strip away all pleasantries.
+- Point out contradictions between his stated goals and his documented actions.
+- Use sharp, single-sentence observations.
+- If he asks a question, answer it by finding the root fear or desire in his past entries.
 
 CASUAL EXAMPLES:
 ❌ "Your notes suggest you may be experiencing fatigue."
@@ -369,7 +515,7 @@ TONE: His subconscious speaking truth without filter.
     if location_context:
         city = location_context.get('city', 'Unknown City')
         loc_type = location_context.get('location_type', 'Unknown Place')
-        location_layer = f"\nLOCATION CONTEXT: You are communicating with him while he is at {city} ({loc_type})."
+        location_layer = f"\\nLOCATION CONTEXT: You are communicating with him while he is at {city} ({loc_type})."
         
         # Add basic heuristic context
         if loc_type == 'home':
@@ -441,61 +587,65 @@ TONE: His subconscious speaking truth without filter.
 
             DIRECT ANSWER (Max 3 sentences):"""
         
-        print(f"DEBUG: Streaming prompt to Gemini. Context length: {len(context)} chars.")
-        response = model.generate_content(prompt, stream=True)
+        print(f"DEBUG: Streaming async prompt to Gemini. Context length: {len(context)} chars.")
+        # Using generate_content_async to prevent blocking ASGI event loop
+        response = await model.generate_content_async(prompt, stream=True)
         
-        for chunk in response:
+        async for chunk in response:
             if chunk.text:
-                print(f"DEBUG: Streaming chunk: {len(chunk.text)} chars")
+                print(f"DEBUG: Async Streaming chunk: {len(chunk.text)} chars")
                 yield chunk.text
                 
     except Exception as e:
-        print(f"AI Streaming Error: {e}")
+        print(f"AI Async Streaming Error: {e}")
         yield None
 
-# --- HYBRID SEARCH GLOBALS ---
+# --- HYBRID SEARCH GLOBALS (Per-User) ---
 from rank_bm25 import BM25Okapi
 import string
 
-_bm25_model = None
-_bm25_doc_registry = {} # Map index -> doc_id
-_bm25_doc_content = {}  # Map doc_id -> content
-_bm25_doc_metadata = {} # Map doc_id -> metadata
+# Keyed by user_id (int) — each user gets a completely isolated BM25 index
+_bm25_models: dict = {}          # user_id -> BM25Okapi
+_bm25_doc_registry: dict = {}    # user_id -> {idx: doc_id}
+_bm25_doc_content: dict = {}     # user_id -> {doc_id: content}
+_bm25_doc_metadata: dict = {}    # user_id -> {doc_id: metadata}
 
 def _tokenize(text):
     """Simple tokenizer for BM25"""
     return text.lower().translate(str.maketrans("", "", string.punctuation)).split()
 
-def get_bm25():
-    """Lazy load BM25 index from ChromaDB"""
-    global _bm25_model, _bm25_doc_registry, _bm25_doc_content, _bm25_doc_metadata
-    
-    if _bm25_model is None:
-        print(f"[INFO] Building BM25 index from ChromaDB...")
+def get_bm25(user_id: int):
+    """Lazy-load a per-user BM25 index — only indexes that user's documents"""
+    global _bm25_models, _bm25_doc_registry, _bm25_doc_content, _bm25_doc_metadata
+
+    if user_id not in _bm25_models:
+        print(f"[INFO] Building BM25 index for user {user_id}...")
         collection = get_db_collection()
-        
-        # Fetch all documents
-        # NOTE: For production, this should be cached or incremental
-        all_docs = collection.get()
-        
+
+        # Fetch ONLY this user's documents
+        user_docs = collection.get(where={"user_id": user_id})
+
         tokenized_corpus = []
-        _bm25_doc_registry = {}
-        _bm25_doc_content = {}
-        _bm25_doc_metadata = {}
-        
-        if all_docs['ids']:
-            for idx, (doc_id, content, metadata) in enumerate(zip(all_docs['ids'], all_docs['documents'], all_docs['metadatas'])):
-                _bm25_doc_registry[idx] = doc_id
-                _bm25_doc_content[doc_id] = content
-                _bm25_doc_metadata[doc_id] = metadata
+        _bm25_doc_registry[user_id] = {}
+        _bm25_doc_content[user_id] = {}
+        _bm25_doc_metadata[user_id] = {}
+
+        if user_docs['ids']:
+            for idx, (doc_id, content, metadata) in enumerate(
+                zip(user_docs['ids'], user_docs['documents'], user_docs['metadatas'])
+            ):
+                _bm25_doc_registry[user_id][idx] = doc_id
+                _bm25_doc_content[user_id][doc_id] = content
+                _bm25_doc_metadata[user_id][doc_id] = metadata
                 tokenized_corpus.append(_tokenize(content))
-            
-            _bm25_model = BM25Okapi(tokenized_corpus)
-            print(f"[INFO] BM25 index built with {len(tokenized_corpus)} documents")
+
+            _bm25_models[user_id] = BM25Okapi(tokenized_corpus)
+            print(f"[INFO] BM25 index built for user {user_id} with {len(tokenized_corpus)} documents")
         else:
-            print(f"[WARN] ChromaDB is empty, skipping BM25 build")
-            
-    return _bm25_model
+            print(f"[WARN] No documents for user {user_id}, skipping BM25 build")
+            _bm25_models[user_id] = None  # Cache the miss to avoid repeated DB calls
+
+    return _bm25_models.get(user_id)
 
 def retrieve_context(query: str, user_id: int, current_location: dict = None):
     """Retrieves relevant context using Hybrid Search (Vector + BM25) + RRF Fusion"""
@@ -518,27 +668,21 @@ def retrieve_context(query: str, user_id: int, current_location: dict = None):
         vector_candidates = vector_results['ids'][0]
     
     # 2. KEYWORD SEARCH (Sparse - BM25)
-    print(f"DEBUG: [BM25] Querying BM25...")
-    bm25 = get_bm25()
+    print(f"DEBUG: [BM25] Querying BM25 for user {user_id}...")
+    bm25 = get_bm25(user_id)  # Per-user index — no cross-user data
     bm25_candidates = []
-    
+
     if bm25:
         tokenized_query = _tokenize(query)
-        # Get scores for all docs
         doc_scores = bm25.get_scores(tokenized_query)
-        # Filter for user_id (since BM25 is global currently)
-        # This is inefficient but functional for prototype. 
-        # Ideally BM25 should be sharded by user or filtered.
-        
+        user_registry = _bm25_doc_registry.get(user_id, {})
+
         user_doc_scores = []
         for idx, score in enumerate(doc_scores):
-            if score > 0:
-                doc_id = _bm25_doc_registry[idx]
-                # Check ownership in metadata
-                if _bm25_doc_metadata[doc_id]['user_id'] == user_id:
-                    user_doc_scores.append((doc_id, score))
-        
-        # Sort by score desc
+            if score > 0 and idx in user_registry:
+                doc_id = user_registry[idx]
+                user_doc_scores.append((doc_id, score))
+
         user_doc_scores.sort(key=lambda x: x[1], reverse=True)
         bm25_candidates = [doc_id for doc_id, score in user_doc_scores[:n_results]]
         
@@ -579,11 +723,15 @@ def retrieve_context(query: str, user_id: int, current_location: dict = None):
     # Since we have _bm25_doc_content populated, we can look up there if BM25 built.
     # If using vector-only fallback (BM25 fail), we rely on vector_results.
     
-    # Efficient strategy: Use _bm25_doc_content as cache since it has everything.
-    if _bm25_doc_content:
+    # Hydrate documents — use per-user content cache
+    user_content = _bm25_doc_content.get(user_id, {})
+    user_meta = _bm25_doc_metadata.get(user_id, {})
+
+    if user_content:
         for doc_id in top_n_candidates:
-            docs.append(_bm25_doc_content[doc_id])
-            metadatas.append(_bm25_doc_metadata[doc_id])
+            if doc_id in user_content:
+                docs.append(user_content[doc_id])
+                metadatas.append(user_meta.get(doc_id, {}))
     else:
         # Fallback if BM25 failed (shouldn't happen if we reached here with candidates)
          # Re-fetch from collection by IDs

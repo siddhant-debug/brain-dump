@@ -10,6 +10,7 @@ import '../features/auth/controllers/auth_controller.dart';
 import '../features/vault/presentation/file_vault_screen.dart';
 import '../features/vault/presentation/thoughts_screen.dart';
 import '../core/widgets/persistent_header.dart';
+import '../features/analytics/presentation/analytics_screen.dart';
 
 /// Black Canvas - Minimalist Digital Notebook
 /// Design: Pure black background, invisible list, hand-drawn spacing
@@ -27,7 +28,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
   final ScrollController _scrollController = ScrollController();
 
   // Navigation State
-  int _selectedIndex = 0; // 0: Chat (Home), 1: Vault
+  int _selectedIndex = 0; // 0: Insights, 1: Chat, 2: Thoughts, 3: Vault
 
   // Message tracking
   int _previousMessageCount = 0;
@@ -45,9 +46,9 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
       duration: const Duration(milliseconds: 1000),
     );
 
-    // Auto-focus on load
+    // Auto-focus on load — chat is now tab 1
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_selectedIndex == 0) {
+      if (_selectedIndex == 1) {
         _focusNode.requestFocus();
       }
     });
@@ -76,7 +77,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
 
   void _autoFocusAfterResponse() {
     Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted && _selectedIndex == 0) {
+      if (mounted && _selectedIndex == 1) {
         _focusNode.requestFocus();
       }
     });
@@ -92,7 +93,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     _controller.clear();
 
     // Maintain focus for rapid-fire thoughts
-    if (_selectedIndex == 0) {
+    if (_selectedIndex == 1) {
       _focusNode.requestFocus();
     }
 
@@ -159,6 +160,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
               child: IndexedStack(
                 index: _selectedIndex,
                 children: [
+                  const AnalyticsScreen(),
                   _buildChatLayer(brainDumpState),
                   const ThoughtsScreen(isEmbedded: true),
                   const FileVaultScreen(isEmbedded: true),
@@ -166,8 +168,8 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
               ),
             ),
 
-            // LAYER 2: MINIMAL INPUT (Only visible on Chat screen)
-            if (_selectedIndex == 0)
+            // LAYER 2: MINIMAL INPUT (Only visible on Chat screen — tab 1)
+            if (_selectedIndex == 1)
               Positioned(
                 bottom: 100, // Above dock
                 left: 24,
@@ -186,7 +188,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                   onTabSelected: (index) {
                     setState(() {
                       _selectedIndex = index;
-                      if (index == 0) {
+                      if (index == 1) {
                         Future.delayed(const Duration(milliseconds: 100), () {
                           _focusNode.requestFocus();
                         });
@@ -347,41 +349,38 @@ class ThinkingIndicator extends StatefulWidget {
   State<ThinkingIndicator> createState() => _ThinkingIndicatorState();
 }
 
-class _ThinkingIndicatorState extends State<ThinkingIndicator>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+class _ThinkingIndicatorState extends State<ThinkingIndicator> {
+  late Timer _timer;
+  int _dotCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    )..repeat();
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (mounted) {
+        setState(() {
+          _dotCount = (_dotCount + 1) % 4;
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _timer.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        final dotCount = (_controller.value * 4).floor() % 4; // 0 to 3 dots
-        final dots = '.' * dotCount;
-        return Text(
-          'thinking$dots',
-          style: const TextStyle(
-            color: Colors.white54,
-            fontSize: 14,
-            fontStyle: FontStyle.italic,
-          ),
-        );
-      },
+    final dots = '.' * _dotCount;
+    return Text(
+      'thinking$dots',
+      style: const TextStyle(
+        color: Colors.white54,
+        fontSize: 14,
+        fontStyle: FontStyle.italic,
+      ),
     );
   }
 }
@@ -461,7 +460,7 @@ class _MinimalMessageRow extends StatelessWidget {
           const SizedBox(width: 12),
           CircleAvatar(
             radius: 16,
-            backgroundColor: Colors.blueGrey.withOpacity(0.2),
+            backgroundColor: Colors.blueGrey.withValues(alpha: 0.2),
             child: const Icon(Icons.person, size: 18, color: Colors.blueGrey),
           ),
         ],
@@ -495,22 +494,28 @@ class _PillDock extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _DockItem(
-                icon: Icons.radio_button_checked,
-                label: 'Home',
+                icon: Icons.bar_chart_rounded,
+                label: 'Insights',
                 isSelected: selectedIndex == 0,
                 onTap: () => onTabSelected(0),
               ),
               _DockItem(
-                icon: Icons.lightbulb_outline,
-                label: 'Thoughts',
+                icon: Icons.chat_bubble_rounded,
+                label: 'chat',
                 isSelected: selectedIndex == 1,
                 onTap: () => onTabSelected(1),
               ),
               _DockItem(
-                icon: Icons.folder_copy_rounded,
-                label: 'Vault',
+                icon: Icons.lightbulb_outline,
+                label: 'Thoughts',
                 isSelected: selectedIndex == 2,
                 onTap: () => onTabSelected(2),
+              ),
+              _DockItem(
+                icon: Icons.folder_copy_rounded,
+                label: 'Vault',
+                isSelected: selectedIndex == 3,
+                onTap: () => onTabSelected(3),
               ),
             ],
           ),

@@ -1,11 +1,13 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
+from app.core.limiter import limiter
+
 
 from sqlalchemy.orm import Session
 from jose import jwt
-from passlib.context import CryptContext
-from datetime import datetime, timedelta
+import bcrypt
+from datetime import datetime, timedelta, timezone
 from app.models import models
 from app.schemas import schemas
 from app.core import database
@@ -17,19 +19,22 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 if not SECRET_KEY:
     raise ValueError("JWT_SECRET_KEY environment variable is not set. Check your .env file.")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours (was 7 days — reduced attack window)
 
 def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+    # bcrypt requires bytes, so encode strings to utf-8 before checking
+    try:
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except ValueError:
+        return False
 
 def get_password_hash(password):
-    return pwd_context.hash(password)
+    # bcrypt.hashpw returns bytes, so decode to save as a string in the DB
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def create_access_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -61,7 +66,8 @@ def read_users_me(current_user: models.User = Depends(get_current_user)):
 
 
 @router.post("/signup", response_model=schemas.UserResponse)
-def signup(user_data: schemas.UserCreate, db: Session = Depends(database.get_db)):
+@limiter.limit("5/minute")
+def signup(request: Request, user_data: schemas.UserCreate, db: Session = Depends(database.get_db)):
     # Check if user already exists
     existing_user = db.query(models.User).filter(models.User.email == user_data.email).first()
     if existing_user:
@@ -84,7 +90,8 @@ def signup(user_data: schemas.UserCreate, db: Session = Depends(database.get_db)
     return new_user
 
 @router.post("/login", response_model=schemas.Token)
-def login(login_data: schemas.UserLogin, db: Session = Depends(database.get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, login_data: schemas.UserLogin, db: Session = Depends(database.get_db)):
     user = db.query(models.User).filter(models.User.email == login_data.email).first()
     
     if not user or not verify_password(login_data.password, user.hashed_password):

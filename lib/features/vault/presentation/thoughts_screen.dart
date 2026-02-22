@@ -143,7 +143,7 @@ class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
                       'Stream of Consciousness',
                       onAdd: () => _showAddNoteDialog(context, ref),
                     ),
-                    const SizedBox(height: 10),
+                    //const SizedBox(height: 2),
                     _buildNotesList(notesState),
                   ],
                 ),

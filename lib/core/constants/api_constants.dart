@@ -2,21 +2,20 @@ import 'package:flutter/foundation.dart';
 import 'dart:io' show Platform;
 
 class ApiConstants {
-  // Use localhost for Web/Emulators, and Local IP for physical devices
+  // MED-5: Production URL injected at build time via --dart-define=API_URL=https://api.yourdomain.com
+  // Dev builds fall back to localhost automatically.
+  static const String _productionUrl = String.fromEnvironment(
+    'API_URL',
+    defaultValue: '',
+  );
+
   static String get baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:8000';
-    }
+    // Production override — set via --dart-define at build/run time
+    if (_productionUrl.isNotEmpty) return _productionUrl;
 
-    // For Android Emulator, 10.0.2.2 points to host machine's localhost
-    if (Platform.isAndroid) {
-      return 'http://10.0.2.2:8000';
-    }
-
-    // For iOS Simulator or other desktop environments (localhost)
-    return 'http://localhost:8000';
-
-    // Commented out physical IP testing for now
-    // return 'http://192.168.1.46:8000';
+    // Development fallbacks
+    if (kIsWeb) return 'http://localhost:8000';
+    if (Platform.isAndroid) return 'http://10.0.2.2:8000';
+    return 'http://localhost:8000'; // iOS Simulator / macOS
   }
 }

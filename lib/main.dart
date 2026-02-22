@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/theme/app_theme.dart';
 import 'features/auth/controllers/auth_controller.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/onboarding/screens/onboarding_screen.dart';
@@ -19,30 +20,12 @@ class MyApp extends ConsumerWidget {
     return MaterialApp(
       title: 'Brain Dump',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0D0D0D),
-        colorScheme: ColorScheme.dark(
-          surface: const Color(0xFF0D0D0D),
-          primary: Colors.white.withValues(alpha: 0.85),
-          secondary: Colors.white.withValues(alpha: 0.40),
-        ),
-        fontFamily: 'sans-serif',
-        textSelectionTheme: TextSelectionThemeData(
-          cursorColor: Colors.white.withValues(alpha: 0.7),
-          selectionColor: Colors.white.withValues(alpha: 0.15),
-          selectionHandleColor: Colors.white.withValues(alpha: 0.5),
-        ),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.build(),
       home: userState.when(
         data: (user) {
           if (user != null) {
             final isNewUser = ref.watch(isNewUserProvider);
-            // If new user -> Onboarding, else -> Dashboard
-            if (isNewUser) {
-              return const OnboardingScreen();
-            }
+            if (isNewUser) return const OnboardingScreen();
             return const BrainDumpScreen();
           } else {
             return const LoginScreen();

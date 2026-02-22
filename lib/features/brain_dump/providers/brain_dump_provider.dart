@@ -39,7 +39,6 @@ class BrainDumpState {
 class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
   final Ref ref;
   final _uuid = const Uuid();
-  Timer? _noteCleanupTimer;
   StreamSubscription? _currentStreamSubscription;
 
   BrainDumpNotifier(this.ref) : super(BrainDumpState()) {
@@ -47,23 +46,36 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
   }
 
   Future<void> _fetchHistory() async {
+    state = state.copyWith(isProcessing: true, clearError: true);
     try {
       final history = await ref.read(brainServiceProvider).getChatHistory();
+      if (!mounted) return;
       if (history.isNotEmpty) {
         // [Architect] SAFE MERGE
         // We prepend history to any messages the user might have typed
         // while the history was loading.
         // History messages already have isRestored=true from fromJson
-        state = state.copyWith(messages: [...history, ...state.messages]);
+        state = state.copyWith(
+          messages: [...history, ...state.messages],
+          isProcessing: false,
+        );
+      } else {
+        // Stop loading state even if empty
+        state = state.copyWith(isProcessing: false);
       }
     } catch (e) {
       print('Error loading history: $e');
+      if (!mounted) return;
+      state = state.copyWith(
+        error:
+            "Failed to load history: ${e.toString().replaceAll('Exception: ', '')}",
+        isProcessing: false,
+      );
     }
   }
 
   @override
   void dispose() {
-    _noteCleanupTimer?.cancel();
     _currentStreamSubscription?.cancel();
     super.dispose();
   }
@@ -107,11 +119,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     String? aiMessageId;
 
     try {
-      if (trimmed.endsWith('?')) {
-        aiMessageId = await _handleQuery(trimmed, locationContext);
-      } else {
-        aiMessageId = await _saveNote(trimmed, locationContext);
-      }
+      aiMessageId = await _handleQuery(trimmed, locationContext);
     } catch (e) {
       // Update ONLY the specific message by ID
       if (aiMessageId != null) {
@@ -238,64 +246,6 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     }
 
     return aiMsgId;
-  }
-
-  Future<String> _saveNote(String text, Map<String, dynamic>? location) async {
-    // Remove the user's note message immediately (keep canvas clean)
-    final userNoteId = state.messages.last.id;
-
-    // 2. Add "Memorizing..." placeholder
-    final systemMsgId = _uuid.v4();
-    final placeholderMsg = ChatMessage(
-      id: systemMsgId,
-      content: "Memorizing...",
-      sender: MessageSender.system,
-      timestamp: DateTime.now(),
-      status: MessageStatus.memorizing,
-    );
-
-    state = state.copyWith(messages: [...state.messages, placeholderMsg]);
-
-    // 3. Call API (Notes Service)
-    await ref.read(noteServiceProvider).saveNote(text, location: location);
-
-    // [Architect] INVALIDATE PROVIDER
-    // This forces the thoughts list to refresh immediately
-    ref.invalidate(notesProvider);
-
-    // 4. Update placeholder to "Memorized ✓"
-    state = state.copyWith(
-      messages: state.messages.map((msg) {
-        if (msg.id == systemMsgId) {
-          return ChatMessage(
-            id: msg.id,
-            content: "Memorized ✓",
-            sender: MessageSender.system,
-            timestamp: DateTime.now(),
-            status: MessageStatus.memorized,
-          );
-        }
-        return msg;
-      }).toList(),
-    );
-
-    // 5. Remove both user note and "Memorized ✓" after 1.5 seconds
-    // Cancel previous timer if exists
-    _noteCleanupTimer?.cancel();
-
-    // Use Timer instead of Future.delayed to prevent memory leaks
-    _noteCleanupTimer = Timer(const Duration(milliseconds: 1500), () {
-      if (mounted) {
-        state = state.copyWith(
-          messages: state.messages
-              .where((msg) => msg.id != userNoteId && msg.id != systemMsgId)
-              .toList(),
-          isProcessing: false,
-        );
-      }
-    });
-
-    return systemMsgId;
   }
 
   /// Save note silently without adding any messages to chat

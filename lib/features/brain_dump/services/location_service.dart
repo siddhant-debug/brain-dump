@@ -21,8 +21,10 @@ class LocationService {
 
       // 2. Get Position (Low accuracy is fine for city level)
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.low,
-        timeLimit: const Duration(seconds: 5), // Short timeout to not block UI
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+          timeLimit: Duration(seconds: 5), // Short timeout to not block UI
+        ),
       );
 
       // 3. Reverse Geocode
@@ -34,7 +36,7 @@ class LocationService {
         List<Placemark> placemarks = await placemarkFromCoordinates(
           position.latitude,
           position.longitude,
-        );
+        ).timeout(const Duration(seconds: 3));
 
         if (placemarks.isNotEmpty) {
           final place = placemarks.first;
@@ -48,8 +50,10 @@ class LocationService {
           }
         }
       } catch (e) {
-        print("Geocoding failed: $e");
-        // Continue with just coordinates if geocoding fails
+        print(
+          "[LocationService] Geocoding unavailable (non-fatal, using coords only): $e",
+        );
+        // Continue with just coordinates if geocoding fails (common on simulators)
       }
 
       return {

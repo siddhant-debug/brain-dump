@@ -1,14 +1,22 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, validator, AnyHttpUrl
 from typing import Optional, List
 from datetime import datetime
 
 class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
-    profile_pic: Optional[str] = None
+    # MED-6: must be a valid HTTPS URL, not an arbitrary string
+    profile_pic: Optional[AnyHttpUrl] = None
 
 class UserCreate(UserBase):
-    password: str
+    # MED-1: minimum length + complexity enforced
+    password: str = Field(..., min_length=8, max_length=128)
+
+    @validator('password')
+    def password_complexity(cls, v):
+        if not any(c.isdigit() or not c.isalpha() for c in v):
+            raise ValueError('Password must contain at least one number or special character')
+        return v
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -40,10 +48,11 @@ class LocationContext(BaseModel):
     longitude: float
     city: Optional[str] = None
     country: Optional[str] = None
-    location_type: Optional[str] = None # home, cafe, gym, office, outdoor
+    location_type: Optional[str] = None  # home, cafe, gym, office, outdoor
 
 class NoteCreate(BaseModel):
-    content: str
+    # MED-8: cap at 50k characters to prevent unbounded DB / memory usage
+    content: str = Field(..., min_length=1, max_length=50000)
     location: Optional[LocationContext] = None
 
 class NoteResponse(BaseModel):
@@ -56,7 +65,8 @@ class NoteResponse(BaseModel):
         from_attributes = True
 
 class ChatRequest(BaseModel):
-    query: str
+    # MED-8: cap at 2k characters — prevents token exhaustion in Gemini
+    query: str = Field(..., min_length=1, max_length=2000)
     location: Optional[LocationContext] = None
 
 class ChatResponse(BaseModel):

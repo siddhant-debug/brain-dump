@@ -1,7 +1,12 @@
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../../core/constants/api_constants.dart';
+import '../../../core/providers/dio_provider.dart';
+import '../../../core/providers/storage_provider.dart';
+import '../../brain_dump/providers/brain_dump_provider.dart';
+import '../../notes/services/note_service.dart';
+import '../../analytics/services/analytics_service.dart';
 
 /*
 Variables and Providers 
@@ -23,9 +28,42 @@ whether the user is a new user or not.
 */
 
 final isAuthenticatedProvider = FutureProvider<bool>((ref) async {
-  final storage = const FlutterSecureStorage();
+  final storage = ref.read(secureStorageProvider);
   final token = await storage.read(key: 'jwt_token');
-  return token != null;
+  if (token == null) return false;
+
+  // MED-9: Decode the JWT payload and check the 'exp' claim locally.
+  // No signature verification needed — we just need to know if it's expired.
+  try {
+    final parts = token.split('.');
+    if (parts.length != 3) {
+      await storage.delete(key: 'jwt_token');
+      return false;
+    }
+    final payload =
+        jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))))
+            as Map<String, dynamic>;
+
+    final exp = payload['exp'] as int?;
+    if (exp == null || DateTime.now().millisecondsSinceEpoch ~/ 1000 >= exp) {
+      // Token is expired — clear it so the app routes to login
+      await storage.delete(key: 'jwt_token');
+      return false;
+    }
+    return true;
+  } on FormatException {
+    // Malformed token — base64 decode or json decode failed
+    await storage.delete(key: 'jwt_token');
+    return false;
+  } on RangeError {
+    // Index out of bounds (though parts.length check mitigates most of this)
+    await storage.delete(key: 'jwt_token');
+    return false;
+  } catch (_) {
+    // Catch-all for any other unexpected decoding errors
+    await storage.delete(key: 'jwt_token');
+    return false;
+  }
 });
 
 /*
@@ -102,26 +140,18 @@ final userProvider = FutureProvider<UserModel?>((ref) async {
 It exposes an AsyncValue<void> to the UI to represent loading/success/error states.
 */
 class AuthController extends StateNotifier<AsyncValue<void>> {
-  AuthController(this.ref) : super(const AsyncValue.data(null));
+  AuthController(this.ref)
+    : _dio = ref.read(dioProvider),
+      _storage = ref.read(secureStorageProvider),
+      super(const AsyncValue.data(null));
 
   /*
   10 : ref is a Ref object that is used to interact with other providers or invalidate
    them (e.g., refresh user data on login).
   */
   final Ref ref;
-
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: ApiConstants.baseUrl, // Use centralized local IP
-      connectTimeout: const Duration(seconds: 5),
-      receiveTimeout: const Duration(seconds: 3),
-    ),
-  );
-
-  /*
-  11 : _storage is a FlutterSecureStorage object that is used to store the JWT token.
-  */
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  final Dio _dio;
+  late final FlutterSecureStorage _storage;
 
   /*
   12 : login is a method that is used to login the user.
@@ -145,12 +175,10 @@ class AuthController extends StateNotifier<AsyncValue<void>> {
       final String accessToken = response.data['access_token'];
       await _storage.write(key: 'jwt_token', value: accessToken);
 
-      /*
-      15 : ref.invalidate(isAuthenticatedProvider); 
-      is used to invalidate the isAuthenticatedProvider.
-      This is used to refresh the user data on login.
-      
-      */
+      // Clear any cached data from a previous user session before
+      // fetching fresh data for the newly logged-in user.
+      _invalidateUserData();
+
       ref.invalidate(isAuthenticatedProvider);
       state = const AsyncValue.data(null);
     } on DioException catch (e, stack) {
@@ -200,12 +228,33 @@ class AuthController extends StateNotifier<AsyncValue<void>> {
         throw Exception('Token deletion failed');
       }
       ref.read(isNewUserProvider.notifier).state = false;
+
+      // Wipe all user-scoped provider caches so the next user
+      // cannot see this user's data.
+      _invalidateUserData();
+
       ref.invalidate(isAuthenticatedProvider);
       state = const AsyncValue.data(null);
     } catch (e, stack) {
       print('Logout error: $e');
       state = AsyncValue.error(e, stack);
     }
+  }
+
+  /// Invalidates every provider that caches user-specific data.
+  /// Call this on BOTH login and logout to prevent cross-user data leakage.
+  /// When adding a new user-scoped provider, register it here.
+  void _invalidateUserData() {
+    // Chat history (in-memory message list)
+    ref.invalidate(brainDumpProvider);
+    // Notes / Thoughts list
+    ref.invalidate(notesProvider);
+    // Analytics tab
+    ref.invalidate(consistencyProvider);
+    ref.invalidate(themesProvider);
+    ref.invalidate(loopsProvider);
+    // userProvider itself (profile data)
+    ref.invalidate(userProvider);
   }
 
   Future<String?> getToken() async {
