@@ -260,13 +260,14 @@ def index_text(filename: str, text: str, user_id: int, db: Session, location_con
         
     if rows:
         stmt = insert(BrainEmbedding).values(rows)
+        # SQLAlchemy exposed the table column name "metadata" on excluded
         stmt = stmt.on_conflict_do_update(
             index_elements=['id'],
-            set_=dict(
-                document=stmt.excluded.document,
-                embedding=stmt.excluded.embedding,
-                metadata_=stmt.excluded.metadata_
-            )
+            set_={
+                'document': stmt.excluded.document,
+                'embedding': stmt.excluded.embedding,
+                'metadata': stmt.excluded.metadata
+            }
         )
         db.execute(stmt)
         db.commit()
