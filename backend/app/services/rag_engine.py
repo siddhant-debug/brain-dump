@@ -641,8 +641,11 @@ TONE: Their subconscious speaking truth without filter.
                 # Signal completion
                 loop.call_soon_threadsafe(queue.put_nowait, sentinel)
             except Exception as e:
-                print(f"AI Producer Thread Error: {e}")
-                loop.call_soon_threadsafe(queue.put_nowait, None) # Signal error
+                import traceback
+                error_msg = traceback.format_exc()
+                print(f"AI Producer Thread Error: {error_msg}")
+                loop.call_soon_threadsafe(queue.put_nowait, f"AI Error: {str(e)}")
+                loop.call_soon_threadsafe(queue.put_nowait, sentinel)
                 
         # Start isolated thread
         thread = threading.Thread(target=producer, daemon=True)
