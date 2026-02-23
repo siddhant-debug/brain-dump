@@ -11,6 +11,10 @@ from app.services import rag_engine
 
 
 # Create database tables
+from sqlalchemy import text
+with database.engine.begin() as conn:
+    conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+
 models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(title="Brain Dump API")
