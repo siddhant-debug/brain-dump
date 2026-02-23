@@ -34,14 +34,16 @@ logger = logging.getLogger(__name__)
 # HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _now_utc() -> datetime:
-    """Timezone-aware UTC now (replaces deprecated datetime.utcnow())."""
-    return datetime.now(timezone.utc)
+def _now_ist() -> datetime:
+    """Timezone-aware IST now (Asia/Kolkata timezone)."""
+    # IST is UTC +5:30
+    tz = timezone(timedelta(hours=5, minutes=30))
+    return datetime.now(tz)
 
 
 def _notes_last_n_days(user_id: int, db: Session, days: int = 30):
     """Return all Notes for a user created in the last N days."""
-    cutoff = _now_utc() - timedelta(days=days)
+    cutoff = _now_ist() - timedelta(days=days)
     return (
         db.query(models.Note)
         .filter(
@@ -98,9 +100,10 @@ def get_consistency(
                 "heatmap": _empty_heatmap(),
             }
 
-        # Build date → count map (all time)
+        # Convert note created_at (UTC in DB) to IST date
+        ist_tz = timezone(timedelta(hours=5, minutes=30))
         date_counts: dict[date, int] = Counter(
-            n.created_at.date() for n in all_notes
+            n.created_at.astimezone(ist_tz).date() for n in all_notes
         )
         all_dates_sorted = sorted(date_counts.keys())
 
@@ -115,9 +118,16 @@ def get_consistency(
                 current_run = 1
 
         # Current streak (walking back from today)
-        today = _now_utc().date()
+        today = _now_ist().date()
         current_streak = 0
+        
+        # Start checking from today
         check = today
+        
+        # If no note today, but there's a note yesterday, the streak is still alive
+        if check not in date_counts and (check - timedelta(days=1)) in date_counts:
+            check -= timedelta(days=1)
+            
         while check in date_counts:
             current_streak += 1
             check -= timedelta(days=1)
@@ -126,6 +136,7 @@ def get_consistency(
         heatmap = []
         for i in range(29, -1, -1):
             d = today - timedelta(days=i)
+            # Ensure the structure matches the interface requirement (isoformat dates)
             heatmap.append({"date": d.isoformat(), "count": date_counts.get(d, 0)})
 
         active_days_last_30 = sum(1 for h in heatmap if h["count"] > 0)
@@ -146,7 +157,7 @@ def get_consistency(
 
 
 def _empty_heatmap():
-    today = _now_utc().date()
+    today = _now_ist().date()
     return [
         {"date": (today - timedelta(days=i)).isoformat(), "count": 0}
         for i in range(29, -1, -1)
@@ -553,7 +564,7 @@ def get_pipeline(
 
         if not notes:
             return {
-                "generated_at": _now_utc().isoformat(),
+                "generated_at": _now_ist().isoformat(),
                 "lanes": lane_meta,
                 "nodes": [],
             }
@@ -599,7 +610,7 @@ def get_pipeline(
             })
 
         return {
-            "generated_at": _now_utc().isoformat(),
+            "generated_at": _now_ist().isoformat(),
             "lanes": lane_meta,
             "nodes": pipeline_nodes,
         }

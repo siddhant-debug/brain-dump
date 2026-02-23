@@ -98,7 +98,7 @@ async def upload_to_brain(
             raise HTTPException(status_code=400, detail="File was empty")
 
         print(f"[DEBUG] 🧠 Milestone 3: Indexing text into RAG engine...")
-        num_chunks = rag_engine.index_text(safe_filename, text, current_user.id)
+        num_chunks = rag_engine.index_text(safe_filename, text, current_user.id, db)
         print(f"[DEBUG] ✅ Milestone 3 Complete: Indexed {num_chunks} chunks")
 
         file_path = None
@@ -159,18 +159,20 @@ async def upload_to_brain(
 async def chat_endpoint(
     request: Request,
     request_body: schemas.ChatRequest,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(database.get_db)
+    current_user: models.User = Depends(auth.get_current_user)
 ):
     """Streaming chat endpoint - returns Server-Sent Events (SSE)"""
+    import time
+    t_chat_start = time.time()
     print(f"\n{'='*60}")
     print(f"[DEBUG] 💬 CHAT QUERY STARTED (STREAMING)")
     print(f"[DEBUG] User ID: {current_user.id}")            # email omitted (PII)
     print(f"[DEBUG] Query length: {len(request_body.query)} chars")  # content omitted (PII)
     print(f"{'='*60}\n")
     
-    # 1. Save User Message to History
+    # 1. Save User Message to History using a short-lived session
     try:
+        db = database.SessionLocal()
         user_msg = models.ChatMessage(
             user_id=current_user.id,
             content=request_body.query,
@@ -180,6 +182,9 @@ async def chat_endpoint(
         db.commit()
     except Exception as e:
         print(f"[ERROR] Failed to save user message: {e}")
+    finally:
+        if 'db' in locals():
+            db.close()
     
     async def event_generator():
         """Generator that yields SSE-formatted chunks"""
@@ -218,6 +223,7 @@ async def chat_endpoint(
             yield f"data: {json.dumps({'chunk': '', 'done': True, 'sources': sources})}\n\n"
             
             print(f"[DEBUG] ✅ Streaming complete. Total length: {len(full_response)} chars")
+            print(f"[DEBUG] [Timing] Total chat_endpoint duration: {(time.time() - t_chat_start)*1000:.2f} ms")
             print(f"{'='*60}\n")
             
             # 5. Save AI Response to History
@@ -238,9 +244,9 @@ async def chat_endpoint(
                 print(f"[ERROR] Failed to save AI message: {e}")
             
         except Exception as e:
-            print(f"[DEBUG] ❌ Streaming error: {type(e).__name__}")
+            print(f"[DEBUG] ❌ Streaming error: {type(e).__name__} - {str(e)}")
             import json
-            yield f"data: {json.dumps({'error': 'An internal error occurred.', 'done': True})}\n\n"
+            yield f"data: {json.dumps({'error': f'An internal error occurred: {str(e)}', 'done': True})}\n\n"
     
     from fastapi.responses import StreamingResponse
     return StreamingResponse(
@@ -295,7 +301,7 @@ def delete_file(
 
     # 2. Delete from Vector DB (The Brain)
     # We use filename as source metadata
-    rag_engine.delete_document(file_record.filename, current_user.id)
+    rag_engine.delete_document(file_record.filename, current_user.id, db)
 
     # 3. Delete from Disk (if applicable)
     if file_record.file_path and os.path.exists(file_record.file_path):

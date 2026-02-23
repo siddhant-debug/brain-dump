@@ -43,3 +43,14 @@ class ChatMessage(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     # Optional: store which notes were cited
     context_sources = Column(String, nullable=True)
+
+from pgvector.sqlalchemy import Vector
+from sqlalchemy.dialects.postgresql import JSONB
+
+class BrainEmbedding(Base):
+    __tablename__ = "brain_embeddings"
+    
+    id = Column(String, primary_key=True)
+    document = Column(String, nullable=False)
+    embedding = Column(Vector(768), nullable=False)
+    metadata_ = Column("metadata", JSONB, nullable=False)

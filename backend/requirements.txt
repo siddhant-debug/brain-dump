@@ -14,7 +14,7 @@ bcrypt>=4.0.0
 python-dotenv>=1.0.0
 
 # RAG & AI
-chromadb>=0.4.18
+pgvector>=0.2.1
 langchain-text-splitters>=0.0.1
 google-generativeai>=0.3.0
 sentence-transformers>=2.2.0
