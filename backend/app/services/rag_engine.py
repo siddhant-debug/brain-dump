@@ -798,11 +798,16 @@ def retrieve_context(query: str, user_id: int, db: Session, current_location: di
         # Fetch from Postgres
         final_fetch = db.query(BrainEmbedding).filter(BrainEmbedding.id.in_(top_n_candidates)).all()
         doc_map = {d.id: (d.document, d.metadata_) for d in final_fetch}
+        
         for doc_id in top_n_candidates:
-             if doc_id in doc_map:
-                 docs.append(doc_map[doc_id][0])
-                 metadatas.append(doc_map[doc_id][1])
-
+            if doc_id in doc_map:
+                docs.append(doc_map[doc_id][0])
+                metadatas.append(doc_map[doc_id][1])
+                
+    if not docs:
+        print(f"DEBUG: All candidates failed hydration for query: '{query}'")
+        return None, []
+        
     # STAGE 2: Cross-encoder re-ranking
     if RERANKING_ENABLED and len(docs) > 1:
         t_rerank_start = time.time()
