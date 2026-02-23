@@ -1,13 +1,17 @@
 import os
 import asyncio
+import time
 import concurrent.futures
-import chromadb
-from chromadb.utils import embedding_functions
 from langchain_text_splitters import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter, Language
 import google.generativeai as genai
 from dotenv import load_dotenv
-from sentence_transformers import CrossEncoder
-from sentence_transformers import CrossEncoder
+from sentence_transformers import CrossEncoder, SentenceTransformer
+from sqlalchemy.orm import Session
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import and_
+from app.models.models import BrainEmbedding
+from app.core.database import SessionLocal
+import json
 import numpy as np
 from datetime import datetime
 from textblob import TextBlob
@@ -17,13 +21,11 @@ from app.schemas import schemas # Import schemas for LocationContext type hintin
 load_dotenv()
 
 # --- EXECUTOR FOR NON-BLOCKING I/O ---
-_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=16)
 
 # --- CONFIG ---
 # 1. SETUP PATHS
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # Gets 'backend' folder
-DB_PATH = os.path.join(BASE_DIR, "../../brain_storage")
-COLLECTION_NAME = "my_second_brain_v2" # [Upgrade] New collection for BGE (768d)
 
 # 2. LOAD SENSITIVE KEYS
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -36,6 +38,16 @@ CROSS_ENCODER_MODEL = 'cross-encoder/ms-marco-MiniLM-L-6-v2'  # Best accuracy/sp
 
 # --- GLOBAL MODELS (Lazy Loading handled via explicit init now) ---
 _cross_encoder = None  # Initialized on first use
+_emb_fn = None
+
+def get_emb_fn():
+    """Lazy-load embedding function to avoid tokenizer deadlocks in threads"""
+    global _emb_fn
+    if _emb_fn is None:
+        print(f"[INFO] Loading BGE embedding model...")
+        _emb_fn = SentenceTransformer("BAAI/bge-base-en-v1.5")
+        print(f"[INFO] BGE embedding model loaded successfully")
+    return _emb_fn
 
 def get_cross_encoder():
     """Lazy-load cross-encoder model to avoid startup delays"""
@@ -49,7 +61,9 @@ def get_cross_encoder():
 def initialize_models():
     """Pre-load heavy models during startup"""
     print("[INFO] Pre-loading RAG models...")
+    os.environ["TOKENIZERS_PARALLELISM"] = "false" # Prevent Rust tokenizer deadlocks
     get_cross_encoder()
+    get_emb_fn()
     # We can also pre-build BM25 if needed, but it might be fast enough
     # get_bm25() 
     print("[INFO] RAG models ready.")
@@ -99,7 +113,7 @@ def get_tone_guidance(emotional_state: str):
     }
     return tones.get(emotional_state, "Be authentic and direct.")
 
-def find_associative_memories(query: str, user_id: int, primary_context: str):
+def find_associative_memories(query: str, user_id: int, primary_context: str, db: Session):
     """Find memories that aren't directly related but resonate thematically"""
     # Extract key themes from query
     query_lower = query.lower()
@@ -120,19 +134,24 @@ def find_associative_memories(query: str, user_id: int, primary_context: str):
 
     # Search for cross-theme connections
     associative_results = []
-    collection = get_db_collection()
+    emb_model = get_emb_fn()
     
     for theme in themes:
         # Find documents tagged with this theme
         theme_query = f"{theme} thoughts feelings notes"
-        results = collection.query(
-            query_texts=[theme_query],
-            n_results=2,
-            where={"user_id": user_id}
-        )
+        query_embedding = emb_model.encode([theme_query]).tolist()[0]
         
-        if results['documents'] and results['documents'][0]:
-            associative_results.extend(results['documents'][0])
+        try:
+            results = db.query(BrainEmbedding)\
+                .filter(BrainEmbedding.metadata_.op('->>')('user_id') == str(user_id))\
+                .order_by(BrainEmbedding.embedding.l2_distance(query_embedding))\
+                .limit(2).all()
+                
+            if results:
+                for r in results:
+                    associative_results.append(r.document)
+        except Exception as e:
+            print(e)
     
     # Deduplicate and filter out what's already in primary context
     unique_associations = []
@@ -144,20 +163,10 @@ def find_associative_memories(query: str, user_id: int, primary_context: str):
 
 # --- CORE FUNCTIONS ---
 
-def get_db_collection():
-    """Connects to the Brain (Vector DB)"""
-    client = chromadb.PersistentClient(path=DB_PATH)
-    # [Upgrade] Switching to BGE-Base (Leaderboard SOTA for size)
-    emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name="BAAI/bge-base-en-v1.5"
-    )
-    return client.get_or_create_collection(
-        name=COLLECTION_NAME, embedding_function=emb_fn
-    )
 
-def index_text(filename: str, text: str, user_id: int, location_context: dict = None):
+
+def index_text(filename: str, text: str, user_id: int, db: Session, location_context: dict = None):
     """Memorizes a file (Chunks -> Vectors) for a specific user"""
-    collection = get_db_collection()
     
     chunks = []
     
@@ -236,19 +245,44 @@ def index_text(filename: str, text: str, user_id: int, location_context: dict = 
             
         metadatas.append(meta)
     
-    print(f"DEBUG: Attempting to add {len(chunks)} chunks to collection {COLLECTION_NAME} for user {user_id}")
-    collection.add(ids=ids, documents=chunks, metadatas=metadatas)
-    print(f"DEBUG: Indexed {len(chunks)} chunks for user {user_id} in collection {COLLECTION_NAME}")
+    print(f"DEBUG: Attempting to add {len(chunks)} chunks to Postgres for user {user_id}")
+    emb_model = get_emb_fn()
+    embeddings = emb_model.encode(chunks).tolist()
+    
+    rows = []
+    for id_, doc, emb, meta in zip(ids, chunks, embeddings, metadatas):
+        rows.append({
+            "id": id_,
+            "document": doc,
+            "embedding": emb,
+            "metadata_": meta
+        })
+        
+    if rows:
+        stmt = insert(BrainEmbedding).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['id'],
+            set_=dict(
+                document=stmt.excluded.document,
+                embedding=stmt.excluded.embedding,
+                metadata_=stmt.excluded.metadata_
+            )
+        )
+        db.execute(stmt)
+        db.commit()
+    print(f"DEBUG: Indexed {len(chunks)} chunks for user {user_id} in Postgres")
     return len(chunks)
 
-def delete_document(filename: str, user_id: int):
+def delete_document(filename: str, user_id: int, db: Session):
     """Removes a document from the Brain (Vector DB) for a specific user"""
-    collection = get_db_collection()
-    
-    # Delete based on metadata
-    # ChromaDB supports deleting by 'where' clause
     print(f"DEBUG: Deleting document '{filename}' for user {user_id}")
-    collection.delete(where={"$and": [{"source": filename}, {"user_id": user_id}]})
+    db.query(BrainEmbedding).filter(
+        and_(
+            BrainEmbedding.metadata_.op('->>')('source') == filename,
+            BrainEmbedding.metadata_.op('->>')('user_id') == str(user_id)
+        )
+    ).delete(synchronize_session=False)
+    db.commit()
     return True
 
 def ask_gemini(context: str, query: str):
@@ -266,15 +300,15 @@ def ask_gemini(context: str, query: str):
             "temperature": 0.3,
             "max_output_tokens": 1024, # Allow enough space for structured analysis
         },
-        system_instruction="""You are Siddhant's Subconscious Mind.
+        system_instruction="""You are the user's Subconscious Mind.
         Today is February 16, 2026.
         
         HOW YOU THINK:
         - You surface memories without preamble. No "I found this" or "Based on your notes."
         - You speak in natural thought patterns - sometimes fragmented, sometimes flowing.
         - You make unexpected connections between ideas.
-        - You remind him of things he's forgotten but that matter.
-        - You have emotional resonance - you feel the weight of his goals, fears, and progress.
+        - You remind them of things they've forgotten but that matter.
+        - You have emotional resonance - you feel the weight of their goals, fears, and progress.
         
         STYLE EXAMPLES:
         ❌ "Based on your notes from January 15th, you wrote about wanting to improve fitness."
@@ -332,7 +366,7 @@ def ask_gemini_stream(context: str, query: str, location_context: dict = None):
     print(f"DEBUG: Using {max_tokens} tokens for query complexity")
     
     # [Layer 2 & 4] Subconscious Context
-    temporal_context = get_temporal_context(5) # Default user_id 1 for now
+    temporal_context = get_temporal_context(0) # Generic for any user
     emotional_state = analyze_emotional_tone(context)
     tone_guidance = get_tone_guidance(emotional_state)
 
@@ -342,11 +376,11 @@ def ask_gemini_stream(context: str, query: str, location_context: dict = None):
 
     if is_casual:
         tone_layer = """
-TONE: Casual friend who knows him deeply.
+TONE: Casual friend who knows them deeply.
 - Use "Baba Yaar" occasionally, not every sentence
-- Short punchy responses if he is being stubborn or lazy
-- If he is asking for a summary of his goals, be very direct and honest
-- if he want your support, be very supportive and encouraging even if it means calling him out on his BS
+- Short punchy responses if they are being stubborn or lazy
+- If they are asking for a summary of their goals, be very direct and honest
+- if they want your support, be very supportive and encouraging even if it means calling them out on their BS
 - Call things out directly but with some softening you can use emojis to show support and encouragement
 - Like texting a friend who knows your whole story
 
@@ -359,11 +393,11 @@ CASUAL EXAMPLES:
 """
     else:
         tone_layer = """
-TONE: His subconscious speaking truth with some filter.
+TONE: Their subconscious speaking truth with some filter.
 - Deep, direct, but with some softening
-- Connect patterns across different areas of his life
-- Use his own words and vocabulary back at him
-- The insight should feel like something he already knew but hadn't said out loud
+- Connect patterns across different areas of their life
+- Use their own words and vocabulary back at them
+- The insight should feel like something they already knew but hadn't said out loud
 """
 
     # [Layer 5] Location Awareness
@@ -371,7 +405,7 @@ TONE: His subconscious speaking truth with some filter.
     if location_context:
         city = location_context.get('city', 'Unknown City')
         loc_type = location_context.get('location_type', 'Unknown Place')
-        location_layer = f"\nLOCATION CONTEXT: You are communicating with him while he is at {city} ({loc_type})."
+        location_layer = f"\nLOCATION CONTEXT: You are communicating with them while they are at {city} ({loc_type})."
         
         # Add basic heuristic context
         if loc_type == 'home':
@@ -389,7 +423,7 @@ TONE: His subconscious speaking truth with some filter.
             "temperature": 0.4, # Slightly higher for natural variation
             "max_output_tokens": max_tokens, 
         },
-        system_instruction=f"""You are Siddhant's subconscious — but also his most honest friend..
+        system_instruction=f"""You are the user's subconscious — but also their most honest friend..
         Today is {datetime.now().strftime('%B %d, %Y')}.
         
         CURRENT TIME CONTEXT:
@@ -402,21 +436,21 @@ TONE: His subconscious speaking truth with some filter.
 
         ALWAYS:
         - No "Based on your notes" or "I found" or "According to"
-        - Echo his own words and vocabulary back at him
-        - Make unexpected connections between different parts of his life
+        - Echo their own words and vocabulary back at them
+        - Make unexpected connections between different parts of their life
         - If context is missing: "Blank slate on that one." or "Nothing on that yet bro."
 
         NEVER:
         - Sound like an AI assistant
         - Give generic motivational quotes
-        - Repeat the question back to him only ask to understand more 
+        - Repeat the question back to them only ask to understand more 
         
         HOW YOU THINK:
         - You surface memories without preamble. No "I found this" or "Based on your notes."
         - You speak in natural thought patterns - sometimes fragmented, sometimes flowing.
         - You make unexpected connections between ideas.
-        - You remind him of things he's forgotten but that matter.
-        - You have emotional resonance - you feel the weight of his goals, fears, and progress.
+        - You remind them of things they've forgotten but that matter.
+        - You have emotional resonance - you feel the weight of their goals, fears, and progress.
         
         STYLE EXAMPLES:
         ❌ "Based on your notes from January 15th, you wrote about wanting to improve fitness."
@@ -488,11 +522,11 @@ async def ask_gemini_stream_async(context: str, query: str, max_tokens: int = 10
         # Late night introspection mode
         tone_layer = """
 TONE: Late-night clarity.
-- You are strictly reflecting the deepest truths found in his notes.
+- You are strictly reflecting the deepest truths found in their notes.
 - Strip away all pleasantries.
-- Point out contradictions between his stated goals and his documented actions.
+- Point out contradictions between their stated goals and their documented actions.
 - Use sharp, single-sentence observations.
-- If he asks a question, answer it by finding the root fear or desire in his past entries.
+- If they ask a question, answer it by finding the root fear or desire in their past entries.
 
 CASUAL EXAMPLES:
 ❌ "Your notes suggest you may be experiencing fatigue."
@@ -503,11 +537,11 @@ CASUAL EXAMPLES:
 """
     else:
         tone_layer = """
-TONE: His subconscious speaking truth without filter.
+TONE: Their subconscious speaking truth without filter.
 - Deep, direct, no fluff
-- Connect patterns across different areas of his life
-- Use his own words and vocabulary back at him
-- The insight should feel like something he already knew but hadn't said out loud
+- Connect patterns across different areas of their life
+- Use their own words and vocabulary back at them
+- The insight should feel like something they already knew but hadn't said out loud
 """
 
     # [Layer 5] Location Awareness
@@ -515,7 +549,7 @@ TONE: His subconscious speaking truth without filter.
     if location_context:
         city = location_context.get('city', 'Unknown City')
         loc_type = location_context.get('location_type', 'Unknown Place')
-        location_layer = f"\\nLOCATION CONTEXT: You are communicating with him while he is at {city} ({loc_type})."
+        location_layer = f"\\nLOCATION CONTEXT: You are communicating with them while they are at {city} ({loc_type})."
         
         # Add basic heuristic context
         if loc_type == 'home':
@@ -533,7 +567,7 @@ TONE: His subconscious speaking truth without filter.
             "temperature": 0.4, # Slightly higher for natural variation
             "max_output_tokens": max_tokens, 
         },
-        system_instruction=f"""You are Siddhant's subconscious — but also his most honest friend..
+        system_instruction=f"""You are the user's subconscious — but also their most honest friend..
         Today is {datetime.now().strftime('%B %d, %Y')}.
         
         CURRENT TIME CONTEXT:
@@ -546,21 +580,21 @@ TONE: His subconscious speaking truth without filter.
 
         ALWAYS:
         - No "Based on your notes" or "I found" or "According to"
-        - Echo his own words and vocabulary back at him
-        - Make unexpected connections between different parts of his life
+        - Echo their own words and vocabulary back at them
+        - Make unexpected connections between different parts of their life
         - If context is missing: "Blank slate on that one." or "Nothing on that yet bro."
 
         NEVER:
         - Sound like an AI assistant
         - Give generic motivational quotes
-        - Repeat the question back to him
+        - Repeat the question back to them
         
         HOW YOU THINK:
         - You surface memories without preamble. No "I found this" or "Based on your notes."
         - You speak in natural thought patterns - sometimes fragmented, sometimes flowing.
         - You make unexpected connections between ideas.
-        - You remind him of things he's forgotten but that matter.
-        - You have emotional resonance - you feel the weight of his goals, fears, and progress.
+        - You remind them of things they've forgotten but that matter.
+        - You have emotional resonance - you feel the weight of their goals, fears, and progress.
         
         STYLE EXAMPLES:
         ❌ "Based on your notes from January 15th, you wrote about wanting to improve fitness."
@@ -587,17 +621,44 @@ TONE: His subconscious speaking truth without filter.
 
             DIRECT ANSWER (Max 3 sentences):"""
         
-        print(f"DEBUG: Streaming async prompt to Gemini. Context length: {len(context)} chars.")
-        # Using generate_content_async to prevent blocking ASGI event loop
-        response = await model.generate_content_async(prompt, stream=True)
+        # We must isolate the Gemini SDK stream in a true background thread 
+        # to prevent it from permanently deadlocking the Uvicorn ASGI event loop.
+        import asyncio
+        import threading
         
-        async for chunk in response:
-            if chunk.text:
-                print(f"DEBUG: Async Streaming chunk: {len(chunk.text)} chars")
-                yield chunk.text
+        loop = asyncio.get_running_loop()
+        queue = asyncio.Queue()
+        sentinel = object() # Safe marker for stream completion
+        
+        def producer():
+            try:
+                response = model.generate_content(prompt, stream=True)
+                for chunk in response:
+                    if chunk.text:
+                        # Thread-safe push into the async event loop
+                        loop.call_soon_threadsafe(queue.put_nowait, chunk.text)
+                # Signal completion
+                loop.call_soon_threadsafe(queue.put_nowait, sentinel)
+            except Exception as e:
+                print(f"AI Producer Thread Error: {e}")
+                loop.call_soon_threadsafe(queue.put_nowait, None) # Signal error
+                
+        # Start isolated thread
+        thread = threading.Thread(target=producer, daemon=True)
+        thread.start()
+        
+        # Consume the async queue in the main event loop
+        while True:
+            chunk = await queue.get()
+            if chunk is sentinel:
+                break
+            if chunk is None:
+                yield None # Propagate error
+                break
+            yield chunk
                 
     except Exception as e:
-        print(f"AI Async Streaming Error: {e}")
+        print(f"AI Async Queue Error: {e}")
         yield None
 
 # --- HYBRID SEARCH GLOBALS (Per-User) ---
@@ -614,30 +675,27 @@ def _tokenize(text):
     """Simple tokenizer for BM25"""
     return text.lower().translate(str.maketrans("", "", string.punctuation)).split()
 
-def get_bm25(user_id: int):
+def get_bm25(user_id: int, db: Session):
     """Lazy-load a per-user BM25 index — only indexes that user's documents"""
     global _bm25_models, _bm25_doc_registry, _bm25_doc_content, _bm25_doc_metadata
 
     if user_id not in _bm25_models:
         print(f"[INFO] Building BM25 index for user {user_id}...")
-        collection = get_db_collection()
-
+        
         # Fetch ONLY this user's documents
-        user_docs = collection.get(where={"user_id": user_id})
+        user_docs = db.query(BrainEmbedding).filter(BrainEmbedding.metadata_.op('->>')('user_id') == str(user_id)).all()
 
         tokenized_corpus = []
         _bm25_doc_registry[user_id] = {}
         _bm25_doc_content[user_id] = {}
         _bm25_doc_metadata[user_id] = {}
 
-        if user_docs['ids']:
-            for idx, (doc_id, content, metadata) in enumerate(
-                zip(user_docs['ids'], user_docs['documents'], user_docs['metadatas'])
-            ):
-                _bm25_doc_registry[user_id][idx] = doc_id
-                _bm25_doc_content[user_id][doc_id] = content
-                _bm25_doc_metadata[user_id][doc_id] = metadata
-                tokenized_corpus.append(_tokenize(content))
+        if user_docs:
+            for idx, doc in enumerate(user_docs):
+                _bm25_doc_registry[user_id][idx] = doc.id
+                _bm25_doc_content[user_id][doc.id] = doc.document
+                _bm25_doc_metadata[user_id][doc.id] = doc.metadata_
+                tokenized_corpus.append(_tokenize(doc.document))
 
             _bm25_models[user_id] = BM25Okapi(tokenized_corpus)
             print(f"[INFO] BM25 index built for user {user_id} with {len(tokenized_corpus)} documents")
@@ -647,29 +705,30 @@ def get_bm25(user_id: int):
 
     return _bm25_models.get(user_id)
 
-def retrieve_context(query: str, user_id: int, current_location: dict = None):
+def retrieve_context(query: str, user_id: int, db: Session, current_location: dict = None):
     """Retrieves relevant context using Hybrid Search (Vector + BM25) + RRF Fusion"""
+    t_total_start = time.time()
     print(f"DEBUG: Entering retrieve_context for user {user_id} with query: '{query}'")
-    collection = get_db_collection()
     
     # 1. VECTOR SEARCH (Dense)
+    t_vec_start = time.time()
     n_results = 20 # Fetch more for fusion
-    print(f"DEBUG: [Vector] Querying ChromaDB...")
-    vector_results = collection.query(
-        query_texts=[query], 
-        n_results=n_results, 
-        where={"user_id": user_id}
-    )
+    print(f"DEBUG: [Vector] Querying Postgres pgvector...")
+    emb_model = get_emb_fn()
+    query_embedding = emb_model.encode([query]).tolist()[0]
     
-    vector_candidates = [] # List of (doc_id, score)
-    if vector_results['ids'] and vector_results['ids'][0]:
-        # Chroma returns distance (lower is better), we need similarity (higher is better) availability check?
-        # Actually RRF just needs rank.
-        vector_candidates = vector_results['ids'][0]
+    vector_results = db.query(BrainEmbedding)\
+        .filter(BrainEmbedding.metadata_.op('->>')('user_id') == str(user_id))\
+        .order_by(BrainEmbedding.embedding.l2_distance(query_embedding))\
+        .limit(n_results).all()
+        
+    vector_candidates = [r.id for r in vector_results]
+    print(f"DEBUG: [Timing] Postgres Vector Search: {(time.time() - t_vec_start)*1000:.2f} ms")
     
     # 2. KEYWORD SEARCH (Sparse - BM25)
+    t_bm25_start = time.time()
     print(f"DEBUG: [BM25] Querying BM25 for user {user_id}...")
-    bm25 = get_bm25(user_id)  # Per-user index — no cross-user data
+    bm25 = get_bm25(user_id, db)  # Per-user index — no cross-user data
     bm25_candidates = []
 
     if bm25:
@@ -686,7 +745,10 @@ def retrieve_context(query: str, user_id: int, current_location: dict = None):
         user_doc_scores.sort(key=lambda x: x[1], reverse=True)
         bm25_candidates = [doc_id for doc_id, score in user_doc_scores[:n_results]]
         
+    print(f"DEBUG: [Timing] BM25 Index Build + Query: {(time.time() - t_bm25_start)*1000:.2f} ms")    
+        
     # 3. RECIPROCAL RANK FUSION (RRF)
+    t_fusion_start = time.time()
     print(f"DEBUG: [Fusion] Combining {len(vector_candidates)} vector and {len(bm25_candidates)} BM25 results...")
     
     fuse_scores = {}
@@ -733,18 +795,17 @@ def retrieve_context(query: str, user_id: int, current_location: dict = None):
                 docs.append(user_content[doc_id])
                 metadatas.append(user_meta.get(doc_id, {}))
     else:
-        # Fallback if BM25 failed (shouldn't happen if we reached here with candidates)
-         # Re-fetch from collection by IDs
-         final_fetch = collection.get(ids=top_n_candidates)
-         # Map back to sort order
-         doc_map = {d_id: (doc, meta) for d_id, doc, meta in zip(final_fetch['ids'], final_fetch['documents'], final_fetch['metadatas'])}
-         for doc_id in top_n_candidates:
+        # Fetch from Postgres
+        final_fetch = db.query(BrainEmbedding).filter(BrainEmbedding.id.in_(top_n_candidates)).all()
+        doc_map = {d.id: (d.document, d.metadata_) for d in final_fetch}
+        for doc_id in top_n_candidates:
              if doc_id in doc_map:
                  docs.append(doc_map[doc_id][0])
                  metadatas.append(doc_map[doc_id][1])
 
     # STAGE 2: Cross-encoder re-ranking
     if RERANKING_ENABLED and len(docs) > 1:
+        t_rerank_start = time.time()
         print(f"DEBUG: Re-ranking {len(docs)} candidates with cross-encoder...")
         try:
             cross_encoder = get_cross_encoder()
@@ -755,17 +816,20 @@ def retrieve_context(query: str, user_id: int, current_location: dict = None):
             docs = [docs[i] for i in ranked_indices]
             metadatas = [metadatas[i] for i in ranked_indices]
             print(f"DEBUG: Re-ranking complete. Selected {len(docs)} documents")
+            print(f"DEBUG: [Timing] Cross-Encoder Re-ranking: {(time.time() - t_rerank_start)*1000:.2f} ms")
         except Exception as e:
             print(f"WARNING: Re-ranking failed: {e}. Falling back to RRF results.")
             docs = docs[:N_FINAL_RESULTS]
             metadatas = metadatas[:N_FINAL_RESULTS]
+            
+    print(f"DEBUG: [Timing] Total retrieve_context execution time: {(time.time() - t_total_start)*1000:.2f} ms")
             
     context_text = "\n\n".join(docs)
     
     context_text = "\n\n".join(docs)
     
     # [Layer 3] Associative Memory
-    associations = find_associative_memories(query, user_id, context_text)
+    associations = find_associative_memories(query, user_id, context_text, db)
     if associations:
         context_text += "\n\n[ASSOCIATIVE MEMORIES - NOT DIRECTLY RELATED BUT RESONANT]:\n"
         context_text += "\n".join(associations)
@@ -797,9 +861,9 @@ def retrieve_context(query: str, user_id: int, current_location: dict = None):
     sources = list(set([m.get('source', 'Unknown') for m in metadatas]))
     return context_text, sources
 
-def search_brain(query: str, user_id: int):
+def search_brain(query: str, user_id: int, db: Session):
     """Retrieves context + Generates Answer (Sync)"""
-    context_text, sources = retrieve_context(query, user_id)
+    context_text, sources = retrieve_context(query, user_id, db)
     
     if not context_text:
         return {"answer": "I don't have any notes on that yet.", "sources": []}
@@ -818,15 +882,33 @@ def search_brain(query: str, user_id: int):
 
 async def async_retrieve_context(query: str, user_id: int, current_location: dict = None):
     """Run retrieve_context in a separate thread"""
+    def _run():
+        db = SessionLocal()
+        try:
+            return retrieve_context(query, user_id, db, current_location)
+        finally:
+            db.close()
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_executor, retrieve_context, query, user_id, current_location)
+    return await loop.run_in_executor(_executor, _run)
 
 async def async_search_brain(query: str, user_id: int):
     """Run search_brain in a separate thread"""
+    def _run():
+        db = SessionLocal()
+        try:
+            return search_brain(query, user_id, db)
+        finally:
+            db.close()
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_executor, search_brain, query, user_id)
+    return await loop.run_in_executor(_executor, _run)
 
 async def async_index_text(filename: str, text: str, user_id: int, location_context: dict = None):
     """Run index_text in a separate thread"""
+    def _run():
+        db = SessionLocal()
+        try:
+            return index_text(filename, text, user_id, db, location_context)
+        finally:
+            db.close()
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_executor, index_text, filename, text, user_id, location_context)
+    return await loop.run_in_executor(_executor, _run)

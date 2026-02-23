@@ -43,16 +43,21 @@ async def create_note(
     # 2. Index in Vector DB (The Brain) - Background Task
     # We use a unique filename convention for notes: "note_{id}"
     def index_note_background(note_id: int, content: str, user_id: int, location_context: dict = None):
+        from app.core.database import SessionLocal
+        bg_db = SessionLocal()
         try:
             rag_engine.index_text(
                 filename=f"note_{note_id}", 
                 text=content, 
                 user_id=user_id,
+                db=bg_db,
                 location_context=location_context
             )
             print(f"[INFO] Indexed note {note_id} for user {user_id}")
         except Exception as e:
             print(f"[ERROR] Failed to index note {note_id}: {e}")
+        finally:
+            bg_db.close()
 
     # Extract location if present
     location_dict = note.location.dict() if note.location else None
@@ -100,7 +105,8 @@ def delete_note(
     try:
         rag_engine.delete_document(
             filename=f"note_{note_id}", 
-            user_id=current_user.id
+            user_id=current_user.id,
+            db=db
         )
     except Exception as e:
         print(f"[WARNING] Failed to delete note {note_id} from vector DB: {e}")

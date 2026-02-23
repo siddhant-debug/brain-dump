@@ -1,6 +1,9 @@
 import os
 import sys
 
+# Override .env before database.py loads it
+os.environ["DATABASE_URL"] = "postgresql+psycopg://postgres:password123@postgres/postgres"
+
 # Add the parent directory to sys.path so we can import 'app'
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -11,6 +14,7 @@ from app.services import rag_engine
 
 def rebuild_brain():
     print("🧠 Starting Brain Rebuild Process...")
+    print(f"🔗 Using Database: {os.environ['DATABASE_URL']}")
     
     db: Session = SessionLocal()
     try:
@@ -27,8 +31,6 @@ def rebuild_brain():
         print(f"📝 Found {len(notes)} notes. Re-indexing...")
         for note in notes:
             try:
-                # We do not have location context stored in the basic Note model for this script,
-                # but it will re-embed the core text perfectly.
                 rag_engine.index_text(
                     filename=f"note_{note.id}", 
                     text=note.content, 
