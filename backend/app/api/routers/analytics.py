@@ -289,13 +289,7 @@ def get_loops(
         # Limit scan to the most recent MAX_NOTES_TO_SCAN
         scan_notes = notes[-MAX_NOTES_TO_SCAN:]
 
-        try:
-            collection = rag_engine.get_db_collection()
-        except Exception as e:
-            logger.warning("Vector DB unavailable for /loops: %s", e)
-            return {"loops": [], "notes_scanned": 0, "error": "Vector DB unavailable"}
-
-        # 1. Filter out garbage notes
+        # (Removed ChromaDB collection init)        # 1. Filter out garbage notes
         valid_notes = []
         for note in scan_notes:
             content = note.content.strip() if note.content else ""
@@ -309,16 +303,25 @@ def get_loops(
         adjacency: dict[int, set[int]] = {n.id: set() for n in valid_notes}
         note_by_id = {n.id: n for n in valid_notes}
 
-        # 2. Batched Query to ChromaDB
-        query_texts = [n.content for n in valid_notes]
-        
+        # 2. Batched Query using pgvector
         try:
-            results = collection.query(
-                query_texts=query_texts,
-                n_results=5,
-                where={"user_id": uid},
-                include=["metadatas", "distances", "documents"],
-            )
+            from app.models.models import BrainEmbedding
+            emb_model = rag_engine.get_emb_fn()
+            query_embeddings = emb_model.encode([n.content for n in valid_notes]).tolist()
+            
+            results = {"ids": [], "distances": [], "metadatas": []}
+            for q_emb in query_embeddings:
+                db_results = db.query(
+                     BrainEmbedding.id,
+                     BrainEmbedding.embedding.l2_distance(q_emb).label('distance'),
+                     BrainEmbedding.metadata_
+                ).filter(
+                     BrainEmbedding.metadata_.op('->>')('user_id') == str(uid)
+                ).order_by('distance').limit(5).all()
+                
+                results["ids"].append([r.id for r in db_results])
+                results["distances"].append([r.distance for r in db_results])
+                results["metadatas"].append([r.metadata_ for r in db_results])
             
             if results and "ids" in results and results["ids"]:
                 # results["ids"] is a list of lists, one per query
