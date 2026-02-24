@@ -189,6 +189,11 @@ async def chat_endpoint(
     async def event_generator():
         """Generator that yields SSE-formatted chunks"""
         try:
+            # 0. Immediate Keep-Alive Ping for Android Client Timeouts
+            print(f"[DEBUG] 📡 Sending immediate keep-alive ping to client...")
+            import json
+            yield f"data: {json.dumps({'chunk': '', 'done': False, 'status': 'processing'})}\n\n"
+
             # 1. Search for context (Async & Non-Blocking)
             print(f"[DEBUG] 🔍 Searching brain for relevant context...")
             

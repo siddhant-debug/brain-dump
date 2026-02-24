@@ -39,7 +39,6 @@ class BrainService {
             'Accept': 'text/event-stream',
           },
           responseType: ResponseType.stream,
-          receiveTimeout: Duration.zero, // No timeout for streaming
         ),
       );
 
@@ -50,14 +49,14 @@ class BrainService {
           .cast<List<int>>()
           .transform(utf8.decoder)
           .timeout(
-            TimeoutConstants.streamTimeout,
-            onTimeout: (sink) {
-              sink.addError(
-                Exception('Response took too long. Please try again.'),
-              );
-              sink.close();
-            },
+        TimeoutConstants.streamTimeout,
+        onTimeout: (sink) {
+          sink.addError(
+            Exception('Response took too long. Please try again.'),
           );
+          sink.close();
+        },
+      );
 
       await for (var chunk in streamWithTimeout) {
         // SSE format: "data: {json}\n\n"
@@ -155,10 +154,20 @@ class BrainService {
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
 
+      print('DEBUG HISTORY RAW: ${response.data}');
       final List<dynamic> data = response.data;
-      return data.map((json) => ChatMessage.fromJson(json)).toList();
+      final result = data.map((json) {
+        try {
+          return ChatMessage.fromJson(json);
+        } catch (e, st) {
+          print('Error parsing message $json: $e\\n$st');
+          rethrow;
+        }
+      }).toList();
+      print('DEBUG HISTORY PARSED: ${result.length} items');
+      return result;
     } catch (e) {
-      // Fail silently or return empty list on error to not block UI
+      // Return empty list on error to not block UI, but print loudly
       print('Failed to fetch chat history: $e');
       return [];
     }
