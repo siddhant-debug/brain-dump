@@ -11,6 +11,7 @@ import '../features/vault/presentation/file_vault_screen.dart';
 import '../features/vault/presentation/thoughts_screen.dart';
 import '../core/widgets/persistent_header.dart';
 import '../features/analytics/presentation/analytics_screen.dart';
+import '../features/analytics/services/analytics_service.dart';
 
 /// Black Canvas - Minimalist Digital Notebook
 /// Design: Pure black background, invisible list, hand-drawn spacing
@@ -120,6 +121,12 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
           }
         });
       }
+
+      // [Architect] Invalidate analytics providers to force a refresh of the Insights tab
+      ref.invalidate(consistencyProvider);
+      ref.invalidate(themesProvider);
+      ref.invalidate(loopsProvider);
+      ref.invalidate(pipelineProvider);
     } catch (e) {
       debugPrint('[DEBUG] Error: $e');
       if (!mounted) return;
@@ -133,6 +140,8 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
   @override
   Widget build(BuildContext context) {
     final brainDumpState = ref.watch(brainDumpProvider);
+    debugPrint(
+        'DEBUG UI RENDER: brainDumpState.messages.length = ${brainDumpState.messages.length}');
 
     // Auto-scroll when new messages arrive
     if (brainDumpState.messages.length > _previousMessageCount) {
@@ -397,9 +406,8 @@ class _MinimalMessageRow extends StatelessWidget {
     final isThinking = msg.status == MessageStatus.thinking;
 
     return Row(
-      mainAxisAlignment: isUser
-          ? MainAxisAlignment.end
-          : MainAxisAlignment.start,
+      mainAxisAlignment:
+          isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.start, // Align to top
       children: [
         // AI AVATAR (Left)
@@ -421,14 +429,12 @@ class _MinimalMessageRow extends StatelessWidget {
           // Use Flexible to allow wrapping
           child: Container(
             constraints: BoxConstraints(
-              maxWidth:
-                  MediaQuery.of(context).size.width *
+              maxWidth: MediaQuery.of(context).size.width *
                   0.75, // Slightly reduced width to fit avatars
             ),
             child: Column(
-              crossAxisAlignment: isUser
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
                 isThinking
                     ? const ThinkingIndicator()
@@ -547,9 +553,8 @@ class _DockItem extends StatelessWidget {
         children: [
           Icon(
             icon,
-            color: isSelected
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.4),
+            color:
+                isSelected ? Colors.white : Colors.white.withValues(alpha: 0.4),
             size: 24,
           ),
           const SizedBox(height: 4),
