@@ -271,6 +271,10 @@ def index_text(filename: str, text: str, user_id: int, db: Session, location_con
         )
         db.execute(stmt)
         db.commit()
+    
+    # Invalidate cache so new document is searchable via BM25
+    invalidate_bm25_cache(user_id)
+    
     print(f"DEBUG: Indexed {len(chunks)} chunks for user {user_id} in Postgres")
     return len(chunks)
 
@@ -679,6 +683,16 @@ def _tokenize(text):
     """Simple tokenizer for BM25"""
     return text.lower().translate(str.maketrans("", "", string.punctuation)).split()
 
+def invalidate_bm25_cache(user_id: int):
+    """Clears the in-memory BM25 index for a user so it rebuilds on next query"""
+    global _bm25_models, _bm25_doc_registry, _bm25_doc_content, _bm25_doc_metadata
+    if user_id in _bm25_models:
+        del _bm25_models[user_id]
+        if user_id in _bm25_doc_registry: del _bm25_doc_registry[user_id]
+        if user_id in _bm25_doc_content: del _bm25_doc_content[user_id]
+        if user_id in _bm25_doc_metadata: del _bm25_doc_metadata[user_id]
+        print(f"[INFO] Invalidated BM25 cache for user {user_id}")
+
 def get_bm25(user_id: int, db: Session):
     """Lazy-load a per-user BM25 index — only indexes that user's documents"""
     global _bm25_models, _bm25_doc_registry, _bm25_doc_content, _bm25_doc_metadata
@@ -789,24 +803,40 @@ def retrieve_context(query: str, user_id: int, db: Session, current_location: di
     # Since we have _bm25_doc_content populated, we can look up there if BM25 built.
     # If using vector-only fallback (BM25 fail), we rely on vector_results.
     
-    # Hydrate documents — use per-user content cache
+    # Hydrate documents — use per-user content cache and fallback to DB for missing ones
     user_content = _bm25_doc_content.get(user_id, {})
     user_meta = _bm25_doc_metadata.get(user_id, {})
 
-    if user_content:
-        for doc_id in top_n_candidates:
-            if doc_id in user_content:
-                docs.append(user_content[doc_id])
-                metadatas.append(user_meta.get(doc_id, {}))
-    else:
-        # Fetch from Postgres
-        final_fetch = db.query(BrainEmbedding).filter(BrainEmbedding.id.in_(top_n_candidates)).all()
-        doc_map = {d.id: (d.document, d.metadata_) for d in final_fetch}
+    docs = []
+    metadatas = []
+    missing_docs = []
+
+    for doc_id in top_n_candidates:
+        if user_content and doc_id in user_content:
+            docs.append(user_content[doc_id])
+            metadatas.append(user_meta.get(doc_id, {}))
+        else:
+            missing_docs.append(doc_id)
+            docs.append(None)      # Placeholder to maintain RRF order
+            metadatas.append(None) # Placeholder
+            
+    if missing_docs:
+        print(f"[WARN] {len(missing_docs)} docs missing from BM25 cache. Hydrating from DB & self-healing cache...")
+        missing_fetch = db.query(BrainEmbedding).filter(BrainEmbedding.id.in_(missing_docs)).all()
+        doc_map = {d.id: (d.document, d.metadata_) for d in missing_fetch}
         
-        for doc_id in top_n_candidates:
-            if doc_id in doc_map:
-                docs.append(doc_map[doc_id][0])
-                metadatas.append(doc_map[doc_id][1])
+        for i, doc_id in enumerate(top_n_candidates):
+            if docs[i] is None and doc_id in doc_map:
+                docs[i] = doc_map[doc_id][0]
+                metadatas[i] = doc_map[doc_id][1]
+                
+        # Self-healing: If vector search found docs not in BM25 cache, our cache is stale!
+        invalidate_bm25_cache(user_id)
+        
+    # Filter out any unresolved Nones
+    valid_indices = [i for i, d in enumerate(docs) if d is not None]
+    docs = [docs[i] for i in valid_indices]
+    metadatas = [metadatas[i] for i in valid_indices]
                 
     if not docs:
         print(f"DEBUG: All candidates failed hydration for query: '{query}'")
