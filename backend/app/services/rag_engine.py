@@ -581,6 +581,7 @@ async def ask_gemini_stream_async(
     # [Layer 4] The Persona Engine
     now = datetime.now()
     hour = now.hour
+    query_word_count = len(query.split())
 
     if hour >= 22 or hour <= 4:
         tone_layer = """
