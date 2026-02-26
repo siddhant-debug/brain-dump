@@ -189,6 +189,11 @@ async def chat_endpoint(
     async def event_generator():
         """Generator that yields SSE-formatted chunks"""
         try:
+            # 0. Immediate Keep-Alive Ping for Android Client Timeouts
+            print(f"[DEBUG] 📡 Sending immediate keep-alive ping to client...")
+            import json
+            yield f"data: {json.dumps({'chunk': '', 'done': False, 'status': 'processing'})}\n\n"
+
             # 1. Search for context (Async & Non-Blocking)
             print(f"[DEBUG] 🔍 Searching brain for relevant context...")
             
@@ -199,7 +204,9 @@ async def chat_endpoint(
             
             if not context_text:
                 print(f"[DEBUG] No documents found for query")
-                yield f"data: {{'chunk': 'I don\\'t have any notes on that yet.', 'done': true}}\n\n"
+                import json
+                fallback = "I don't have any notes on that yet."
+                yield f"data: {json.dumps({'chunk': fallback, 'done': True, 'sources': []})}\n\n"
                 return
             
             print(f"[DEBUG] Found relevant context. Length: {len(context_text)} chars")

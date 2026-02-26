@@ -8,8 +8,8 @@ import '../services/location_service.dart';
 
 final brainDumpProvider =
     StateNotifierProvider<BrainDumpNotifier, BrainDumpState>((ref) {
-      return BrainDumpNotifier(ref);
-    });
+  return BrainDumpNotifier(ref);
+});
 
 class BrainDumpState {
   final List<ChatMessage> messages;
@@ -49,6 +49,8 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     state = state.copyWith(isProcessing: true, clearError: true);
     try {
       final history = await ref.read(brainServiceProvider).getChatHistory();
+      print(
+          'DEBUG PROVIDER: Fetched ${history.length} items. Mounted: $mounted');
       if (!mounted) return;
       if (history.isNotEmpty) {
         // [Architect] SAFE MERGE
@@ -59,6 +61,8 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
           messages: [...history, ...state.messages],
           isProcessing: false,
         );
+        print(
+            'DEBUG PROVIDER: State updated! messages count: ${state.messages.length}');
       } else {
         // Stop loading state even if empty
         state = state.copyWith(isProcessing: false);
@@ -166,10 +170,9 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     List<String> sources = [];
 
     try {
-      await for (var data
-          in ref
-              .read(brainServiceProvider)
-              .askBrain(text, location: location)) {
+      await for (var data in ref
+          .read(brainServiceProvider)
+          .askBrain(text, location: location)) {
         // Handle text chunk
         if (data['chunk'] != null) {
           fullAnswer += data['chunk'];

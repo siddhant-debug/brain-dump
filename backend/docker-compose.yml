@@ -10,7 +10,7 @@ services:
       - "8000:8000"
     environment:
       # Override the local host to point to the docker postgres service
-      - DATABASE_URL=postgresql+psycopg://postgres:password1234@postgres/postgres
+      - DATABASE_URL=postgresql+psycopg://postgres:password123@postgres/postgres
     env_file:
       - .env
     volumes:
@@ -22,12 +22,12 @@ services:
 
   # The Relational Database
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: braindump-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password1234
+      POSTGRES_PASSWORD: password123
       POSTGRES_DB: postgres
     ports:
       # Exposing on 5433 to avoid conflict with local Mac Postgres on 5432
