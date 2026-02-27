@@ -1,7 +1,7 @@
 name: brain_dump
 description: "A minimalist brain-dump & query app."
 publish_to: 'none'
-version: 1.0.0+2
+version: 1.0.0+3
 
 environment:
   sdk: ^3.10.4

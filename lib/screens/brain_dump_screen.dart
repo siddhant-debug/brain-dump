@@ -218,14 +218,6 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                 child: _buildMinimalInput(),
               ),
 
-            // LAYER 2.5: MODE TOGGLE (above dock, on tab 1)
-            if (_selectedIndex == 1)
-              Positioned(
-                bottom: 100,
-                right: 24,
-                child: _buildModeToggle(brainDumpState.isChatMode),
-              ),
-
             // LAYER 3: PILL-SHAPED DOCK
             Positioned(
               bottom: 20,
@@ -248,10 +240,11 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     );
   }
 
-  /// Shared header — clear + logout only (toggle is above dock)
+  /// Shared header — mode toggle + clear + logout
   Widget _buildHeader(bool isChatMode) {
     return PersistentHeader(
       title: 'BrainDumps',
+      subtitle: _buildModeToggle(isChatMode),
       actions: [
         // Clear History Button — only in chat mode
         if (isChatMode)
@@ -308,7 +301,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     );
   }
 
-  /// Mode toggle — positioned above dock
+  /// Mode toggle
   Widget _buildModeToggle(bool isChatMode) {
     // Journal = green toggle, Chat = white/grey toggle
     const journalGreen = Color(0xFF4CAF50);
@@ -326,22 +319,11 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
         ),
         const SizedBox(width: 6),
         SizedBox(
-          height: 24,
+          height: 18,
           child: Switch.adaptive(
             value: isChatMode,
             onChanged: (_) {
               ref.read(brainDumpProvider.notifier).toggleMode();
-              // Auto-scroll to bottom when switching to chat mode
-              // Double-scroll: first to trigger layout, second to reach true bottom
-              if (!isChatMode) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _scrollToBottom();
-                  // Second scroll after layout settles
-                  Future.delayed(const Duration(milliseconds: 350), () {
-                    if (mounted) _scrollToBottom();
-                  });
-                });
-              }
             },
             activeThumbColor: const Color.fromARGB(156, 255, 255, 255),
             activeTrackColor: Colors.white10,
@@ -360,6 +342,8 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
         _buildHeader(state.isChatMode),
         Expanded(
           child: ListView.builder(
+            reverse:
+                true, // Forces layout from bottom, so it naturally anchors to bottom
             controller: _scrollController,
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.only(
@@ -370,8 +354,12 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
             ),
             itemCount: state.messages.length,
             itemBuilder: (context, index) {
-              final msg = state.messages[index];
-              final isLast = index == state.messages.length - 1;
+              // Because reverse is true, index 0 is at the bottom. We want index 0 to be the NEWEST message.
+              // state.messages[last] is newest. So reversed access:
+              final msgIndex = state.messages.length - 1 - index;
+              final msg = state.messages[msgIndex];
+              // To maintain normal spacing (last item has 0 bottom padding), check if it's the newest
+              final isLast = msgIndex == state.messages.length - 1;
 
               return Padding(
                 padding: EdgeInsets.only(
@@ -408,7 +396,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                         _ghostText,
                         style: TextStyle(
                           color: Colors.white60,
-                          fontSize: 16,
+                          fontSize: 18,
                           height: 1.5,
                         ),
                       ),
@@ -489,7 +477,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                 maxLines: null,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _onSubmitted(),
-                style: const TextStyle(color: Colors.white, fontSize: 22),
+                style: const TextStyle(color: Colors.white, fontSize: 16),
                 cursorColor: Colors.white,
                 decoration: const InputDecoration(
                   border: InputBorder.none,
@@ -507,7 +495,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
             opacity: _checkmarkController,
             child: const Padding(
               padding: EdgeInsets.only(left: 8),
-              child: Icon(Icons.check, color: Colors.white, size: 20),
+              child: Icon(Icons.check, color: Colors.white, size: 16),
             ),
           ),
       ],
@@ -604,32 +592,12 @@ class _MinimalMessageRow extends StatelessWidget {
                   ? CrossAxisAlignment.end
                   : CrossAxisAlignment.start,
               children: [
-                (msg.content.isEmpty &&
+                ((msg.content.isEmpty || msg.content == 'Thinking...') &&
                         (msg.status == MessageStatus.thinking ||
                             msg.status == MessageStatus.sending))
                     ? const ThinkingIndicator()
                     : Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text:
-                                  (msg.status == MessageStatus.thinking &&
-                                      msg.content == 'Thinking...')
-                                  ? '' // Hide the hardcoded 'Thinking...' text from Provider
-                                  : msg.content,
-                            ),
-                            if (!isUser &&
-                                (msg.status == MessageStatus.sending ||
-                                    msg.status == MessageStatus.thinking))
-                              const WidgetSpan(
-                                alignment: PlaceholderAlignment.middle,
-                                child: Padding(
-                                  padding: EdgeInsets.only(left: 8.0),
-                                  child: ThinkingIndicator(),
-                                ),
-                              ),
-                          ],
-                        ),
+                        TextSpan(children: [TextSpan(text: msg.content)]),
                         textAlign: isUser ? TextAlign.right : TextAlign.left,
                         style: TextStyle(
                           color: isUser
@@ -697,7 +665,7 @@ class _PillDock extends StatelessWidget {
               ),
               _DockItem(
                 icon: Icons.chat_bubble_rounded,
-                label: 'chat',
+                label: 'Dump',
                 isSelected: selectedIndex == 1,
                 onTap: () => onTabSelected(1),
               ),

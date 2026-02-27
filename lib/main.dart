@@ -7,6 +7,7 @@ import 'features/onboarding/screens/onboarding_screen.dart';
 import 'screens/brain_dump_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const ProviderScope(child: MyApp()));
 }
 
