@@ -1,0 +1,260 @@
+# pgvector MCP Server Integration Plan
+
+## What Problem Are We Solving?
+
+Right now, [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py) is doing **too many things**:
+- Raw SQL against pgvector via SQLAlchemy (vector search, document CRUD)
+- BM25 in-memory index management (build, cache, invalidate)
+- RRF fusion logic
+- Cross-encoder re-ranking
+- Gemini streaming
+- Associative memory search
+- Location context enrichment
+
+The vector DB operations (insert, vector-search, delete-by-source) are tightly coupled to the SQLAlchemy ORM logic for the app and repeat across [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py) and [rag.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/api/routers/rag.py). Adding a **pgvector MCP server** would extract the "talk to pgvector" layer into its own bounded service and expose it as typed tools, making [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py) a pure orchestrator.
+
+---
+
+## What is an MCP Server (in this context)?
+
+An **MCP (Model Context Protocol) server** exposes a set of *tools* over a standard interface (HTTP/SSE or stdio). Each tool has a name, description, and typed input/output schema. An AI agent (or another service) calls these tools instead of writing raw SQL.
+
+For BrainDump we're not building an AI agent that calls MCP — we're using the MCP architecture pattern to **cleanly separate pgvector operations** from orchestration logic. The MCP server becomes the single, authoritative data-access layer for all vector ops.
+
+---
+
+## Current Pain Points (Code Evidence)
+
+| Problem | Location | Lines |
+|---------|----------|-------|
+| Raw [BrainEmbedding](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/models/models.py#50-57) ORM queries scattered in orchestration code | [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py) | 167–186, 819–825, 920 |
+| BM25 cache globals tied to DB session lifecycle | [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py) | 742–800 |
+| [delete_document](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#312-323) doing its own ORM filter | [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py) | 312–322 |
+| [index_text](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#192-310) calling `db.execute` with SQLAlchemy `insert()` + `on_conflict_do_update` | [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py) | 291–303 |
+| Router ([rag.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/api/routers/rag.py)) directly calls `rag_engine.index_text(_, _, _, db)` passing a session | [rag.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/api/routers/rag.py) | 101 |
+| Router ([rag.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/api/routers/rag.py) [delete_file](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/api/routers/rag.py#294-325)) calls `rag_engine.delete_document` with a session | [rag.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/api/routers/rag.py) | 311 |
+
+---
+
+## Proposed Architecture
+
+```
+┌────────────────────────────┐
+│     FastAPI Routers        │  ← thin, no business logic
+│  (rag.py, files.py, etc.)  │
+└────────────┬───────────────┘
+             │ calls service
+┌────────────▼───────────────┐
+│      rag_engine.py         │  ← orchestration only
+│  (BM25 fusion, Gemini,     │
+│   re-ranking, prompting)   │
+└────────────┬───────────────┘
+             │ calls MCP client
+┌────────────▼───────────────┐
+│    pgvector MCP Server     │  ← NEW: isolated vector data layer
+│  (CRUD + semantic search)  │
+└────────────┬───────────────┘
+             │ psycopg3 directly
+┌────────────▼───────────────┐
+│  PostgreSQL + pgvector     │  ← unchanged
+└────────────────────────────┘
+```
+
+---
+
+## Approach: Custom In-Process MCP Server vs. Community Server
+
+### Option A — Use a Community MCP Server (e.g. `pg-mcp`, LobeHub MCP PGVector)
+
+**Pros**: Zero implementation cost, battle-tested.
+
+**Cons**:
+- Generic SQL exposure — no knowledge of your `brain_embeddings` schema or `metadata_` JSONB pattern
+- Most require running as a separate process (stdio/SSE), adding network overhead for what is currently an in-process call
+- Would need custom SQL tool calls anyway, defeating the abstraction
+
+**Verdict**: ❌ Not a good fit for BrainDump's specialized schema.
+
+---
+
+### Option B — Custom MCP Server as a Standalone Sidecar (Recommended)
+
+Build a **small, dedicated FastAPI service** (`backend/services/pgvector_mcp/`) that runs alongside the main app (same Docker network). It exposes 4–5 well-typed tool endpoints. [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py) calls it via an async HTTP client (httpx).
+
+This keeps the vector layer independently testable, replaceable, and not entangled with SQLAlchemy ORM sessions.
+
+---
+
+## Phase 1 — Define the MCP Tool Contract
+
+The MCP server exposes these tools:
+
+### `upsert_embeddings`
+Batch insert or update embeddings into `brain_embeddings`.
+
+```
+Input:
+  user_id: int
+  rows: List[{ id: str, document: str, embedding: List[float], metadata: dict }]
+
+Output:
+  { inserted: int }
+```
+
+### `vector_search`
+Nearest-neighbour search using L2 distance.
+
+```
+Input:
+  user_id: int
+  query_embedding: List[float]
+  limit: int = 20
+
+Output:
+  List[{ id: str, document: str, metadata: dict, distance: float }]
+```
+
+### `fetch_by_ids`
+Hydrate documents by a list of IDs (for post-fusion hydration).
+
+```
+Input:
+  ids: List[str]
+
+Output:
+  List[{ id: str, document: str, metadata: dict }]
+```
+
+### `delete_by_source`
+Remove all embeddings where `metadata_->>'source' = filename AND metadata_->>'user_id' = str(user_id)`.
+
+```
+Input:
+  user_id: int
+  source_filename: str
+
+Output:
+  { deleted: int }
+```
+
+### `fetch_all_for_user`
+Fetch all documents for a user (used by BM25 index build).
+
+```
+Input:
+  user_id: int
+
+Output:
+  List[{ id: str, document: str, metadata: dict }]
+```
+
+---
+
+## Phase 2 — New Files to Create
+
+```
+backend/
+└── services/
+    ├── rag_engine.py              ← existing (will be simplified)
+    └── pgvector_mcp/
+        ├── __init__.py
+        ├── server.py              ← FastAPI app exposing the 5 tools above
+        ├── db.py                  ← psycopg3 connection pool (no SQLAlchemy)
+        └── client.py              ← async httpx client used by rag_engine.py
+```
+
+`server.py` will use **psycopg3** directly (not SQLAlchemy) because:
+- The MCP server owns pgvector at a lower level than the ORM
+- SQLAlchemy sessions have confusing lifecycle issues when crossing service boundaries
+- Raw psycopg3 + pgvector is 2–3x faster for embedding workloads
+
+The main app's [docker-compose.yml](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/docker-compose.yml) gets a new service:
+```yaml
+pgvector-mcp:
+  build:
+    context: ./services/pgvector_mcp
+    dockerfile: Dockerfile
+  ports:
+    - "8001:8001"
+  environment:
+    - DATABASE_URL=${DATABASE_URL}
+  depends_on:
+    postgres:
+      condition: service_healthy
+```
+
+---
+
+## Phase 3 — Refactor [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py)
+
+After the MCP client is in place, these sections of [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py) become thin wrappers:
+
+| Before | After |
+|--------|-------|
+| [index_text](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#192-310): 60 lines of chunking + SQLAlchemy insert | Chunking stays, then one `await pgvector_client.upsert_embeddings(rows)` |
+| [delete_document](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#312-323): 8 lines of SQLAlchemy ORM | `await pgvector_client.delete_by_source(filename, user_id)` |
+| [retrieve_context](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#805-1007) vector search block: 15 lines | `await pgvector_client.vector_search(user_id, embedding, limit=20)` |
+| [get_bm25](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#768-803): 30 lines loading all docs from DB | `await pgvector_client.fetch_all_for_user(user_id)` then build BM25 |
+| [find_associative_memories](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#132-187) theme-loop DB queries | `await pgvector_client.vector_search(...)` per theme |
+
+Estimated line reduction in [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py): **~200 lines removed**, replaced by typed client calls.
+
+SQLAlchemy's [BrainEmbedding](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/models/models.py#50-57) model and its raw ORM queries in [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py) can be removed entirely — the model stays in [models.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/models/models.py) for Alembic migration history but the ORM is no longer the query path.
+
+---
+
+## Phase 4 — Router Cleanup ([rag.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/api/routers/rag.py))
+
+Currently the router passes `db: Session` into `rag_engine.index_text` and [delete_document](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#312-323). After the refactor:
+- Routers no longer pass [db](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/core/database.py#22-28) to RAG functions
+- `rag_engine` async wrappers ([async_index_text](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#1062-1076), [async_retrieve_context](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#1032-1046)) talk to the MCP client
+- The `SessionLocal()` manual session management in [async_retrieve_context](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#1032-1046), [async_search_brain](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#1048-1060), and [async_index_text](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#1062-1076) goes away
+
+---
+
+## Key Design Decisions to Confirm
+
+> [!IMPORTANT]
+> **Decision 1: In-process vs. sidecar**
+> The plan above goes with a sidecar service. An alternative is to keep the MCP server as an **in-process Python module** (no HTTP, just function calls) and still get the clean separation without the network overhead. This is simpler to deploy and avoids httpx latency, but sacrifices independent scalability and the ability to use the server as a true MCP tool from other clients.
+
+> [!IMPORTANT]
+> **Decision 2: BM25 cache placement**
+> The BM25 in-memory index currently lives in [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py). After the refactor, `fetch_all_for_user` data comes from the MCP server. The BM25 cache (and its invalidation) should stay in [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py) — it's an orchestration concern, not a storage concern. This means BM25 cache invalidation still happens on the `rag_engine` side, which is correct.
+
+> [!IMPORTANT]
+> **Decision 3: Phasing**
+> We can do this progressively: Phase 1 is the MCP server (new service, zero app changes). Phase 2 is wiring the client into [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py) one function at a time, testing after each. No big-bang rewrite required.
+
+---
+
+## What We Are NOT Changing
+
+- [models.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/models/models.py) — [BrainEmbedding](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/models/models.py#50-57) stays for Alembic history
+- [docker-compose.yml](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/docker-compose.yml) `postgres` service — no changes to the DB itself
+- The Flutter app — zero changes
+- The FastAPI router signatures — no API contract changes
+- The chunking, BM25, RRF, and re-ranking logic in [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py)
+
+---
+
+## Estimated Effort
+
+| Phase | Work | Estimate |
+|-------|------|----------|
+| Phase 1: MCP server `server.py` + `db.py` | New service, 5 endpoints | 2–3 hrs |
+| Phase 2: `client.py` async httpx wrapper | 1 file | 30 min |
+| Phase 3: [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py) refactor | Replace ORM calls with client calls | 2 hrs |
+| Phase 4: Router cleanup | Remove [db](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/core/database.py#22-28) param threading | 30 min |
+| Phase 5: Docker + testing | Update compose, integration tests | 1 hr |
+
+**Total: ~6–7 hours of focused work**
+
+---
+
+## Verification Plan (When We Implement)
+
+1. **Unit test the MCP server endpoints** — pytest hitting `server.py` directly with a test DB
+2. **Integration test [rag_engine.py](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py)** — [async_index_text](file:///Users/siddhanttomar/development/flutter_projects/brain_dump/brain-dump/backend/app/services/rag_engine.py#1062-1076) → `vector_search` cycle, assert correct chunk count and retrieval
+3. **Run existing backend tests**: `cd backend && pytest tests/ -v`
+4. **Manual smoke test**: Upload a `.md` file via Flutter app, ask a question, verify the answer surfaces content from that file

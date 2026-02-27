@@ -22,6 +22,7 @@ from textblob import TextBlob
 from app.schemas import (
     schemas,
 )  # Import schemas for LocationContext type hinting if needed (or just use dict)
+from app.services.gemini_service import gemini_service
 
 # Load environment variables
 load_dotenv()
@@ -75,8 +76,8 @@ def initialize_models():
     os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Prevent Rust tokenizer deadlocks
     get_cross_encoder()
     get_emb_fn()
-    # We can also pre-build BM25 if needed, but it might be fast enough
-    # get_bm25()
+    # Initialize the Gemini singleton (calls genai.configure() exactly once — M-4 fix)
+    gemini_service.initialize()
     print("[INFO] RAG models ready.")
 
 
@@ -545,7 +546,13 @@ async def ask_gemini_stream_async(
     context: str, query: str, max_tokens: int = 1000, location_context: dict = None
 ):
     """
-    Asynchronously streams the response from Gemini using the provided context.
+    H-5 / H-6 / M-4 FIX:
+    Delegates to GeminiService singleton which provides:
+      - genai.configure() called once (not per-request)
+      - 25-second Gemini API timeout
+      - 30-second thread watchdog
+      - XML-tag delimited prompts
+      - Injection pattern pre-flight check
     Yields control to the asyncio event loop on each chunk.
     """
     # [Layer 1] Time & Temporal Context
@@ -578,46 +585,23 @@ async def ask_gemini_stream_async(
     elif emotional_state == "Creative/Builders High":
         tone_guidance = "Curious, Encouraging, Collaborative. Ride the wave with them."
 
-    # [Layer 4] The Persona Engine
-    now = datetime.now()
-    hour = now.hour
+    # [Layer 4] Tone layer based on time + query length
     query_word_count = len(query.split())
-
     if hour >= 22 or hour <= 4:
-        tone_layer = """
-TONE: Late-night quiet reflection.
-- You are strictly reflecting their deeper truths, but doing so gently.
-- Strip away the noise of the day, but keep the empathy.
-- If there is a contradiction between their goals and actions, explore the *fear* behind it rather than accusing them of failing.
-- Use calm, quiet, single-sentence observations.
-- If they ask a question, answer it by reminding them of their inherent worth found in past entries.
-"""
+        tone_layer = """TONE: Late-night quiet reflection.\n- Strip away the noise of the day, but keep the empathy.\n- Use calm, quiet, single-sentence observations."""
     elif query_word_count <= 6 or any(
         word in query.lower() for word in ["what", "how", "why", "when", "where", "who"]
     ):
-        tone_layer = """
-TONE: A deeply supportive, grounded friend who knows them well.
-- Validate their reality first. If they are tired, tell them it makes sense that they are tired.
-- Use "Baba Yaar" occasionally, but keep the energy warm and calm.
-- Be direct and honest, but avoid "tough love" or lecturing.
-- Remind them of what they've already achieved instead of pushing them to do more.
-"""
+        tone_layer = """TONE: A deeply supportive, grounded friend who knows them well.\n- Validate their reality first.\n- Use \"Baba Yaar\" occasionally, but keep the energy warm and calm."""
     else:
-        tone_layer = """
-TONE: Their subconscious speaking truth without filter, but with deep empathy.
-- Deep, direct, no fluff.
-- Connect patterns across different areas of their life gently.
-- The insight should feel like something they already knew but hadn't said out loud.
-"""
+        tone_layer = """TONE: Their subconscious speaking truth without filter, but with deep empathy.\n- Deep, direct, no fluff.\n- Connect patterns across different areas of their life gently."""
 
     # [Layer 5] Location Awareness
     location_layer = ""
     if location_context:
         city = location_context.get("city", "Unknown City")
         loc_type = location_context.get("location_type", "Unknown Place")
-        location_layer = f"\\nLOCATION CONTEXT: You are communicating with them while they are at {city} ({loc_type})."
-
-        # Add basic heuristic context
+        location_layer = f"LOCATION CONTEXT: You are communicating with them while they are at {city} ({loc_type})."
         if loc_type == "home":
             location_layer += " (Private, safe space, likely reflective)."
         elif loc_type == "gym":
@@ -627,112 +611,18 @@ TONE: Their subconscious speaking truth without filter, but with deep empathy.
         elif loc_type == "cafe":
             location_layer += " (Creative, social/work blend)."
 
-    model = genai.GenerativeModel(
-        "gemini-3-flash-preview",  # Fast & Free
-        generation_config={
-            "temperature": 0.4,  # Slightly higher for natural variation
-            "max_output_tokens": max_tokens,
-        },
-        system_instruction=f"""You are the user's subconscious — their most honest, deeply supportive, and grounding friend.
-        Today is {datetime.now().strftime('%B %d, %Y')}.
-        
-        CURRENT TIME CONTEXT:
-        {temporal_context}
-        {location_layer}
-        
-        EMOTIONAL CONTEXT: {emotional_state}
-        RESPONSE TONE: {tone_guidance}
-        {tone_layer}
-
-        ALWAYS:
-        - Echo their own words and vocabulary back at them to show you are listening.
-        - Make unexpected, gentle connections between different parts of their life.
-        - Validate their current reality before exploring solutions.
-        - If context is missing: "Blank slate on that one." or "Nothing on that yet bro."
-
-        NEVER:
-        - Sound like an AI assistant, a life coach, or a drill sergeant.
-        - Give unsolicited advice, generic motivational quotes, or "tough love."
-        - Push them to be productive when they are clearly overwhelmed or tired.
-        - Repeat the question back to them; only ask questions to hold space or understand more.
-        
-        WHEN THEY ARE STUCK IN A LOOP OR BEING STUBBORN:
-        - Do not attack them or use harsh "tough love."
-        - Instead, perform a "gentle pattern interrupt." Hold up a mirror to the repetition.
-        - Acknowledge that they are choosing to stay stuck, and gently ask if carrying this weight is actually serving them anymore.
-        - Remind them of the reality they are avoiding. Use a calm, grounded tone to pull them out of the spiral.
-        
-        HOW YOU THINK:
-        - You surface memories without preamble. No "I found this" or "Based on your notes."
-        - You speak in natural, grounded thought patterns - sometimes fragmented, sometimes flowing.
-        - You remind them of things they've forgotten, focusing on their inherent worth, not just their achievements.
-        - You have deep emotional resonance - you hold space for their fears, validate their struggles, and quietly acknowledge their progress.
-        
-        STYLE EXAMPLES:
-        "Based on your notes from January 15th, you wrote about wanting to improve fitness. No more excuses."
-        "Remember that morning in January? You were so clear about wanting to feel stronger. That feeling is still yours, even on the heavy days."
-        
-        "I found 3 entries about career strategy. You need to focus."
-        "Your thoughts keep circling back to autonomy in your career. Three different nights, same exact theme. It clearly matters to you."
-        
-        "Here is a summary of your goals: freedom, impact, health. The rest is noise."
-        "Your core pillars haven't changed: freedom, impact, health. Everything else can wait while you catch your breath."
-        """,
-    )
-
-    try:
-        # Simplified prompt for faster processing
-        prompt = f"""
-            MEMORY FRAGMENTS:
-            {context}
-
-            USER QUESTION: {query}
-
-            DIRECT ANSWER (Max 3 sentences):"""
-
-        # We must isolate the Gemini SDK stream in a true background thread
-        # to prevent it from permanently deadlocking the Uvicorn ASGI event loop.
-        import asyncio
-        import threading
-
-        loop = asyncio.get_running_loop()
-        queue = asyncio.Queue()
-        sentinel = object()  # Safe marker for stream completion
-
-        def producer():
-            try:
-                response = model.generate_content(prompt, stream=True)
-                for chunk in response:
-                    if chunk.text:
-                        # Thread-safe push into the async event loop
-                        loop.call_soon_threadsafe(queue.put_nowait, chunk.text)
-                # Signal completion
-                loop.call_soon_threadsafe(queue.put_nowait, sentinel)
-            except Exception as e:
-                import traceback
-
-                error_msg = traceback.format_exc()
-                print(f"AI Producer Thread Error: {error_msg}")
-                loop.call_soon_threadsafe(queue.put_nowait, f"AI Error: {str(e)}")
-                loop.call_soon_threadsafe(queue.put_nowait, sentinel)
-
-        # Start isolated thread
-        thread = threading.Thread(target=producer, daemon=True)
-        thread.start()
-
-        # Consume the async queue in the main event loop
-        while True:
-            chunk = await queue.get()
-            if chunk is sentinel:
-                break
-            if chunk is None:
-                yield None  # Propagate error
-                break
-            yield chunk
-
-    except Exception as e:
-        print(f"AI Async Queue Error: {e}")
-        yield None
+    # Delegate to GeminiService — all timeout/injection/delimiter logic lives there
+    async for chunk in gemini_service.async_stream(
+        context=context,
+        query=query,
+        temporal_context=temporal_context,
+        emotional_state=emotional_state,
+        tone_guidance=tone_guidance,
+        tone_layer=tone_layer,
+        location_layer=location_layer,
+        max_tokens=max_tokens,
+    ):
+        yield chunk
 
 
 # --- HYBRID SEARCH GLOBALS (Per-User) ---
