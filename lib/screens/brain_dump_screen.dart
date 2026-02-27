@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 
 import '../features/brain_dump/models/chat_message.dart';
 import '../features/brain_dump/providers/brain_dump_provider.dart';
@@ -46,13 +47,6 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
-
-    // Auto-focus on load — chat is now tab 1
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_selectedIndex == 1) {
-        _focusNode.requestFocus();
-      }
-    });
   }
 
   @override
@@ -76,14 +70,6 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     }
   }
 
-  void _autoFocusAfterResponse() {
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted && _selectedIndex == 1) {
-        _focusNode.requestFocus();
-      }
-    });
-  }
-
   Future<void> _onSubmitted() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
@@ -92,11 +78,6 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     // We clear the input field immediately so the user doesn't feel "blocked".
     // The previous logic waited for the AI stream to finish, which was bad UX.
     _controller.clear();
-
-    // Maintain focus for rapid-fire thoughts
-    if (_selectedIndex == 1) {
-      _focusNode.requestFocus();
-    }
 
     final isQuery = text.endsWith('?');
 
@@ -130,9 +111,21 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     } catch (e) {
       debugPrint('[DEBUG] Error: $e');
       if (!mounted) return;
+
+      String errorMsg = e.toString().replaceAll('Exception: ', '');
+      if (e is DioException) {
+        final detail = e.response?.data?['detail'];
+        errorMsg = detail != null
+            ? detail.toString()
+            : e.message ?? 'Network error occurred';
+      }
+
       // Show error in chat
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Error: $errorMsg'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -141,18 +134,13 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
   Widget build(BuildContext context) {
     final brainDumpState = ref.watch(brainDumpProvider);
     debugPrint(
-        'DEBUG UI RENDER: brainDumpState.messages.length = ${brainDumpState.messages.length}');
+      'DEBUG UI RENDER: brainDumpState.messages.length = ${brainDumpState.messages.length}',
+    );
 
     // Auto-scroll when new messages arrive
     if (brainDumpState.messages.length > _previousMessageCount) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToBottom();
-        // Auto-focus if the last message is from AI
-        if (brainDumpState.messages.isNotEmpty &&
-            brainDumpState.messages.last.sender == MessageSender.ai &&
-            brainDumpState.messages.last.status == MessageStatus.sent) {
-          _autoFocusAfterResponse();
-        }
       });
       _previousMessageCount = brainDumpState.messages.length;
     }
@@ -197,11 +185,6 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                   onTabSelected: (index) {
                     setState(() {
                       _selectedIndex = index;
-                      if (index == 1) {
-                        Future.delayed(const Duration(milliseconds: 100), () {
-                          _focusNode.requestFocus();
-                        });
-                      }
                     });
                   },
                 ),
@@ -221,8 +204,11 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
           actions: [
             // Clear History Button - Local only
             IconButton(
-              icon: const Icon(
-                Icons.cleaning_services_rounded,
+              icon: Icon(
+                Theme.of(context).platform == TargetPlatform.iOS
+                    ? Icons
+                          .cleaning_services_rounded // Keeping material here as there isn't a great cupertino match for un-bespoke sweeping
+                    : Icons.cleaning_services_rounded,
                 color: Colors.white24,
                 size: 20,
               ),
@@ -267,7 +253,13 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
             ),
             // Logout Button
             IconButton(
-              icon: const Icon(Icons.logout_rounded, color: Colors.white24),
+              icon: Icon(
+                Theme.of(context).platform == TargetPlatform.iOS
+                    ? Icons
+                          .logout_rounded // Keeping material since cupertino_icons doesn't have a direct logout
+                    : Icons.logout_rounded,
+                color: Colors.white24,
+              ),
               onPressed: () =>
                   ref.read(authControllerProvider.notifier).signOut(),
             ),
@@ -276,6 +268,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
         Expanded(
           child: ListView.builder(
             controller: _scrollController,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.only(
               left: 24,
               right: 24,
@@ -403,11 +396,11 @@ class _MinimalMessageRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = msg.sender == MessageSender.user;
-    final isThinking = msg.status == MessageStatus.thinking;
 
     return Row(
-      mainAxisAlignment:
-          isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+      mainAxisAlignment: isUser
+          ? MainAxisAlignment.end
+          : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.start, // Align to top
       children: [
         // AI AVATAR (Left)
@@ -429,17 +422,41 @@ class _MinimalMessageRow extends StatelessWidget {
           // Use Flexible to allow wrapping
           child: Container(
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width *
+              maxWidth:
+                  MediaQuery.of(context).size.width *
                   0.75, // Slightly reduced width to fit avatars
             ),
             child: Column(
-              crossAxisAlignment:
-                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: isUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
-                isThinking
+                (msg.content.isEmpty &&
+                        (msg.status == MessageStatus.thinking ||
+                            msg.status == MessageStatus.sending))
                     ? const ThinkingIndicator()
-                    : Text(
-                        msg.content,
+                    : Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text:
+                                  (msg.status == MessageStatus.thinking &&
+                                      msg.content == 'Thinking...')
+                                  ? '' // Hide the hardcoded 'Thinking...' text from Provider
+                                  : msg.content,
+                            ),
+                            if (!isUser &&
+                                (msg.status == MessageStatus.sending ||
+                                    msg.status == MessageStatus.thinking))
+                              const WidgetSpan(
+                                alignment: PlaceholderAlignment.middle,
+                                child: Padding(
+                                  padding: EdgeInsets.only(left: 8.0),
+                                  child: ThinkingIndicator(),
+                                ),
+                              ),
+                          ],
+                        ),
                         textAlign: isUser ? TextAlign.right : TextAlign.left,
                         style: TextStyle(
                           color: isUser
@@ -553,8 +570,9 @@ class _DockItem extends StatelessWidget {
         children: [
           Icon(
             icon,
-            color:
-                isSelected ? Colors.white : Colors.white.withValues(alpha: 0.4),
+            color: isSelected
+                ? Colors.white
+                : Colors.white.withValues(alpha: 0.4),
             size: 24,
           ),
           const SizedBox(height: 4),

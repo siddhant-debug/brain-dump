@@ -38,7 +38,7 @@ async def upload_to_brain(
     background_tasks: BackgroundTasks = None
 ):
     print(f"\n{'='*60}")
-    print(f"[DEBUG] 📝 NOTE UPLOAD STARTED (BACKGROUND MODE)")
+    print(f"[DEBUG] NOTE UPLOAD STARTED (BACKGROUND MODE)")
     print(f"[DEBUG] User: {current_user.email} (ID: {current_user.id})")
     print(f"[DEBUG] Filename: {file.filename}")
     print(f"[DEBUG] Content Type: {file.content_type}")
@@ -66,10 +66,10 @@ async def upload_to_brain(
     # 4. Save temp file to disk — sanitize filename to prevent path traversal
     safe_filename = Path(file.filename).name
     temp_path = f"temp_{current_user.id}_{safe_filename}"
-    print(f"[DEBUG] ⬇️  Milestone 1: Saving to temp path: {temp_path}")
+    print(f"[DEBUG] Milestone 1: Saving to temp path: {temp_path}")
     with open(temp_path, "wb") as buffer:
         buffer.write(file_content)
-    print(f"[DEBUG] ✅ Milestone 1 Complete: File saved to disk")
+    print(f"[DEBUG] Milestone 1 Complete: File saved to disk")
 
     # 2. Process file — temp file is ALWAYS cleaned up in finally block
     try:
@@ -77,29 +77,29 @@ async def upload_to_brain(
         filename_lower = safe_filename.lower()
 
         if filename_lower.endswith(".pdf"):
-            print(f"[DEBUG] 📄 Milestone 2: Extracting text from PDF...")
+            print(f"[DEBUG] Milestone 2: Extracting text from PDF...")
             reader = PdfReader(temp_path)
             for page in reader.pages:
                 text += page.extract_text() or ""
-            print(f"[DEBUG] ✅ Milestone 2 Complete: Extracted {len(text)} characters")
+            print(f"[DEBUG] Milestone 2 Complete: Extracted {len(text)} characters")
 
         elif filename_lower.endswith((".txt", ".md", ".json", ".py", ".dart", ".yaml", ".csv")):
-            print(f"[DEBUG] 📝 Milestone 2: Extracting text from text file...")
+            print(f"[DEBUG] Milestone 2: Extracting text from text file...")
             with open(temp_path, "r", encoding="utf-8") as f:
                 text = f.read()
-            print(f"[DEBUG] ✅ Milestone 2 Complete: Extracted {len(text)} characters")
+            print(f"[DEBUG] Milestone 2 Complete: Extracted {len(text)} characters")
 
         else:
-            print(f"[DEBUG] ❌ File type not supported: {safe_filename}")
+            print(f"[DEBUG] File type not supported: {safe_filename}")
             raise HTTPException(status_code=400, detail="File type not supported")
 
         if not text.strip():
-            print(f"[DEBUG] ❌ File was empty")
+            print(f"[DEBUG] File was empty")
             raise HTTPException(status_code=400, detail="File was empty")
 
-        print(f"[DEBUG] 🧠 Milestone 3: Indexing text into RAG engine...")
+        print(f"[DEBUG] Milestone 3: Indexing text into RAG engine...")
         num_chunks = rag_engine.index_text(safe_filename, text, current_user.id, db)
-        print(f"[DEBUG] ✅ Milestone 3 Complete: Indexed {num_chunks} chunks")
+        print(f"[DEBUG] Milestone 3 Complete: Indexed {num_chunks} chunks")
 
         file_path = None
         content_to_store = None
@@ -120,7 +120,7 @@ async def upload_to_brain(
             file_path = final_path
             content_to_store = text[:5000]
 
-        print(f"[DEBUG] 💾 Milestone 4: Storing file record in database...")
+        print(f"[DEBUG] Milestone 4: Storing file record in database...")
         new_file = models.StoredFile(
             user_id=current_user.id,
             filename=safe_filename,
@@ -132,9 +132,9 @@ async def upload_to_brain(
         db.add(new_file)
         db.commit()
         db.refresh(new_file)
-        print(f"[DEBUG] ✅ Milestone 4 Complete: File record saved (ID: {new_file.id})")
+        print(f"[DEBUG] Milestone 4 Complete: File record saved (ID: {new_file.id})")
 
-        print(f"[DEBUG] 🎉 NOTE UPLOAD COMPLETE — {num_chunks} chunks, {len(text)} chars")
+        print(f"[DEBUG] NOTE UPLOAD COMPLETE — {num_chunks} chunks, {len(text)} chars")
 
         return {
             "status": "completed",
@@ -146,7 +146,7 @@ async def upload_to_brain(
     except HTTPException:
         raise  # Re-raise HTTP exceptions as-is (don't wrap in 500)
     except Exception as e:
-        print(f"[DEBUG] ❌ ERROR during processing: {type(e).__name__}")
+        print(f"[DEBUG] ERROR during processing: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="An internal error occurred.")
     finally:
         # Guaranteed cleanup — runs even on crashes, kills, and exceptions
@@ -165,7 +165,7 @@ async def chat_endpoint(
     import time
     t_chat_start = time.time()
     print(f"\n{'='*60}")
-    print(f"[DEBUG] 💬 CHAT QUERY STARTED (STREAMING)")
+    print(f"[DEBUG] CHAT QUERY STARTED (STREAMING)")
     print(f"[DEBUG] User ID: {current_user.id}")            # email omitted (PII)
     print(f"[DEBUG] Query length: {len(request_body.query)} chars")  # content omitted (PII)
     print(f"{'='*60}\n")
@@ -190,12 +190,12 @@ async def chat_endpoint(
         """Generator that yields SSE-formatted chunks"""
         try:
             # 0. Immediate Keep-Alive Ping for Android Client Timeouts
-            print(f"[DEBUG] 📡 Sending immediate keep-alive ping to client...")
+            print(f"[DEBUG] Sending immediate keep-alive ping to client...")
             import json
             yield f"data: {json.dumps({'chunk': '', 'done': False, 'status': 'processing'})}\n\n"
 
             # 1. Search for context (Async & Non-Blocking)
-            print(f"[DEBUG] 🔍 Searching brain for relevant context...")
+            print(f"[DEBUG] Searching brain for relevant context...")
             
             # Extract location if present
             location_dict = request_body.location.dict() if request_body.location else None
@@ -229,7 +229,7 @@ async def chat_endpoint(
             import json
             yield f"data: {json.dumps({'chunk': '', 'done': True, 'sources': sources})}\n\n"
             
-            print(f"[DEBUG] ✅ Streaming complete. Total length: {len(full_response)} chars")
+            print(f"[DEBUG] Streaming complete. Total length: {len(full_response)} chars")
             print(f"[DEBUG] [Timing] Total chat_endpoint duration: {(time.time() - t_chat_start)*1000:.2f} ms")
             print(f"{'='*60}\n")
             
@@ -251,7 +251,7 @@ async def chat_endpoint(
                 print(f"[ERROR] Failed to save AI message: {e}")
             
         except Exception as e:
-            print(f"[DEBUG] ❌ Streaming error: {type(e).__name__} - {str(e)}")
+            print(f"[DEBUG] Streaming error: {type(e).__name__} - {str(e)}")
             import json
             yield f"data: {json.dumps({'error': f'An internal error occurred: {str(e)}', 'done': True})}\n\n"
     

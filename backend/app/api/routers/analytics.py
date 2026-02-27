@@ -7,6 +7,7 @@ GET /analytics/themes       — topic frequency/% over last 30 days
 GET /analytics/loops        — recurring thought clusters via ChromaDB ANN
 GET /analytics/pipeline     — thought pipeline graph (nodes + lane topology)
 """
+
 import re
 import logging
 from datetime import datetime, timedelta, date, timezone
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 # HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _now_ist() -> datetime:
     """Timezone-aware IST now (Asia/Kolkata timezone)."""
     # IST is UTC +5:30
@@ -57,12 +59,13 @@ def _notes_last_n_days(user_id: int, db: Session, days: int = 30):
 
 def _tokenize(text: str) -> set[str]:
     """Split text into lowercase word tokens, stripping punctuation."""
-    return set(re.split(r'\W+', text.lower())) - {''}
+    return set(re.split(r"\W+", text.lower())) - {""}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. CONSISTENCY STREAK
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.get("/consistency")
 @limiter.limit("30/minute")
@@ -120,14 +123,14 @@ def get_consistency(
         # Current streak (walking back from today)
         today = _now_ist().date()
         current_streak = 0
-        
+
         # Start checking from today
         check = today
-        
+
         # If no note today, but there's a note yesterday, the streak is still alive
         if check not in date_counts and (check - timedelta(days=1)) in date_counts:
             check -= timedelta(days=1)
-            
+
         while check in date_counts:
             current_streak += 1
             check -= timedelta(days=1)
@@ -153,7 +156,9 @@ def get_consistency(
         raise
     except Exception as e:
         logger.exception("Error in /analytics/consistency")
-        raise HTTPException(status_code=500, detail="Failed to compute consistency data.")
+        raise HTTPException(
+            status_code=500, detail="Failed to compute consistency data."
+        )
 
 
 def _empty_heatmap():
@@ -170,25 +175,114 @@ def _empty_heatmap():
 
 # Keyword taxonomy — uses word-token matching (consistent with pipeline)
 THEMES = {
-    "work":          {"work", "job", "career", "startup", "business", "product", "feature", "ship", "launch", "build", "customer", "client", "meeting"},
-    "money":         {"money", "finance", "funding", "salary", "revenue", "invest", "budget", "raise", "equity", "profit", "debt"},
-    "relationships": {"friend", "family", "dating", "relationship", "partner", "love", "breakup", "marriage", "lonely", "social"},
-    "health":        {"gym", "fitness", "health", "workout", "sleep", "diet", "exercise", "run", "tired", "energy", "mental"},
-    "learning":      {"learn", "read", "course", "study", "book", "skill", "tutorial", "research", "understand"},
-    "anxiety":       {"worried", "stress", "anxious", "fear", "nervous", "scared", "overwhelmed", "pressure", "panic"},
-    "creativity":    {"idea", "create", "design", "art", "music", "write", "creative", "inspiration", "imagine"},
-    "goals":         {"goal", "plan", "target", "milestone", "deadline", "achieve", "progress", "focus", "vision"},
+    "work": {
+        "work",
+        "job",
+        "career",
+        "startup",
+        "business",
+        "product",
+        "feature",
+        "ship",
+        "launch",
+        "build",
+        "customer",
+        "client",
+        "meeting",
+    },
+    "money": {
+        "money",
+        "finance",
+        "funding",
+        "salary",
+        "revenue",
+        "invest",
+        "budget",
+        "raise",
+        "equity",
+        "profit",
+        "debt",
+    },
+    "relationships": {
+        "friend",
+        "family",
+        "dating",
+        "relationship",
+        "partner",
+        "love",
+        "breakup",
+        "marriage",
+        "lonely",
+        "social",
+    },
+    "health": {
+        "gym",
+        "fitness",
+        "health",
+        "workout",
+        "sleep",
+        "diet",
+        "exercise",
+        "run",
+        "tired",
+        "energy",
+        "mental",
+    },
+    "learning": {
+        "learn",
+        "read",
+        "course",
+        "study",
+        "book",
+        "skill",
+        "tutorial",
+        "research",
+        "understand",
+    },
+    "anxiety": {
+        "worried",
+        "stress",
+        "anxious",
+        "fear",
+        "nervous",
+        "scared",
+        "overwhelmed",
+        "pressure",
+        "panic",
+    },
+    "creativity": {
+        "idea",
+        "create",
+        "design",
+        "art",
+        "music",
+        "write",
+        "creative",
+        "inspiration",
+        "imagine",
+    },
+    "goals": {
+        "goal",
+        "plan",
+        "target",
+        "milestone",
+        "deadline",
+        "achieve",
+        "progress",
+        "focus",
+        "vision",
+    },
 }
 
 THEME_DISPLAY = {
-    "work":          "💼 Work & Career",
-    "money":         "💰 Money & Finance",
-    "relationships": "❤️ Relationships",
-    "health":        "🏃 Health",
-    "learning":      "📚 Learning",
-    "anxiety":       "😰 Stress & Anxiety",
-    "creativity":    "🎨 Creativity",
-    "goals":         "🎯 Goals",
+    "work": "Work & Career",
+    "money": "Money & Finance",
+    "relationships": "Relationships",
+    "health": "Health",
+    "learning": "Learning",
+    "anxiety": "Stress & Anxiety",
+    "creativity": "Creativity",
+    "goals": "Goals",
 }
 
 
@@ -226,13 +320,15 @@ def get_themes(
         result = []
         for theme, matches in theme_hits.items():
             if matches:
-                result.append({
-                    "key": theme,
-                    "name": THEME_DISPLAY[theme],
-                    "count": len(matches),
-                    "pct": round(len(matches) / total * 100, 1),
-                    "sample": matches[-1],
-                })
+                result.append(
+                    {
+                        "key": theme,
+                        "name": THEME_DISPLAY[theme],
+                        "count": len(matches),
+                        "pct": round(len(matches) / total * 100, 1),
+                        "sample": matches[-1],
+                    }
+                )
 
         result.sort(key=lambda x: x["count"], reverse=True)
 
@@ -253,13 +349,13 @@ def get_themes(
 # 3. RECURRING LOOPS
 # ─────────────────────────────────────────────────────────────────────────────
 
-L2_DISTANCE_CUTOFF = 0.5      # Empirical L2 distance for sentence transformers
-MAX_NOTES_TO_SCAN = 100       # cap to avoid O(n²) — most users have far fewer
-MIN_NOTE_LENGTH = 40          # Ignore short notes (e.g. "Buy milk") to avoid garbage clusters
+L2_DISTANCE_CUTOFF = 0.3  # Empirical L2 distance for sentence transformers
+MAX_NOTES_TO_SCAN = 100  # cap to avoid O(n²) — most users have far fewer
+MIN_NOTE_LENGTH = 10  # Ignore short notes (e.g. "Buy milk") to avoid garbage clusters
 LOOP_PATH_TEMPLATES = {
-    "high":   "You've revisited this {n} times without resolving it. Set a deadline — even flipping a coin beats endless circling.",
+    "high": "You've revisited this {n} times without resolving it. Set a deadline — even flipping a coin beats endless circling.",
     "medium": "This keeps coming back. Give it 10 focused minutes today instead of another open loop.",
-    "low":    "A pattern is forming. Worth a dedicated session to resolve this.",
+    "low": "A pattern is forming. Worth a dedicated session to resolve this.",
 }
 
 
@@ -271,13 +367,7 @@ def get_loops(
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(database.get_db),
 ):
-    """
-    Finds recurring thought clusters using ChromaDB's ANN (approximate nearest
-    neighbour). For each note, queries the 4 most similar notes from the same
-    user in the last N days. Groups overlapping pairs into clusters.
 
-    No LLM calls. Template-based path_forward.
-    """
     try:
         days = min(days, 90)
         uid = current_user.id
@@ -306,44 +396,64 @@ def get_loops(
         # 2. Batched Query using pgvector
         try:
             from app.models.models import BrainEmbedding
+
             emb_model = rag_engine.get_emb_fn()
-            query_embeddings = emb_model.encode([n.content for n in valid_notes]).tolist()
-            
+            query_embeddings = emb_model.encode(
+                [n.content for n in valid_notes]
+            ).tolist()
+
             results = {"ids": [], "distances": [], "metadatas": []}
             for q_emb in query_embeddings:
-                db_results = db.query(
-                     BrainEmbedding.id,
-                     BrainEmbedding.embedding.l2_distance(q_emb).label('distance'),
-                     BrainEmbedding.metadata_
-                ).filter(
-                     BrainEmbedding.metadata_.op('->>')('user_id') == str(uid)
-                ).order_by('distance').limit(5).all()
-                
+                db_results = (
+                    db.query(
+                        BrainEmbedding.id,
+                        BrainEmbedding.embedding.l2_distance(q_emb).label("distance"),
+                        BrainEmbedding.metadata_,
+                    )
+                    .filter(BrainEmbedding.metadata_.op("->>")("user_id") == str(uid))
+                    .order_by("distance")
+                    .limit(5)
+                    .all()
+                )
+
                 results["ids"].append([r.id for r in db_results])
                 results["distances"].append([r.distance for r in db_results])
                 results["metadatas"].append([r.metadata_ for r in db_results])
-            
+
             if results and "ids" in results and results["ids"]:
                 # results["ids"] is a list of lists, one per query
                 for query_idx, query_note in enumerate(valid_notes):
                     try:
                         neighbor_ids = results["ids"][query_idx]
                         distances = results["distances"][query_idx]
-                        metadatas = results["metadatas"][query_idx] if "metadatas" in results and results["metadatas"] else []
+                        metadatas = (
+                            results["metadatas"][query_idx]
+                            if "metadatas" in results and results["metadatas"]
+                            else []
+                        )
 
                         for i, doc_id in enumerate(neighbor_ids):
                             dist = distances[i]
                             if dist < L2_DISTANCE_CUTOFF:
-                                meta = metadatas[i] if metadatas and i < len(metadatas) else {}
+                                meta = (
+                                    metadatas[i]
+                                    if metadatas and i < len(metadatas)
+                                    else {}
+                                )
                                 source = meta.get("source", "")
                                 neighbor_note_id = None
                                 if source.startswith("note_"):
                                     try:
-                                        neighbor_note_id = int(source.replace("note_", ""))
+                                        neighbor_note_id = int(
+                                            source.replace("note_", "")
+                                        )
                                     except ValueError:
                                         pass
-                                
-                                if neighbor_note_id and neighbor_note_id != query_note.id:
+
+                                if (
+                                    neighbor_note_id
+                                    and neighbor_note_id != query_note.id
+                                ):
                                     if neighbor_note_id in adjacency:
                                         adjacency[query_note.id].add(neighbor_note_id)
                                         adjacency[neighbor_note_id].add(query_note.id)
@@ -379,13 +489,17 @@ def get_loops(
 
             # 3. Offline Keyword Extraction for Theme Guess
             # Combine all text in the cluster
-            full_cluster_text = " ".join([n.content for n in cluster_notes if n.content])
-            
+            full_cluster_text = " ".join(
+                [n.content for n in cluster_notes if n.content]
+            )
+
             theme_guess = ""
             if full_cluster_text.strip():
                 try:
                     # YAKE configuration
-                    kw_extractor = yake.KeywordExtractor(lan="en", n=2, dedupLim=0.9, top=1, features=None)
+                    kw_extractor = yake.KeywordExtractor(
+                        lan="en", n=2, dedupLim=0.9, top=1, features=None
+                    )
                     keywords = kw_extractor.extract_keywords(full_cluster_text)
                     if keywords:
                         # Grab the highest-ranked phrase
@@ -393,13 +507,13 @@ def get_loops(
                         theme_guess = f"Pattern: {top_phrase.title()}"
                 except Exception as e:
                     logger.debug(f"YAKE extraction failed for loop: {e}")
-            
+
             # Fallback to centroid logic if YAKE fails or returns empty
             if not theme_guess:
                 cluster_set = set(cluster_ids)
                 best_note_id = None
                 max_connections = -1
-                
+
                 for nid in cluster_ids:
                     if nid not in adjacency:
                         continue
@@ -408,31 +522,36 @@ def get_loops(
                     if internal_connections > max_connections:
                         max_connections = internal_connections
                         best_note_id = nid
-                
+
                 centroid_note = note_by_id.get(best_note_id, cluster_notes[0])
                 theme_guess = centroid_note.content[:60].strip()
                 if len(centroid_note.content) > 60:
                     theme_guess += "..."
 
-            loops.append({
-                "theme_guess": theme_guess,
-                "occurrences": n,
-                "severity": severity,
-                "first_seen": cluster_notes[0].created_at.date().isoformat(),
-                "last_seen": cluster_notes[-1].created_at.date().isoformat(),
-                "notes": [
-                    {
-                        "date": note.created_at.strftime("%b %d"),
-                        "preview": note.content[:80].replace('\n', ' ') + ("…" if len(note.content) > 80 else ""),
-                    }
-                    for note in cluster_notes
-                ],
-                "path_forward": path,
-            })
+            loops.append(
+                {
+                    "theme_guess": theme_guess,
+                    "occurrences": n,
+                    "severity": severity,
+                    "first_seen": cluster_notes[0].created_at.date().isoformat(),
+                    "last_seen": cluster_notes[-1].created_at.date().isoformat(),
+                    "notes": [
+                        {
+                            "date": note.created_at.strftime("%b %d"),
+                            "preview": note.content[:80].replace("\n", " ")
+                            + ("…" if len(note.content) > 80 else ""),
+                        }
+                        for note in cluster_notes
+                    ],
+                    "path_forward": path,
+                }
+            )
 
         # Sort: high severity first, then by occurrences
         severity_order = {"high": 0, "medium": 1, "low": 2}
-        loops.sort(key=lambda x: (severity_order.get(x["severity"], 9), -x["occurrences"]))
+        loops.sort(
+            key=lambda x: (severity_order.get(x["severity"], 9), -x["occurrences"])
+        )
 
         return {"loops": loops, "notes_scanned": len(scan_notes)}
 
@@ -483,26 +602,77 @@ MAX_PIPELINE_NODES = 50  # cap to keep the graph readable
 PIPELINE_LANES = [
     {
         "key": "work",
-        "label": "💼 Work",
+        "label": "Work",
         "color": "#2979FF",
         "keywords": {
-            "work", "job", "career", "meeting", "project", "deadline", "client",
-            "office", "startup", "business", "product", "launch", "salary",
-            "interview", "resume", "code", "coding", "programming", "develop",
-            "development", "feature", "bug", "deploy", "manager", "team",
-            "colleague", "intern", "promotion", "revenue", "invoice",
+            "work",
+            "job",
+            "career",
+            "meeting",
+            "project",
+            "deadline",
+            "client",
+            "office",
+            "startup",
+            "business",
+            "product",
+            "launch",
+            "salary",
+            "interview",
+            "resume",
+            "code",
+            "coding",
+            "programming",
+            "develop",
+            "development",
+            "feature",
+            "bug",
+            "deploy",
+            "manager",
+            "team",
+            "colleague",
+            "intern",
+            "promotion",
+            "revenue",
+            "invoice",
         },
     },
     {
         "key": "health",
-        "label": "🏃 Health",
+        "label": "Health",
         "color": "#81B622",
         "keywords": {
-            "gym", "workout", "exercise", "sleep", "diet", "health", "fitness",
-            "run", "running", "tired", "energy", "sick", "doctor", "mental",
-            "anxiety", "stress", "depression", "meditation", "yoga", "water",
-            "eating", "food", "pain", "medicine", "therapy", "hospital",
-            "healthy", "wellbeing", "rest", "recovery", "breathing",
+            "gym",
+            "workout",
+            "exercise",
+            "sleep",
+            "diet",
+            "health",
+            "fitness",
+            "run",
+            "running",
+            "tired",
+            "energy",
+            "sick",
+            "doctor",
+            "mental",
+            "anxiety",
+            "stress",
+            "depression",
+            "meditation",
+            "yoga",
+            "water",
+            "eating",
+            "food",
+            "pain",
+            "medicine",
+            "therapy",
+            "hospital",
+            "healthy",
+            "wellbeing",
+            "rest",
+            "recovery",
+            "breathing",
         },
     },
     {
@@ -510,13 +680,49 @@ PIPELINE_LANES = [
         "label": "🌱 Personal",
         "color": "#BB86FC",
         "keywords": {
-            "friend", "friends", "family", "love", "relationship", "date",
-            "dating", "social", "feel", "feeling", "feelings", "happy",
-            "happiness", "sad", "lonely", "travel", "weekend", "fun",
-            "movie", "music", "book", "books", "reading", "learn", "learning",
-            "life", "goal", "goals", "dream", "dreams", "creativity", "creative",
-            "idea", "ideas", "art", "thought", "thinking", "personal",
-            "birthday", "party", "vacation", "holiday", "gratitude",
+            "friend",
+            "friends",
+            "family",
+            "love",
+            "relationship",
+            "date",
+            "dating",
+            "social",
+            "feel",
+            "feeling",
+            "feelings",
+            "happy",
+            "happiness",
+            "sad",
+            "lonely",
+            "travel",
+            "weekend",
+            "fun",
+            "movie",
+            "music",
+            "book",
+            "books",
+            "reading",
+            "learn",
+            "learning",
+            "life",
+            "goal",
+            "goals",
+            "dream",
+            "dreams",
+            "creativity",
+            "creative",
+            "idea",
+            "ideas",
+            "art",
+            "thought",
+            "thinking",
+            "personal",
+            "birthday",
+            "party",
+            "vacation",
+            "holiday",
+            "gratitude",
         },
     },
 ]
@@ -563,7 +769,10 @@ def get_pipeline(
         uid = current_user.id
         notes = _notes_last_n_days(uid, db, days)
 
-        lane_meta = [{"key": l["key"], "label": l["label"], "color": l["color"]} for l in PIPELINE_LANES]
+        lane_meta = [
+            {"key": l["key"], "label": l["label"], "color": l["color"]}
+            for l in PIPELINE_LANES
+        ]
 
         if not notes:
             return {
@@ -595,22 +804,40 @@ def get_pipeline(
                 thought_type = "question"
             elif tokens & {"need", "should", "plan", "going", "will", "must", "want"}:
                 thought_type = "action"
-            elif tokens & {"worried", "stress", "anxious", "fear", "nervous", "scared", "overwhelmed"}:
+            elif tokens & {
+                "worried",
+                "stress",
+                "anxious",
+                "fear",
+                "nervous",
+                "scared",
+                "overwhelmed",
+            }:
                 thought_type = "anxiety"
-            elif tokens & {"realised", "realized", "insight", "learned", "understand", "discovered"}:
+            elif tokens & {
+                "realised",
+                "realized",
+                "insight",
+                "learned",
+                "understand",
+                "discovered",
+            }:
                 thought_type = "insight"
             else:
                 thought_type = "thought"
 
-            pipeline_nodes.append({
-                "id": str(note.id),
-                "content": note.content[:120] + ("…" if len(note.content) > 120 else ""),
-                "topic": topic,
-                "lane": lane,
-                "thought_type": thought_type,
-                "timestamp": note.created_at.isoformat(),
-                "parent_ids": parent_ids,
-            })
+            pipeline_nodes.append(
+                {
+                    "id": str(note.id),
+                    "content": note.content[:120]
+                    + ("…" if len(note.content) > 120 else ""),
+                    "topic": topic,
+                    "lane": lane,
+                    "thought_type": thought_type,
+                    "timestamp": note.created_at.isoformat(),
+                    "parent_ids": parent_ids,
+                }
+            )
 
         return {
             "generated_at": _now_ist().isoformat(),

@@ -29,4 +29,4 @@ results = collection.query(
 print("5. Results:")
 print(results)
 
-print("✅ SUCCESS! ChromaDB is fully functional in this directory.")
+print("SUCCESS! ChromaDB is fully functional in this directory.")

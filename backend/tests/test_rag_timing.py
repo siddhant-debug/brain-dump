@@ -51,13 +51,13 @@ async def run_test():
                     if chunk.strip():
                         print(f"Received Chunk: {chunk.strip()}")
                         
-            print("\n✅ Stream completed successfully!")
+            print("\nStream completed successfully!")
             print("Check your Uvicorn terminal for the millisecond timing logs!")
             
         except httpx.ReadTimeout:
-            print("\n❌ HTTPX Timeout Hit! The backend took longer than 120 seconds.")
+            print("\nHTTPX Timeout Hit! The backend took longer than 120 seconds.")
         except Exception as e:
-            print(f"\n❌ Error: {e}")
+            print(f"\nError: {e}")
 
 if __name__ == "__main__":
     asyncio.run(run_test())

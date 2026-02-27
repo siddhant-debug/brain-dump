@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:dio/dio.dart';
 import '../services/file_service.dart';
 import '../../../core/widgets/persistent_header.dart';
 import '../../auth/controllers/auth_controller.dart';
@@ -83,9 +84,18 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
       }
     } catch (e) {
       if (!mounted) return;
+
+      String errorMsg = e.toString().replaceAll('Exception: ', '');
+      if (e is DioException) {
+        final detail = e.response?.data?['detail'];
+        errorMsg = detail != null
+            ? detail.toString()
+            : e.message ?? 'Network error occurred';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not open file: $e'),
+          content: Text('Could not open file: $errorMsg'),
           backgroundColor: Colors.redAccent,
         ),
       );

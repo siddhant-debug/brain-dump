@@ -14,7 +14,7 @@ async def test():
         response = await model.generate_content_async("Hello!", stream=True)
         async for chunk in response:
             print(chunk.text, end="")
-        print("\n✅ gemini-1.5-flash works!")
+        print("\ngemini-1.5-flash works!")
     except Exception as e:
         print(f"\nError: {e}")
 
@@ -24,7 +24,7 @@ async def test():
         response2 = await model2.generate_content_async("Hello!", stream=True)
         async for chunk in response2:
             print(chunk.text, end="")
-        print("\n✅ gemini-3-flash-preview works!")
+        print("\ngemini-3-flash-preview works!")
     except Exception as e:
         print(f"\nError: {e}")
 

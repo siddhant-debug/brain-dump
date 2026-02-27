@@ -8,6 +8,7 @@ import '../core/theme/app_theme.dart';
 import 'brain_dump_screen.dart';
 import '../features/vault/services/file_service.dart'; // To fetch files
 import '../features/music/providers/music_provider.dart'; // For Connected Apps status
+import '../features/analytics/services/analytics_service.dart'; // To invalidate analytics
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -43,7 +44,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
           child: BottomNavigationBar(
             currentIndex: _currentIndex,
-            onTap: (index) => setState(() => _currentIndex = index),
+            onTap: (index) {
+              if (index == 1) {
+                // 1 is Brain Dump Screen which contains the analytics
+                // Silently refresh analytics to keep them up to date when the user switches to this tab
+                ref.invalidate(consistencyProvider);
+                ref.invalidate(themesProvider);
+                ref.invalidate(loopsProvider);
+                ref.invalidate(pipelineProvider);
+              }
+              setState(() => _currentIndex = index);
+            },
             backgroundColor: Colors.transparent, // Important for glass effect
             elevation: 0,
             selectedItemColor: Colors.white,

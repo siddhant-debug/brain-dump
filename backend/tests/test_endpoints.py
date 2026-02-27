@@ -16,7 +16,7 @@ def log(message, type="INFO"):
     print(f"[{type}] {message}")
 
 def test_backend():
-    print(f"🚀 Starting Backend Tests on {BASE_URL}...\n")
+    print(f"Starting Backend Tests on {BASE_URL}...\n")
     
     # 1. AUTHENTICATION
     log("Testing Authentication...")
@@ -128,7 +128,7 @@ def test_backend():
     else:
         log(f"Chat failed: {response.text}", "ERROR")
     
-    print("\n✅ All Tests Completed.")
+    print("\nAll Tests Completed.")
 
 if __name__ == "__main__":
     test_backend()

@@ -8,8 +8,9 @@ class PersistentHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rely on SafeArea from parent instead of hardcoding 60px top padding
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 60, 24, 20),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [

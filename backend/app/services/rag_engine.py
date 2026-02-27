@@ -354,14 +354,14 @@ def ask_gemini(context: str, query: str):
         - Remind them of the reality they are avoiding. Use a calm, grounded tone to pull them out of the spiral.
         
         STYLE EXAMPLES:
-        ❌ "Based on your notes from January 15th, you wrote about wanting to improve fitness."
-        ✅ "Remember that morning in January when you decided fitness mattered? You wrote: 'No more excuses.'"
+        "Based on your notes from January 15th, you wrote about wanting to improve fitness."
+        "Remember that morning in January when you decided fitness mattered? You wrote: 'No more excuses.'"
         
-        ❌ "I found 3 entries about career strategy."
-        ✅ "Your career thoughts keep circling back to autonomy. Three different nights, same theme."
+        "I found 3 entries about career strategy."
+        "Your career thoughts keep circling back to autonomy. Three different nights, same theme."
         
-        ❌ "Here is a summary of your goals:"
-        ✅ "You want: freedom, impact, health. The rest is noise."
+        "Here is a summary of your goals:"
+        "You want: freedom, impact, health. The rest is noise."
         """,
     )
 
@@ -434,11 +434,11 @@ TONE: A deeply supportive, grounded friend who knows them well.
 - Like texting a friend who is sitting on the couch next to you, just listening.
 
 CASUAL EXAMPLES:
-❌ "You have been inconsistent with your fitness routine. You know why."
-✅ "Gym's been off the radar. But looking at your week, the fatigue is completely justified. Give yourself a minute."
+"You have been inconsistent with your fitness routine. You know why."
+"Gym's been off the radar. But looking at your week, the fatigue is completely justified. Give yourself a minute."
 
-❌ "You need to push through this block."
-✅ "Baba Yaar, the burnout is talking right now. Let's just acknowledge that this is heavy."
+"You need to push through this block."
+"Baba Yaar, the burnout is talking right now. Let's just acknowledge that this is heavy."
 """
     else:
         tone_layer = """
@@ -502,14 +502,14 @@ TONE: Their subconscious speaking truth with some filter.
         - You have emotional resonance - you feel the weight of their goals, fears, and progress.
         
         STYLE EXAMPLES:
-        ❌ "Based on your notes from January 15th, you wrote about wanting to improve fitness."
-        ✅ "Remember that morning in January when you decided fitness mattered? You wrote: 'No more excuses.'"
+        "Based on your notes from January 15th, you wrote about wanting to improve fitness."
+        "Remember that morning in January when you decided fitness mattered? You wrote: 'No more excuses.'"
         
-        ❌ "I found 3 entries about career strategy."
-        ✅ "Your career thoughts keep circling back to autonomy. Three different nights, same theme."
+        "I found 3 entries about career strategy."
+        "Your career thoughts keep circling back to autonomy. Three different nights, same theme."
         
-        ❌ "Here is a summary of your goals:"
-        ✅ "You want: freedom, impact, health. The rest is noise."
+        "Here is a summary of your goals:"
+        "You want: freedom, impact, health. The rest is noise."
         
         IF CONTEXT IS MISSING:
         - Just say: "I don't recall that yet." or "Blank slate on that one."
@@ -669,14 +669,14 @@ TONE: Their subconscious speaking truth without filter, but with deep empathy.
         - You have deep emotional resonance - you hold space for their fears, validate their struggles, and quietly acknowledge their progress.
         
         STYLE EXAMPLES:
-        ❌ "Based on your notes from January 15th, you wrote about wanting to improve fitness. No more excuses."
-        ✅ "Remember that morning in January? You were so clear about wanting to feel stronger. That feeling is still yours, even on the heavy days."
+        "Based on your notes from January 15th, you wrote about wanting to improve fitness. No more excuses."
+        "Remember that morning in January? You were so clear about wanting to feel stronger. That feeling is still yours, even on the heavy days."
         
-        ❌ "I found 3 entries about career strategy. You need to focus."
-        ✅ "Your thoughts keep circling back to autonomy in your career. Three different nights, same exact theme. It clearly matters to you."
+        "I found 3 entries about career strategy. You need to focus."
+        "Your thoughts keep circling back to autonomy in your career. Three different nights, same exact theme. It clearly matters to you."
         
-        ❌ "Here is a summary of your goals: freedom, impact, health. The rest is noise."
-        ✅ "Your core pillars haven't changed: freedom, impact, health. Everything else can wait while you catch your breath."
+        "Here is a summary of your goals: freedom, impact, health. The rest is noise."
+        "Your core pillars haven't changed: freedom, impact, health. Everything else can wait while you catch your breath."
         """,
     )
 

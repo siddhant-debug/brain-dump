@@ -5,11 +5,26 @@ import '../services/brain_service.dart';
 import '../../notes/services/note_service.dart';
 import '../models/chat_message.dart';
 import '../services/location_service.dart';
+import 'package:dio/dio.dart';
+
+String _formatError(dynamic e) {
+  if (e is DioException) {
+    if (e.response?.statusCode == 429) {
+      return "You've reached your daily limit. Please try again later.";
+    }
+    final detail = e.response?.data?['detail'];
+    if (detail != null) {
+      return detail.toString();
+    }
+    return e.message ?? "Network error occurred";
+  }
+  return e.toString().replaceAll('Exception: ', '');
+}
 
 final brainDumpProvider =
     StateNotifierProvider<BrainDumpNotifier, BrainDumpState>((ref) {
-  return BrainDumpNotifier(ref);
-});
+      return BrainDumpNotifier(ref);
+    });
 
 class BrainDumpState {
   final List<ChatMessage> messages;
@@ -50,7 +65,8 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     try {
       final history = await ref.read(brainServiceProvider).getChatHistory();
       print(
-          'DEBUG PROVIDER: Fetched ${history.length} items. Mounted: $mounted');
+        'DEBUG PROVIDER: Fetched ${history.length} items. Mounted: $mounted',
+      );
       if (!mounted) return;
       if (history.isNotEmpty) {
         // [Architect] SAFE MERGE
@@ -62,7 +78,8 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
           isProcessing: false,
         );
         print(
-            'DEBUG PROVIDER: State updated! messages count: ${state.messages.length}');
+          'DEBUG PROVIDER: State updated! messages count: ${state.messages.length}',
+        );
       } else {
         // Stop loading state even if empty
         state = state.copyWith(isProcessing: false);
@@ -71,8 +88,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
       print('Error loading history: $e');
       if (!mounted) return;
       state = state.copyWith(
-        error:
-            "Failed to load history: ${e.toString().replaceAll('Exception: ', '')}",
+        error: "Failed to load history: ${_formatError(e)}",
         isProcessing: false,
       );
     }
@@ -132,7 +148,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
             if (msg.id == aiMessageId) {
               return ChatMessage(
                 id: msg.id,
-                content: "Error: ${e.toString().replaceAll('Exception: ', '')}",
+                content: "Error: ${_formatError(e)}",
                 sender: msg.sender,
                 timestamp: DateTime.now(),
                 status: MessageStatus.error,
@@ -170,9 +186,10 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     List<String> sources = [];
 
     try {
-      await for (var data in ref
-          .read(brainServiceProvider)
-          .askBrain(text, location: location)) {
+      await for (var data
+          in ref
+              .read(brainServiceProvider)
+              .askBrain(text, location: location)) {
         // Handle text chunk
         if (data['chunk'] != null) {
           fullAnswer += data['chunk'];
@@ -235,7 +252,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
           if (msg.id == aiMsgId) {
             return ChatMessage(
               id: msg.id,
-              content: "Error: ${e.toString().replaceAll('Exception: ', '')}",
+              content: "Error: ${_formatError(e)}",
               sender: MessageSender.ai,
               timestamp: DateTime.now(),
               status: MessageStatus.sent,
@@ -261,7 +278,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
       ref.invalidate(notesProvider); // Refresh list
       state = state.copyWith(isProcessing: false);
     } catch (e) {
-      state = state.copyWith(isProcessing: false, error: e.toString());
+      state = state.copyWith(isProcessing: false, error: _formatError(e));
       rethrow;
     }
   }
