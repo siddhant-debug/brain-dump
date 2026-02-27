@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../notes/services/note_service.dart';
 import '../../../core/widgets/persistent_header.dart';
 import '../../auth/controllers/auth_controller.dart';
-import 'note_detail_screen.dart'; 
+import 'note_detail_screen.dart';
 
 class ThoughtsScreen extends ConsumerStatefulWidget {
   final bool isEmbedded;
@@ -85,7 +85,9 @@ class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
                       );
                     }
                   }
-                  Navigator.of(dialogContext).pop();
+                  if (dialogContext.mounted) {
+                    Navigator.of(dialogContext).pop();
+                  }
                 }
               },
             ),
@@ -293,7 +295,7 @@ class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
       },
       loading: () =>
           const Center(child: CircularProgressIndicator(color: Colors.white24)),
-      error: (e, __) => Center(
+      error: (e, _) => Center(
         child: Text(
           'Error: $e',
           style: const TextStyle(color: Colors.redAccent),

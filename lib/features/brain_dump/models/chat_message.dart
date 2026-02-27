@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 enum MessageSender { user, ai, system }
 
@@ -57,7 +58,7 @@ class ChatMessage {
         final List<dynamic> decoded = jsonDecode(json['context_sources']);
         parsedSources = decoded.map((e) => e.toString()).toList();
       } catch (e) {
-        print('Error parsing context_sources: $e');
+        developer.log('Error parsing context_sources: $e', name: 'ChatMessage');
       }
     } else if (json['sources'] != null) {
       // From Stream or direct map (List)

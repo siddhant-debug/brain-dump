@@ -24,7 +24,7 @@ class BrainDumpScreen extends ConsumerStatefulWidget {
 }
 
 class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
@@ -39,6 +39,13 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
   bool _showCheckmark = false;
   late AnimationController _checkmarkController;
 
+  // "Leaving mind" ghost text animation for journal mode
+  String _ghostText = '';
+  bool _showGhost = false;
+  late AnimationController _ghostController;
+  late Animation<double> _ghostOpacity;
+  late Animation<Offset> _ghostSlide;
+
   @override
   void initState() {
     super.initState();
@@ -47,6 +54,19 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
+
+    _ghostController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _ghostOpacity = Tween<double>(
+      begin: 1.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _ghostController, curve: Curves.easeOut));
+    _ghostSlide = Tween<Offset>(
+      begin: Offset.zero,
+      end: const Offset(0, -0.5),
+    ).animate(CurvedAnimation(parent: _ghostController, curve: Curves.easeOut));
   }
 
   @override
@@ -55,6 +75,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     _focusNode.dispose();
     _scrollController.dispose();
     _checkmarkController.dispose();
+    _ghostController.dispose();
     super.dispose();
   }
 
@@ -74,42 +95,65 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
+    final isChatMode = ref.read(brainDumpProvider).isChatMode;
+
+    // In journal mode, capture text for ghost animation before clearing
+    if (!isChatMode) {
+      setState(() {
+        _ghostText = text;
+        _showGhost = true;
+      });
+    }
+
     // [Architect] UX FIX: CLEAN INPUT EARLY
-    // We clear the input field immediately so the user doesn't feel "blocked".
-    // The previous logic waited for the AI stream to finish, which was bad UX.
     _controller.clear();
 
-    final isQuery = text.endsWith('?');
-
     try {
-      if (isQuery) {
-        // Query: Show in chat and get AI response
+      if (isChatMode) {
+        // Chat mode: All input goes to AI as conversation
         await ref.read(brainDumpProvider.notifier).processInput(text);
       } else {
-        // Note: Save silently with checkmark feedback
+        // Journal mode: Save silently with "leaving mind" animation
         await ref.read(brainDumpProvider.notifier).saveNoteSilently(text);
         if (!mounted) return;
 
-        // Show checkmark animation
-        setState(() => _showCheckmark = true);
-        _checkmarkController.forward();
-
-        // Hide checkmark after 1 second
-        Future.delayed(const Duration(milliseconds: 1000), () {
+        // Play ghost float-away animation
+        _ghostController.forward().then((_) {
           if (mounted) {
-            setState(() => _showCheckmark = false);
-            _checkmarkController.reset();
+            setState(() => _showGhost = false);
+            _ghostController.reset();
+          }
+        });
+
+        // Show checkmark after ghost begins fading
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (mounted) {
+            setState(() => _showCheckmark = true);
+            _checkmarkController.forward();
+
+            Future.delayed(const Duration(milliseconds: 800), () {
+              if (mounted) {
+                setState(() => _showCheckmark = false);
+                _checkmarkController.reset();
+              }
+            });
           }
         });
       }
 
-      // [Architect] Invalidate analytics providers to force a refresh of the Insights tab
+      // [Architect] Invalidate analytics providers to force a refresh
       ref.invalidate(consistencyProvider);
       ref.invalidate(themesProvider);
       ref.invalidate(loopsProvider);
       ref.invalidate(pipelineProvider);
     } catch (e) {
       debugPrint('[DEBUG] Error: $e');
+
+      // Reset ghost state on error
+      if (!isChatMode && mounted) {
+        setState(() => _showGhost = false);
+        _ghostController.reset();
+      }
       if (!mounted) return;
 
       String errorMsg = e.toString().replaceAll('Exception: ', '');
@@ -120,7 +164,6 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
             : e.message ?? 'Network error occurred';
       }
 
-      // Show error in chat
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error: $errorMsg'),
@@ -149,29 +192,38 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
       backgroundColor: const Color(0xFF000000), // Pure black
       resizeToAvoidBottomInset: true,
       body: SafeArea(
-        top: false,
         child: Stack(
           children: [
-            // LAYER 1: CONTENT (Chat or Vault)
+            // LAYER 1: CONTENT — routes between Journal/Chat on tab 1
             Positioned.fill(
               child: IndexedStack(
                 index: _selectedIndex,
                 children: [
                   const AnalyticsScreen(),
-                  _buildChatLayer(brainDumpState),
+                  brainDumpState.isChatMode
+                      ? _buildChatLayer(brainDumpState)
+                      : _buildJournalLayout(),
                   const ThoughtsScreen(isEmbedded: true),
                   const FileVaultScreen(isEmbedded: true),
                 ],
               ),
             ),
 
-            // LAYER 2: MINIMAL INPUT (Only visible on Chat screen — tab 1)
-            if (_selectedIndex == 1)
+            // LAYER 2: MINIMAL INPUT (Chat mode only, on tab 1)
+            if (_selectedIndex == 1 && brainDumpState.isChatMode)
               Positioned(
                 bottom: 100, // Above dock
                 left: 24,
                 right: 24,
                 child: _buildMinimalInput(),
+              ),
+
+            // LAYER 2.5: MODE TOGGLE (above dock, on tab 1)
+            if (_selectedIndex == 1)
+              Positioned(
+                bottom: 100,
+                right: 24,
+                child: _buildModeToggle(brainDumpState.isChatMode),
               ),
 
             // LAYER 3: PILL-SHAPED DOCK
@@ -196,75 +248,116 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     );
   }
 
+  /// Shared header — clear + logout only (toggle is above dock)
+  Widget _buildHeader(bool isChatMode) {
+    return PersistentHeader(
+      title: 'BrainDumps',
+      actions: [
+        // Clear History Button — only in chat mode
+        if (isChatMode)
+          IconButton(
+            icon: const Icon(
+              Icons.cleaning_services_rounded,
+              color: Colors.white24,
+              size: 20,
+            ),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  backgroundColor: const Color(0xFF1C1C1E),
+                  title: const Text(
+                    'Clear Screen?',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  content: const Text(
+                    'This will clear messages from your screen but keep them in your brain.',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                  actions: [
+                    TextButton(
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(color: Colors.white54),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                    TextButton(
+                      child: const Text(
+                        'Clear',
+                        style: TextStyle(color: Colors.redAccent),
+                      ),
+                      onPressed: () {
+                        ref
+                            .read(brainDumpProvider.notifier)
+                            .clearLocalHistory();
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        // Logout Button
+        IconButton(
+          icon: const Icon(Icons.logout_rounded, color: Colors.white24),
+          onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
+        ),
+      ],
+    );
+  }
+
+  /// Mode toggle — positioned above dock
+  Widget _buildModeToggle(bool isChatMode) {
+    // Journal = green toggle, Chat = white/grey toggle
+    const journalGreen = Color(0xFF4CAF50);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          isChatMode ? 'Chat' : 'Journal',
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+        const SizedBox(width: 6),
+        SizedBox(
+          height: 24,
+          child: Switch.adaptive(
+            value: isChatMode,
+            onChanged: (_) {
+              ref.read(brainDumpProvider.notifier).toggleMode();
+              // Auto-scroll to bottom when switching to chat mode
+              // Double-scroll: first to trigger layout, second to reach true bottom
+              if (!isChatMode) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _scrollToBottom();
+                  // Second scroll after layout settles
+                  Future.delayed(const Duration(milliseconds: 350), () {
+                    if (mounted) _scrollToBottom();
+                  });
+                });
+              }
+            },
+            activeThumbColor: const Color.fromARGB(156, 255, 255, 255),
+            activeTrackColor: Colors.white10,
+            inactiveThumbColor: journalGreen,
+            inactiveTrackColor: journalGreen.withValues(alpha: 0.3),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Chat layout — messages list, input at bottom via Layer 2 overlay
   Widget _buildChatLayer(BrainDumpState state) {
     return Column(
       children: [
-        PersistentHeader(
-          title: 'BrainDumps',
-          actions: [
-            // Clear History Button - Local only
-            IconButton(
-              icon: Icon(
-                Theme.of(context).platform == TargetPlatform.iOS
-                    ? Icons
-                          .cleaning_services_rounded // Keeping material here as there isn't a great cupertino match for un-bespoke sweeping
-                    : Icons.cleaning_services_rounded,
-                color: Colors.white24,
-                size: 20,
-              ),
-              onPressed: () {
-                // Confirm before clearing
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    backgroundColor: const Color(0xFF1C1C1E),
-                    title: const Text(
-                      'Clear Screen?',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    content: const Text(
-                      'This will clear messages from your screen but keep them in your brain.',
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                    actions: [
-                      TextButton(
-                        child: const Text(
-                          'Cancel',
-                          style: TextStyle(color: Colors.white54),
-                        ),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                      TextButton(
-                        child: const Text(
-                          'Clear',
-                          style: TextStyle(color: Colors.redAccent),
-                        ),
-                        onPressed: () {
-                          ref
-                              .read(brainDumpProvider.notifier)
-                              .clearLocalHistory();
-                          Navigator.pop(context);
-                        },
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            // Logout Button
-            IconButton(
-              icon: Icon(
-                Theme.of(context).platform == TargetPlatform.iOS
-                    ? Icons
-                          .logout_rounded // Keeping material since cupertino_icons doesn't have a direct logout
-                    : Icons.logout_rounded,
-                color: Colors.white24,
-              ),
-              onPressed: () =>
-                  ref.read(authControllerProvider.notifier).signOut(),
-            ),
-          ],
-        ),
+        _buildHeader(state.isChatMode),
         Expanded(
           child: ListView.builder(
             controller: _scrollController,
@@ -293,6 +386,86 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     );
   }
 
+  /// Journal layout — input at top with green text, ghost animation
+  Widget _buildJournalLayout() {
+    const journalGreen = Color(0xFF4CAF50);
+    return Column(
+      children: [
+        _buildHeader(false),
+        // Input area at top — full remaining space
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: Stack(
+              children: [
+                // Ghost text — floats up and fades after save
+                if (_showGhost)
+                  SlideTransition(
+                    position: _ghostSlide,
+                    child: FadeTransition(
+                      opacity: _ghostOpacity,
+                      child: Text(
+                        _ghostText,
+                        style: TextStyle(
+                          color: Colors.white60,
+                          fontSize: 16,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                // Animated hint at input position
+                ValueListenableBuilder(
+                  valueListenable: _controller,
+                  builder: (context, value, child) {
+                    return value.text.isEmpty
+                        ? const _AnimatedHintText(text: 'dump your thoughts...')
+                        : const SizedBox.shrink();
+                  },
+                ),
+                // Actual input — green text
+                TextField(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  maxLines: null,
+                  minLines: 1,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _onSubmitted(),
+                  style: const TextStyle(
+                    color: Colors.white60,
+                    fontSize: 16,
+                    height: 1.5,
+                  ),
+                  cursorColor: journalGreen,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    hintText: null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Checkmark indicator — centered below input after save
+        if (_showCheckmark)
+          FadeTransition(
+            opacity: _checkmarkController,
+            child: const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Icon(
+                Icons.check_circle_outline,
+                color: Colors.white38,
+                size: 28,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Minimal input for Chat mode — positioned at bottom via Stack overlay
   Widget _buildMinimalInput() {
     return Row(
       children: [
@@ -305,7 +478,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                 valueListenable: _controller,
                 builder: (context, value, child) {
                   return value.text.isEmpty
-                      ? const _AnimatedHintText()
+                      ? const _AnimatedHintText(text: 'start asking...')
                       : const SizedBox.shrink();
                 },
               ),
@@ -316,13 +489,13 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                 maxLines: null,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _onSubmitted(),
-                style: const TextStyle(color: Colors.white, fontSize: 16),
+                style: const TextStyle(color: Colors.white, fontSize: 22),
                 cursorColor: Colors.white,
                 decoration: const InputDecoration(
                   border: InputBorder.none,
                   isDense: true,
                   contentPadding: EdgeInsets.zero,
-                  hintText: null, // Disabled in favor of animated hint
+                  hintText: null,
                 ),
               ),
             ],
@@ -597,11 +770,7 @@ class _CollapsibleSources extends StatefulWidget {
   final List<String> sources;
   final Map<String, dynamic>? locationContext;
 
-  const _CollapsibleSources({
-    super.key,
-    required this.sources,
-    this.locationContext,
-  });
+  const _CollapsibleSources({required this.sources, this.locationContext});
 
   @override
   State<_CollapsibleSources> createState() => _CollapsibleSourcesState();
@@ -710,9 +879,11 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
   }
 }
 
-/// Animated Hint Text - Breathing effect + optional typewriter animation
+/// Animated Hint Text - Breathing effect, accepts configurable text
 class _AnimatedHintText extends StatefulWidget {
-  const _AnimatedHintText({super.key});
+  final String text;
+
+  const _AnimatedHintText({this.text = 'start typing ...'});
 
   @override
   State<_AnimatedHintText> createState() => _AnimatedHintTextState();
@@ -746,9 +917,9 @@ class _AnimatedHintTextState extends State<_AnimatedHintText>
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _opacity,
-      child: const Text(
-        'start typing ...',
-        style: TextStyle(
+      child: Text(
+        widget.text,
+        style: const TextStyle(
           color: Colors.white, // Opacity handles the dimming
           fontSize: 20,
           fontWeight: FontWeight.w300,

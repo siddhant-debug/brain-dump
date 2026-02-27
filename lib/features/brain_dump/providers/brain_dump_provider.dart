@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../services/brain_service.dart';
@@ -30,11 +31,13 @@ class BrainDumpState {
   final List<ChatMessage> messages;
   final bool isProcessing;
   final String? error;
+  final bool isChatMode;
 
   BrainDumpState({
     this.messages = const [],
     this.isProcessing = false,
     this.error,
+    this.isChatMode = false, // Default: Journal mode
   });
 
   BrainDumpState copyWith({
@@ -42,11 +45,13 @@ class BrainDumpState {
     bool? isProcessing,
     String? error,
     bool clearError = false,
+    bool? isChatMode,
   }) {
     return BrainDumpState(
       messages: messages ?? this.messages,
       isProcessing: isProcessing ?? this.isProcessing,
       error: clearError ? null : (error ?? this.error),
+      isChatMode: isChatMode ?? this.isChatMode,
     );
   }
 }
@@ -64,7 +69,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     state = state.copyWith(isProcessing: true, clearError: true);
     try {
       final history = await ref.read(brainServiceProvider).getChatHistory();
-      print(
+      debugPrint(
         'DEBUG PROVIDER: Fetched ${history.length} items. Mounted: $mounted',
       );
       if (!mounted) return;
@@ -77,7 +82,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
           messages: [...history, ...state.messages],
           isProcessing: false,
         );
-        print(
+        debugPrint(
           'DEBUG PROVIDER: State updated! messages count: ${state.messages.length}',
         );
       } else {
@@ -85,7 +90,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
         state = state.copyWith(isProcessing: false);
       }
     } catch (e) {
-      print('Error loading history: $e');
+      debugPrint('Error loading history: $e');
       if (!mounted) return;
       state = state.copyWith(
         error: "Failed to load history: ${_formatError(e)}",
@@ -131,9 +136,9 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
           .read(locationServiceProvider)
           .getCurrentLocationContext()
           .timeout(const Duration(seconds: 3));
-      print("[DEBUG] Location fetched: $locationContext");
+      debugPrint("[DEBUG] Location fetched: $locationContext");
     } catch (e) {
-      print("[DEBUG] Location fetch skipped (Timeout/Error): $e");
+      debugPrint("[DEBUG] Location fetch skipped (Timeout/Error): $e");
     }
 
     String? aiMessageId;
@@ -199,9 +204,9 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
         if (data['sources'] != null) {
           try {
             sources = List<String>.from(data['sources']);
-            print("Received sources: $sources");
+            debugPrint("Received sources: $sources");
           } catch (e) {
-            print("Error parsing sources: $e");
+            debugPrint("Error parsing sources: $e");
           }
         }
 
@@ -286,5 +291,10 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
   /// Clear message history from local state (doesn't affect backend)
   void clearLocalHistory() {
     state = state.copyWith(messages: []);
+  }
+
+  /// Toggle between Chat and Journal mode
+  void toggleMode() {
+    state = state.copyWith(isChatMode: !state.isChatMode);
   }
 }

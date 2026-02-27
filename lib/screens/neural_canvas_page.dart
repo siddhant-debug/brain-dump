@@ -35,8 +35,8 @@ class _NeuralCanvasPageState extends ConsumerState<NeuralCanvasPage> {
       final ty = 100.0 - (topY * zoom);
 
       _transformationController.value = Matrix4.identity()
-        ..translate(tx, ty)
-        ..scale(zoom);
+        ..translateByDouble(tx, ty, 0, 0)
+        ..scaleByDouble(zoom, zoom, 1, 1);
     });
   }
 

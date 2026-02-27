@@ -263,7 +263,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       // DEBUG: Verify token exists before switching
                       const storage = FlutterSecureStorage();
                       final token = await storage.read(key: 'jwt_token');
-                      print(
+                      debugPrint(
                         'DEBUGGING ONBOARDING EXIT: Token is ${token != null ? "PRESENT" : "NULL"}',
                       );
 

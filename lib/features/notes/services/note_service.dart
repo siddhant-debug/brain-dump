@@ -48,7 +48,7 @@ class NoteService {
     try {
       final response = await _dio.post(
         '/notes/',
-        data: {'content': content, if (location != null) 'location': location},
+        data: {'content': content, 'location': ?location},
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return response.data;

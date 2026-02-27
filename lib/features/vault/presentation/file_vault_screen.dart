@@ -321,7 +321,7 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
           loading: () => const Center(
             child: CircularProgressIndicator(color: Colors.white24),
           ),
-          error: (e, __) => Center(
+          error: (e, _) => Center(
             child: Text(
               'Error: $e',
               style: const TextStyle(color: Colors.redAccent),
