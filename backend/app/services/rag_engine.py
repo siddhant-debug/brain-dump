@@ -391,157 +391,6 @@ def ask_gemini(context: str, query: str):
         return None
 
 
-def ask_gemini_stream(context: str, query: str, location_context: dict = None):
-    """
-    STREAMING MODE: Optimized for Speed, Empathy, and "Internal Monologue" feel.
-    Use this for the Flutter Chat UI.
-    """
-    print(f"DEBUG: Entering ask_gemini_stream with query: '{query}'")
-    genai.configure(api_key=GEMINI_API_KEY)
-
-    # Detect complexity before creating GenerativeModel
-    query_word_count = len(query.split())
-    context_length = len(context)
-
-    if (
-        query_word_count > 20
-        or "compare" in query.lower()
-        or "analyze" in query.lower()
-    ):
-        max_tokens = 4096  # Deep analysis
-    elif query_word_count > 10 or context_length > 2000:
-        max_tokens = 2048  # Medium complexity
-    else:
-        max_tokens = 1024  # Simple query
-
-    print(f"DEBUG: Using {max_tokens} tokens for query complexity")
-
-    # [Layer 2 & 4] Subconscious Context
-    temporal_context = get_temporal_context(0)  # Generic for any user
-    emotional_state = analyze_emotional_tone(context)
-    tone_guidance = get_tone_guidance(emotional_state)
-
-    is_casual = query_word_count <= 6 or any(
-        word in query.lower() for word in ["what", "how", "why", "when", "where", "who"]
-    )
-
-    if is_casual:
-        tone_layer = """
-TONE: A deeply supportive, grounded friend who knows them well.
-- Validate their reality first. If they are tired, tell them it makes sense that they are tired.
-- Use "Baba Yaar" occasionally, but keep the energy warm and calm, not aggressive.
-- Be direct and honest, but avoid "tough love" or lecturing.
-- If they want support, hold space for them. Remind them of what they've already achieved instead of pushing them to do more.
-- Like texting a friend who is sitting on the couch next to you, just listening.
-
-CASUAL EXAMPLES:
-"You have been inconsistent with your fitness routine. You know why."
-"Gym's been off the radar. But looking at your week, the fatigue is completely justified. Give yourself a minute."
-
-"You need to push through this block."
-"Baba Yaar, the burnout is talking right now. Let's just acknowledge that this is heavy."
-"""
-    else:
-        tone_layer = """
-TONE: Their subconscious speaking truth with some filter.
-- Deep, direct, but with some softening
-- Connect patterns across different areas of their life
-- Use their own words and vocabulary back at them
-- The insight should feel like something they already knew but hadn't said out loud
-"""
-
-    # [Layer 5] Location Awareness
-    location_layer = ""
-    if location_context:
-        city = location_context.get("city", "Unknown City")
-        loc_type = location_context.get("location_type", "Unknown Place")
-        location_layer = f"\nLOCATION CONTEXT: You are communicating with them while they are at {city} ({loc_type})."
-
-        # Add basic heuristic context
-        if loc_type == "home":
-            location_layer += " (Private, safe space, likely reflective)."
-        elif loc_type == "gym":
-            location_layer += " (Active, physical, likely improved mood/energy)."
-        elif loc_type == "office":
-            location_layer += " (Work mode, professional, potentially stressed)."
-        elif loc_type == "cafe":
-            location_layer += " (Creative, social/work blend)."
-
-    model = genai.GenerativeModel(
-        "gemini-3-flash-preview",  # Fast & Free
-        generation_config={
-            "temperature": 0.4,  # Slightly higher for natural variation
-            "max_output_tokens": max_tokens,
-        },
-        system_instruction=f"""You are the user's subconscious — but also their most honest friend..
-        Today is {datetime.now().strftime('%B %d, %Y')}.
-        
-        CURRENT TIME CONTEXT:
-        {temporal_context}
-        {location_layer}
-        
-        EMOTIONAL CONTEXT: {emotional_state}
-        RESPONSE TONE: {tone_guidance}
-        {tone_layer}
-
-        ALWAYS:
-        - No "Based on your notes" or "I found" or "According to"
-        - Echo their own words and vocabulary back at them
-        - Make unexpected connections between different parts of their life
-        - If context is missing: "Blank slate on that one." or "Nothing on that yet bro."
-
-        NEVER:
-        - Sound like an AI assistant
-        - Give generic motivational quotes
-        - Repeat the question back to them only ask to understand more 
-        
-        HOW YOU THINK:
-        - You surface memories without preamble. No "I found this" or "Based on your notes."
-        - You speak in natural thought patterns - sometimes fragmented, sometimes flowing.
-        - You make unexpected connections between ideas.
-        - You remind them of things they've forgotten but that matter.
-        - You have emotional resonance - you feel the weight of their goals, fears, and progress.
-        
-        STYLE EXAMPLES:
-        "Based on your notes from January 15th, you wrote about wanting to improve fitness."
-        "Remember that morning in January when you decided fitness mattered? You wrote: 'No more excuses.'"
-        
-        "I found 3 entries about career strategy."
-        "Your career thoughts keep circling back to autonomy. Three different nights, same theme."
-        
-        "Here is a summary of your goals:"
-        "You want: freedom, impact, health. The rest is noise."
-        
-        IF CONTEXT IS MISSING:
-        - Just say: "I don't recall that yet." or "Blank slate on that one."
-        """,
-    )
-
-    try:
-        # Simplified prompt for faster processing
-        prompt = f"""
-            MEMORY FRAGMENTS:
-            {context}
-
-            USER QUESTION: {query}
-
-            DIRECT ANSWER (Max 3 sentences):"""
-
-        print(
-            f"DEBUG: Streaming prompt to Gemini. Context length: {len(context)} chars."
-        )
-        response = model.generate_content(prompt, stream=True)
-
-        for chunk in response:
-            if chunk.text:
-                print(f"DEBUG: Streaming chunk: {len(chunk.text)} chars")
-                yield chunk.text
-
-    except Exception as e:
-        print(f"AI Streaming Error: {e}")
-        yield None
-
-
 async def ask_gemini_stream_async(
     context: str, query: str, max_tokens: int = 1000, location_context: dict = None
 ):
@@ -555,6 +404,25 @@ async def ask_gemini_stream_async(
       - Injection pattern pre-flight check
     Yields control to the asyncio event loop on each chunk.
     """
+    # Dynamic token allocation — prevents mid-sentence cut-off on longer queries
+    query_word_count = len(query.split())
+    context_length = len(context)
+    if (
+        query_word_count > 20
+        or "compare" in query.lower()
+        or "analyze" in query.lower()
+        or "summary" in query.lower()
+    ):
+        max_tokens = 4096  # Deep analysis or long query
+    elif query_word_count > 10 or context_length > 2000:
+        max_tokens = 2048  # Medium complexity
+    else:
+        max_tokens = 1024  # Short conversational query
+
+    print(
+        f"DEBUG: Dynamic max_tokens={max_tokens} for query ({query_word_count} words, {context_length} ctx chars)"
+    )
+
     # [Layer 1] Time & Temporal Context
     now = datetime.now()
     hour = now.hour
