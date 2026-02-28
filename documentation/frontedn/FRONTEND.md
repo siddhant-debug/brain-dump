@@ -1,3 +1,4 @@
+--
 # Brain Dump Frontend Documentation
 
 ## 1. Architecture Overview
