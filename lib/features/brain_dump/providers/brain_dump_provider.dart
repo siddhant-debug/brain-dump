@@ -128,6 +128,18 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
       error: null,
     );
 
+    // 2. Add "Thinking..." placeholder IMMEDIATELY
+    final aiMsgId = _uuid.v4();
+    final placeholderMsg = ChatMessage(
+      id: aiMsgId,
+      content: "Thinking...",
+      sender: MessageSender.ai,
+      timestamp: DateTime.now(),
+      status: MessageStatus.thinking,
+    );
+
+    state = state.copyWith(messages: [...state.messages, placeholderMsg]);
+
     // [CONTEXT] Fetch Location (Graceful degradation)
     Map<String, dynamic>? locationContext;
     try {
@@ -141,49 +153,46 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
       debugPrint("[DEBUG] Location fetch skipped (Timeout/Error): $e");
     }
 
-    String? aiMessageId;
-
     try {
-      aiMessageId = await _handleQuery(trimmed, locationContext);
+      await _handleQuery(trimmed, locationContext, aiMsgId);
     } catch (e) {
       // Update ONLY the specific message by ID
-      if (aiMessageId != null) {
-        state = state.copyWith(
-          messages: state.messages.map((msg) {
-            if (msg.id == aiMessageId) {
-              return ChatMessage(
-                id: msg.id,
-                content: "Error: ${_formatError(e)}",
-                sender: msg.sender,
-                timestamp: DateTime.now(),
-                status: MessageStatus.error,
-              );
-            }
-            return msg;
-          }).toList(),
-          error: e.toString(),
-          isProcessing: false,
-        );
-      }
+      state = state.copyWith(
+        messages: state.messages.map((msg) {
+          if (msg.id == aiMsgId) {
+            return ChatMessage(
+              id: msg.id,
+              content: "Error: ${_formatError(e)}",
+              sender: msg.sender,
+              timestamp: DateTime.now(),
+              status: MessageStatus.error,
+            );
+          }
+          return msg;
+        }).toList(),
+      );
+      state = state.copyWith(error: e.toString(), isProcessing: false);
     }
   }
 
-  Future<String> _handleQuery(
+  Future<void> _handleQuery(
     String text,
     Map<String, dynamic>? location,
+    String aiMsgId,
   ) async {
-    // 2. Add "Thinking..." placeholder
-    final aiMsgId = _uuid.v4();
-    final placeholderMsg = ChatMessage(
-      id: aiMsgId,
-      content: "Thinking...",
-      sender: MessageSender.ai,
-      timestamp: DateTime.now(),
-      status: MessageStatus.thinking,
-      locationContext: location, // Attach location to AI message
-    );
-
-    state = state.copyWith(messages: [...state.messages, placeholderMsg]);
+    // 2.5 Update placeholder with location if available
+    if (location != null) {
+      state = state.copyWith(
+        messages: state.messages.map((msg) {
+          if (msg.id == aiMsgId) {
+            return msg.copyWith(
+              locationContext: location,
+            ); // Need to add copyWith to ChatMessage or just recreate
+          }
+          return msg;
+        }).toList(),
+      );
+    }
 
     // 3. Stream AI response
     String fullAnswer = "";
@@ -219,7 +228,8 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
                 content: fullAnswer,
                 sender: MessageSender.ai,
                 timestamp: DateTime.now(),
-                status: isFirstChunk ? MessageStatus.sent : msg.status,
+                status: MessageStatus
+                    .thinking, // Keep thinking status until fully done
                 sources: sources.isNotEmpty ? sources : msg.sources,
                 locationContext: location, // Ensure location persists
               );
@@ -269,8 +279,6 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
         isProcessing: false,
       );
     }
-
-    return aiMsgId;
   }
 
   /// Save note silently without adding any messages to chat

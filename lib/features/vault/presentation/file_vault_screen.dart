@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import '../services/file_service.dart';
 import '../../../core/widgets/persistent_header.dart';
 import '../../auth/controllers/auth_controller.dart';
+import '../widgets/secure_pdf_viewer.dart';
 
 /*
 1 : FileVaultScreen is now exclusively for file storage (The Vault).
@@ -68,6 +69,18 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
     final fileId = file['id'];
     final filename = file['filename'];
     final type = file['file_type'];
+
+    if (filename.toString().endsWith('.pdf')) {
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) =>
+                SecurePdfViewer(fileId: fileId, filename: filename),
+          ),
+        );
+      }
+      return;
+    }
 
     try {
       final content = await ref
@@ -364,14 +377,6 @@ class FileViewer extends StatelessWidget {
         styleSheet: MarkdownStyleSheet.fromTheme(
           Theme.of(context),
         ).copyWith(p: const TextStyle(color: Colors.white70)),
-      );
-    } else if (filename.endsWith('.pdf')) {
-      // Placeholder for PDF viewer - In real scenario use syncfusion_flutter_pdfviewer or similar
-      return const Center(
-        child: Text(
-          'PDF Viewing requires device implementation',
-          style: TextStyle(color: Colors.white),
-        ),
       );
     } else {
       return SingleChildScrollView(

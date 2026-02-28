@@ -83,7 +83,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     if (_scrollController.hasClients) {
       Future.delayed(const Duration(milliseconds: 100), () {
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+          0.0, // Because the list is reversed, 0.0 is the bottom
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
@@ -592,10 +592,39 @@ class _MinimalMessageRow extends StatelessWidget {
                   ? CrossAxisAlignment.end
                   : CrossAxisAlignment.start,
               children: [
-                ((msg.content.isEmpty || msg.content == 'Thinking...') &&
-                        (msg.status == MessageStatus.thinking ||
-                            msg.status == MessageStatus.sending))
-                    ? const ThinkingIndicator()
+                // Show thinking indicator if we are in thinking or sending status
+                (msg.status == MessageStatus.thinking ||
+                        msg.status == MessageStatus.sending)
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (msg.content.isNotEmpty &&
+                              msg.content != 'Thinking...') ...[
+                            Expanded(
+                              child: Text.rich(
+                                TextSpan(
+                                  children: [TextSpan(text: msg.content)],
+                                ),
+                                textAlign: isUser
+                                    ? TextAlign.right
+                                    : TextAlign.left,
+                                style: TextStyle(
+                                  color: isUser
+                                      ? Colors.white
+                                      : const Color(0xFFE0E0E0),
+                                  fontSize: 16,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          const Padding(
+                            padding: EdgeInsets.only(top: 2.0),
+                            child: ThinkingIndicator(),
+                          ),
+                        ],
+                      )
                     : Text.rich(
                         TextSpan(children: [TextSpan(text: msg.content)]),
                         textAlign: isUser ? TextAlign.right : TextAlign.left,
@@ -761,8 +790,12 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
       final type = widget.locationContext!['location_type'] as String?;
 
       if (city != null) {
-        locationText = " • at $city";
-        if (type != null && type != 'outdoor' && type != 'Unknown Place') {
+        String cleanCity = city.replaceAll('(specific_location)', '').trim();
+        locationText = " • at $cleanCity";
+        if (type != null &&
+            type != 'outdoor' &&
+            type != 'Unknown Place' &&
+            type != 'specific_location') {
           locationText += " ($type)";
         }
       }
