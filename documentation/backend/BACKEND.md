@@ -14,16 +14,16 @@ The Brain Dump backend is a high-performance API built with **FastAPI**, designe
 ### Folder Structure
 ```text
 backend/
-├── main.py          # Application entry point & router registration
-├── database.py      # SQLAlchemy engine and session configuration
-├── models.py        # SQLAlchemy database models
-├── schemas.py       # Pydantic schemas for request/response validation
-├── auth.py          # Authentication logic, JWT issuance, and signup/login
-├── files.py         # File upload, retrieval, and "The Vault" logic
-├── notes.py         # "Quick Save" notes CRUD operations
-├── rag_engine.py    # RAG system with cross-encoder re-ranking (NEW)
-├── rag_router.py    # RAG chat endpoints with streaming support (NEW)
-└── requirements.txt # Python dependencies including sentence-transformers
+├── app/
+│   ├── api/
+│   │   └── routers/     # API Endpoints (auth, files, notes, rag, analytics)
+│   ├── core/            # Configuration, limitation, and database logic
+│   ├── models/          # SQLAlchemy Database Models
+│   ├── schemas/         # Pydantic Schemas for Validation
+│   ├── services/        # Business logic (e.g. rag_engine.py)
+│   └── main.py          # Application entry point & router registration
+├── scripts/             # Admin, migration, and re-indexing scripts
+└── postgres_data/       # Persistent database volumes
 ```
 
 ---
@@ -75,7 +75,7 @@ Handles credential verification and JWT generation.
 ```mermaid
 sequenceDiagram
     participant User as Flutter Client
-    participant API as FastAPI (auth.py)
+    participant API as FastAPI (app/api/routers/auth.py)
     participant Sec as Pydantic (schemas.py)
     participant DB as PostgreSQL (DB)
 
@@ -99,7 +99,7 @@ Persists user thoughts directly to the database.
 ```mermaid
 sequenceDiagram
     participant App as Flutter App
-    participant API as FastAPI (notes.py)
+    participant API as FastAPI (app/api/routers/notes.py)
     participant Auth as Auth Middleware
     participant DB as PostgreSQL (DB)
 
@@ -118,7 +118,7 @@ Handles multi-modal storage for markdown, text, and binary files.
 ```mermaid
 sequenceDiagram
     participant User as Flutter Client
-    participant API as FastAPI (files.py)
+    participant API as FastAPI (app/api/routers/files.py)
     participant Disk as Local Storage
     participant DB as PostgreSQL (DB)
 
@@ -206,7 +206,7 @@ CROSS_ENCODER_MODEL = 'cross-encoder/ms-marco-MiniLM-L-6-v2'
 ```mermaid
 sequenceDiagram
     participant User as Flutter Client
-    participant API as FastAPI (rag_router.py)
+    participant API as FastAPI (app/api/routers/rag.py)
     participant Engine as RAG Engine
     participant VDB as ChromaDB
     participant CE as Cross-Encoder
@@ -238,7 +238,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant User as Flutter Client
-    participant API as FastAPI (rag_router.py)
+    participant API as FastAPI (app/api/routers/rag.py)
     participant BG as Background Task
     participant Engine as RAG Engine
     participant VDB as ChromaDB
@@ -277,6 +277,10 @@ sequenceDiagram
 | **`POST`** | **`/chat/chat`** | **Query RAG with streaming** | **`ChatRequest`** |
 | **`GET`** | **`/chat/files`** | **List RAG-indexed files** | **`None` (Bearer)** |
 | **`DELETE`** | **`/chat/files/{id}`** | **Delete file from RAG** | **`None` (Bearer)** |
+| `GET` | `/analytics/consistency` | Get streak & heatmap | `None` (Bearer) |
+| `GET` | `/analytics/themes` | Topic frequency/pct last 30 days | `None` (Bearer) |
+| `GET` | `/analytics/loops` | Recurring thought clusters | `None` (Bearer) |
+| `GET` | `/analytics/pipeline` | Thought pipeline graph | `None` (Bearer) |
 
 ### RAG Endpoints Details
 
@@ -367,5 +371,268 @@ CROSS_ENCODER_MODEL = 'cross-encoder/ms-marco-MiniLM-L-12-v2'
 ## 7. Documentation References
 
 For detailed RAG system documentation, see:
-- **[RAG_OPTIMIZATION_SUMMARY.md](./RAG_OPTIMIZATION_SUMMARY.md)** - Quick reference
-- **[RAG_OPTIMIZATION_CONCEPTS.md](./RAG_OPTIMIZATION_CONCEPTS.md)** - Technical deep dive
+- **[RAG_OPTIMIZATION_SUMMARY.md](./rag/RAG_OPTIMIZATION_SUMMARY.md)** - Quick reference
+- **[RAG_OPTIMIZATION_CONCEPTS.md](./rag/RAG_OPTIMIZATION_CONCEPTS.md)** - Technical deep dive
+
+
+---
+
+## 8. Feature Integrations
+
+### Location & Music Context API
+
+### Phase 1: Data Collection (Backend)
+
+#### A. Spotify Integration
+```python
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
+
+# Setup
+SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
+SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+SPOTIFY_REDIRECT_URI = "http://localhost:8000/callback"
+
+sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+    client_id=SPOTIFY_CLIENT_ID,
+    client_secret=SPOTIFY_CLIENT_SECRET,
+    redirect_uri=SPOTIFY_REDIRECT_URI,
+    scope="user-read-recently-played user-read-currently-playing"
+))
+
+def get_recent_music_context(user_id: int, limit=10):
+    """Fetch recently played tracks and extract emotional/contextual signals"""
+    
+    try:
+        # Get recently played tracks
+        results = sp.current_user_recently_played(limit=limit)
+        
+        tracks_data = []
+        for item in results['items']:
+            track = item['track']
+            played_at = item['played_at']  # Timestamp
+            
+            tracks_data.append({
+                'name': track['name'],
+                'artist': track['artists'][0]['name'],
+                'played_at': played_at,
+                'energy': track.get('energy', 0.5),  # Spotify audio features
+                'valence': track.get('valence', 0.5),  # Positivity measure
+                'tempo': track.get('tempo', 120)
+            })
+        
+        return tracks_data
+    
+    except Exception as e:
+        print(f"Spotify Error: {e}")
+        return []
+
+def analyze_music_mood(tracks_data):
+    """Analyze emotional state from music choices"""
+    
+    if not tracks_data:
+        return None
+    
+    # Calculate average valence (happiness) and energy
+    avg_valence = sum(t.get('valence', 0.5) for t in tracks_data) / len(tracks_data)
+    avg_energy = sum(t.get('energy', 0.5) for t in tracks_data) / len(tracks_data)
+    
+    # Classify mood
+    if avg_valence > 0.6 and avg_energy > 0.6:
+        mood = "energized_positive"
+        description = "High energy, upbeat vibes"
+    elif avg_valence > 0.6 and avg_energy < 0.4:
+        mood = "calm_content"
+        description = "Peaceful, content energy"
+    elif avg_valence < 0.4 and avg_energy > 0.6:
+        mood = "intense_processing"
+        description = "Intense, possibly working through something"
+    else:
+        mood = "reflective_melancholic"
+        description = "Reflective, introspective mood"
+    
+    recent_artists = [t['artist'] for t in tracks_data[:3]]
+    
+    return {
+        'mood': mood,
+        'description': description,
+        'recent_tracks': [f"{t['name']} - {t['artist']}" for t in tracks_data[:3]],
+        'recent_artists': recent_artists,
+        'avg_energy': round(avg_energy, 2),
+        'avg_valence': round(avg_valence, 2)
+    }
+```
+
+#### B. Apple Music Integration (Alternative)
+```python
+import requests
+
+# Apple Music uses MusicKit JS on frontend + Apple Music API on backend
+# Requires Apple Developer account
+
+def get_apple_music_recent(user_token: str):
+    """Fetch from Apple Music API"""
+    
+    headers = {
+        'Authorization': f'Bearer {APPLE_MUSIC_DEVELOPER_TOKEN}',
+        'Music-User-Token': user_token
+    }
+    
+    url = "https://api.music.apple.com/v1/me/recent/played"
+    
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+        # Parse similar to Spotify
+        return data
+    
+    return None
+```
+
+### Phase 2: Contextual Retrieval
+
+```python
+def retrieve_context_enhanced(query: str, user_id: int, 
+                               current_music: dict = None,
+                               current_location: dict = None):
+    """Enhanced retrieval with music/location awareness"""
+    
+    # Standard retrieval
+    context_text, sources = retrieve_context(query, user_id)
+    
+    # Extract metadata from retrieved chunks
+    collection = get_db_collection()
+    results = collection.query(
+        query_texts=[query],
+        n_results=5,
+        where={"user_id": user_id},
+        include=["metadatas", "documents"]
+    )
+    
+    contextual_insights = []
+    
+    if results['metadatas'] and results['metadatas'][0]:
+        for metadata in results['metadatas'][0]:
+            
+            # Music pattern detection
+            if current_music and metadata.get('music_mood'):
+                if current_music['mood'] == metadata['music_mood']:
+                    contextual_insights.append(
+                        f"Same music vibe as when you wrote this: {metadata.get('music_mood')}"
+                    )
+            
+            # Location pattern detection
+            if current_location and metadata.get('location_type'):
+                if current_location['location_type'] == metadata['location_type']:
+                    contextual_insights.append(
+                        f"You're at a {current_location['location_type']} again - like when you wrote this"
+                    )
+    
+    # Add contextual layer to prompt
+    if contextual_insights:
+        context_text += "\n\n[CONTEXTUAL PATTERNS]:\n" + "\n".join(contextual_insights)
+    
+    return context_text, sources
+```
+
+---
+
+### Phase 3: Subconscious Integration
+
+```python
+def ask_gemini_stream_full_context(context: str, query: str, user_id: int = 1,
+                                     music_context: dict = None,
+                                     location_context: dict = None):
+    """
+    COMPLETE SUBCONSCIOUS with Music + Location awareness
+    """
+    
+    # Build sensory context
+    sensory_context = []
+    
+    # Music awareness
+    if music_context:
+        mood_desc = music_context.get('description', '')
+        recent = ', '.join(music_context.get('recent_tracks', [])[:2])
+        sensory_context.append(f"MUSIC: {mood_desc}. Recently: {recent}")
+    
+    # Location awareness
+    if location_context:
+        loc_type = location_context.get('location_type', 'unknown')
+        city = location_context.get('city', '')
+        
+        # Time-aware location context
+        hour = datetime.now().hour
+        if loc_type == "home" and (hour >= 22 or hour <= 5):
+            sensory_context.append(f"LOCATION: Home, late night - deep thought territory")
+        elif loc_type == "cafe":
+            sensory_context.append(f"LOCATION: Coffee shop - planning mode")
+        elif loc_type == "gym":
+            sensory_context.append(f"LOCATION: Gym area - motivation context")
+        else:
+            sensory_context.append(f"LOCATION: {city}, {loc_type}")
+    
+    sensory_layer = "\n".join(sensory_context) if sensory_context else ""
+    
+    # Enhanced system instruction
+    system_instruction = f"""You are Siddhant's subconscious mind.
+
+TODAY: {datetime.now().strftime('%B %d, %Y, %I:%M %p')}
+
+CURRENT SENSORY STATE:
+{sensory_layer}
+
+HOW TO USE THIS:
+- If music mood matches past note's music mood → mention it: "Same energy as when you wrote X"
+- If location triggers patterns → surface them: "Every time you're here, you think about Y"
+- If music + location create unique context → name it: "Coffee shop + chill beats = strategy time for you"
+
+SPEAK AS SUBCONSCIOUS:
+• No "I found" or "Based on your notes"
+• Make unexpected connections between music, place, memory
+• Echo his patterns back to him
+• Be intimate - you share his sensory experience
+
+EXAMPLES:
+"You're listening to lo-fi again. Last time this playlist was on, you solved that problem you're asking about now."
+
+"This coffee shop + morning combo. Three times here, three breakthrough notes. What's brewing?"
+
+"Frank Ocean at midnight. You know what this means - you're processing something big."
+
+MEMORY FRAGMENTS:
+{context}
+
+USER QUESTION: {query}
+
+[Respond as his subconscious - aware of music, place, and memory]
+"""
+
+    # ... rest of streaming implementation ...
+```
+
+---
+
+
+
+### Analytics Engine API
+The analytics system provides four primary endpoints located in `app/api/routers/analytics.py`. It uses a mix of standard relational database queries and vector database approximate nearest neighbors (ANN) to detect patterns.
+
+1. **`GET /analytics/consistency`**: Returns daily note-taking streaks and a 30-day heatmap.
+2. **`GET /analytics/themes`**: Keyword-based theme frequency over the last N days (Work, Money, Relationships, Health, etc.).
+3. **`GET /analytics/loops`**: Uses Vector L2 distance clustering (Union-Find) to detect recurring similar thoughts and generates severity insights.
+4. **`GET /analytics/pipeline`**: Maps notes into categorised thought lanes (Work, Health, Personal) for graph visualization.
+
+---
+
+## 9. Subconscious Feel Engine
+
+The "Subconscious Feel" makes the RAG queries feel like an internal monologue rather than an AI assistant. This is implemented in `app/services/rag_engine.py` via special context injection before prompting the LLM.
+
+### Implemented Layers
+- **Layer 1: Language & Tone Design**: The system prompt forces a fragmented, conversational internal monologue without AI pleasantries.
+- **Layer 2: Temporal Awareness**: Injects awareness of the time of day, day of the week, and upcoming events (`get_temporal_context`).
+- **Layer 3: Emotional Intelligence**: Uses `TextBlob` to analyze the sentiment polarity of the retrieved context and adjusts the AI's guidance tone (e.g. gentle vs. energized) (`analyze_emotional_tone`).
+
+*(Note: Extended sensory associations like Music patterns or "PathEngine" forward-guidance are planned for future iterations rather than current deployment.)*

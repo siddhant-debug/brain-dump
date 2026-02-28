@@ -2,87 +2,157 @@
 
 > **"Your thoughts don't happen in a vacuum. Neither should your notes."**
 
-![Status](https://img.shields.io/badge/Status-In%20Development-orange?style=for-the-badge)
-![Stack](https://img.shields.io/badge/Stack-Flutter%20%7C%20FastAPI%20%7C%20PostgreSQL-blue?style=for-the-badge)
-![AI](https://img.shields.io/badge/AI-OpenAI%20%2B%20Llama3-purple?style=for-the-badge)
-
-<br>
+---
 
 ## 💡 The Vision
 
-Most note-taking apps are just **digital graveyards**. You dump ideas in, and they disappear forever.
+Most note-taking apps are **digital graveyards**. You dump ideas in, and they disappear forever — stripped of the context that made them meaningful in the first place.
 
-**BrainDump** is different. It is an **Agentic Knowledge Graph** that doesn't just store your text; it captures your **State of Mind**.
-
-* **🎧 Passively Records Context:** What were you listening to? (Spotify) Where were you? (Location) What was the vibe? (Energy Level).
-* **🧠 Active Recall:** An AI Agent ("The Subconscious") that connects your past notes to your current problems.
-* **🔮 Clarity Engine:** It detects when you are scattered or anxious and forces you to prioritize.
+**BrainDump** is an **Agentic Knowledge Graph** that doesn't just store your text; it captures your **full State of Mind** at the moment of creation. Where you were. What your body was doing. What you were listening to. What time it was. Then it uses all of that to surface the right thought at the right moment.
 
 ---
 
-## 📱 The Interface
-*Current Build: Neural Onboarding & Adaptive Dashboard*
+## ✨ Core Capabilities
 
-| **The Hook** | **The Dump** | **The Calibration** | **The Focus HUD** |
-|:---:|:---:|:---:|:---:|
-| <img src="https://github.com/user-attachments/assets/504d92fb-4ca9-4fc0-9cc6-7050b737d18a" width="200" /> | <img src="https://github.com/user-attachments/assets/7260203e-a893-4768-9aa5-3bade8530867" width="200" /> | <img src="https://github.com/user-attachments/assets/5696988f-6552-4cdd-b015-f3cc82b9db90" width="200" /> | <img src="https://github.com/user-attachments/assets/6234b5ae-9104-4ccf-832d-de546f3be7ce" width="200" /> |
-| *Initial System Link* | *Raw "RAM" Clear* | *Context Awareness* | *Energy-Based UI* |
-
-<br>
-
-## 🔌 The Infrastructure
-*Robust FastAPI Backend with Auto-Generated Documentation (Swagger UI)*
-
-**Available API Endpoints**
-
-<img width="1375" height="771" alt="Screenshot 2026-02-14 at 2 45 33 PM" src="https://github.com/user-attachments/assets/d0800b59-9d4a-4c62-8467-830248a47eb6" />
+| Capability | Description |
+|---|---|
+| 📍 **Location Context** | GPS metadata anchors every note to a place. Retrieve by location, trigger memories geographically. |
+| ⏱️ **Temporal Awareness** | Timestamps aren't just metadata — they're a retrieval axis. Find what you were thinking at 2am vs. during your morning walk. |
+| 🎵 **Music Context** *(In Progress)* | Logs the Apple Music track playing at capture time. Replay the exact sonic environment of a thought. |
+| 🫀 **Body Context** *(In Progress)* | HealthKit data (HRV, sleep, activity) correlates physical state with note sentiment and creative output. |
+| 🧠 **Active Recall** | A custom RAG engine connects past notes to current problems using hybrid semantic + keyword search across your docs and thoughts. |
+| 🔮 **Clarity Engine** | Pattern recognition detects when your thinking is scattered or looping, and surfaces structural focus suggestions. |
 
 ---
 
-## 🏗️ Tech Stack
+## 🏗️ Technical Architecture
 
-### **Mobile (Frontend)**
-* **Framework:** [Flutter](https://flutter.dev/) (Dart)
-* **State Management:** Riverpod (Feature-first architecture)
-* **UI/UX:** Custom "Neural" RenderObject animations, Glassmorphism, Haptic Feedback.
-* **Local Storage:** Hive / SQLite (for offline-first capability).
+### Multimodal RAG Pipeline
 
-### **Core (Backend)**
-* **API:** [FastAPI](https://fastapi.tiangolo.com/) (Python, Async)
-* **Database:** PostgreSQL + `pgvector` (Vector Embeddings for Semantic Search).
-* **AI Orchestration:** LangChain / Custom Agent logic.
-* **Models:** OpenAI GPT-4o-mini (Intelligence) + Groq Llama-3 (Speed).
-* **Task Queue:** Celery + Redis (for background embedding generation).
+BrainDump's retrieval engine ingests two classes of content and enriches both with contextual signals:
+
+**Corpus**
+- **User Thoughts** — raw brain dumps, quick captures, voice-to-text entries
+- **User Documents** — uploaded PDFs, notes, Kindle highlights *(future)*
+
+**Contextual Signals (indexed alongside every entry)**
+- `location` → GPS coordinates + resolved place name
+- `timestamp` → time-of-day, day-of-week, recency decay weighting
+- `music_context` → Apple Music track + artist at time of capture *(in progress)*
+- `health_context` → HRV, sleep score, activity ring data from HealthKit *(in progress)*
+
+**Retrieval Stack**
+
+```
+Query
+  │
+  ├─ Dense Vector Search (pgvector)     ← semantic similarity
+  ├─ Sparse Keyword Search (BM25)       ← exact terms & proper nouns
+  │
+  └─ Reciprocal Rank Fusion (RRF)       ← merge ranked lists
+        │
+        └─ Cross-Encoder Reranker       ← final contextual scoring
+              │
+              └─ LLM Response           ← grounded, low-hallucination output
+```
+
+Contextual filters (location radius, time window, music session, health state) can be applied at any stage to constrain or boost retrieval — enabling queries like:
+
+> *"What was I thinking about last Tuesday around midnight?"*
+> *"Show me ideas I had at the office when my HRV was low."*
+> *"What was I writing when I was listening to this album?"*
+
+### Asynchronous Infrastructure
+
+- **Streaming UX:** Real-time generative feedback via **Server-Sent Events (SSE)** using FastAPI's `StreamingResponse`.
+- **Background Tasks:** Embedding generation, BM25 index rebuilding, and document processing are offloaded via `FastAPI.BackgroundTasks` to ensure zero UI latency.
 
 ---
 
-## ✨ Roadmap
+## 🛠️ Tech Stack
 
-### **Phase 1: The Foundation (Current)**
-- [x] **Neural Onboarding:** "Mad Libs" style user calibration (Energy, Goals, Music).
-- [x] **Adaptive Dashboard:** Home screen that changes UI based on user energy.
-- [x] **API Infrastructure:** Secure Auth, File Upload, and Notes endpoints.
-- [ ] **Context Injection:** Attaching metadata (Time, Mood) to every note.
+### Mobile (Flutter)
 
-### **Phase 2: The Brain (Q2 2026)**
-- [ ] **Vector Search:** "Show me ideas I had when I was anxious about my startup."
-- [ ] **The Clarity Agent:** A nightly cron job that analyzes your "Brain Dump" and gives you a 1-sentence focus for the next day.
-- [ ] **Graph View:** Visualizing thoughts as organic, connecting roots.
+- **Framework:** Flutter (Dart) — iOS-first
+- **State Management:** Riverpod, feature-first architecture
+- **Native Integrations:**
+  - `CoreLocation` — GPS context at capture time
+  - `Apple HealthKit` — biometric correlation *(in progress)*
+  - `Apple Music / MusicKit` — playback context at capture time *(in progress)*
+- **Local Storage:** Hive + SQLite for offline-first capability
 
-### **Phase 3: The Senses (Q3 2026)**
-- [ ] **Spotify Integration:** "Play the song I was listening to when I wrote this code."
-- [ ] **Kindle Sync:** Pulling highlights into the graph.
+### Backend (FastAPI)
+
+- **API:** FastAPI (Python, async)
+- **Database:** PostgreSQL + `pgvector` for vector embeddings
+- **Search:** BM25 (sparse) + pgvector (dense) + RRF fusion
+- **Reranking:** Cross-Encoder model for final scoring
+- **AI:** OpenAI GPT-4o-mini + Groq Llama-3
+- **Streaming:** SSE via `StreamingResponse`
+
+---
+
+## ✅ Roadmap
+
+### Phase 1 — The Foundation
+
+- [x] **Neural Onboarding:** "Mad Libs" style calibration — Energy, Mood.
+- [x] **Location Context:** GPS metadata attached to every note at capture time.
+- [x] **Adaptive Dashboard:** Home screen UI adapts to current energy level.
+- [x] **Hybrid RAG Engine:** `pgvector` + BM25 + RRF + Cross-Encoder reranker.
+- [x] **Streaming API:** Real-time SSE responses, async background processing.
+- [x] **Documentation:** Full technical and integration docs.
+
+### Phase 2 — The Senses *(In Progress)*
+
+- [x] **Apple Music Integration:** Log the track playing at capture time. Retrieve by music session.
+- [x] **HealthKit Sync:** Correlate HRV, sleep, and activity data with note sentiment and output quality.
+- [ ] **Temporal Query Engine:** Retrieve notes by time-of-day, day-of-week, or relative recency.
+- [ ] **Vector Analytics:** Filter by location + mood state. *"Ideas I had at the office when my HRV was low."*
+
+### Phase 3 — The Brain
+
+- [ ] **Document Ingestion:** Upload PDFs and long-form docs into the knowledge graph alongside raw thoughts.
+- [ ] **Graph View:** Visualize thoughts as an organic connected graph using Union-Find clustering.
+- [ ] **Clarity Agent:** Nightly analysis to detect recurring conceptual loops and unresolved threads.
+- [ ] **Kindle Sync:** Pull highlights directly into the knowledge graph.
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-* Flutter SDK (3.x+)
-* Docker (for the Backend + DB)
-* Python 3.10+
+
+- Flutter SDK 3.x+
+- Docker (Backend + DB)
+- Python 3.10+
 
 ### 1. Clone the Repo
+
 ```bash
-git clone [https://github.com/YOUR_USERNAME/brain-dump.git](https://github.com/YOUR_USERNAME/brain-dump.git)
+git clone https://github.com/YOUR_USERNAME/brain-dump.git
 cd brain-dump
+```
+
+### 2. Start the Backend
+
+```bash
+cd backend
+docker compose up --build
+```
+
+### 3. Run the App
+
+```bash
+cd mobile
+flutter pub get
+flutter run
+```
+
+---
+
+## 🗺️ The Big Picture
+
+BrainDump is built on a single conviction: **context is memory**. The goal isn't just smarter search — it's reconstructing the full mental and physical state you were in when you had a thought, so you can meet that version of yourself again when it matters.
+
+Every signal — where you were, when it was, what your body was doing, what was playing — is a thread. The RAG engine is how you pull them.

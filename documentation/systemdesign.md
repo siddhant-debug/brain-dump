@@ -1,32 +1,22 @@
-
 ---
-**Tags:** #flutter #riverpod #architecture #state-management #backend #fastapi #braindump #RAG #SSE #minimialism
-**Related:** [[RAG_RERANKING_IMPLEMENTATION.md]][[FRONTEND.md]][[Brain Dump Backend Documentation]]
-**Updated:** 2026-02-16
+**Tags:** #flutter #riverpod #architecture #backend #fastapi #braindump #RAG #SSE #minimialism
+**Updated:** 2026-03-01
 ---
 
-#  🧠 Project: Brain Dump (Context-Aware Knowledge Graph)
+# 🧠 Project: Brain Dump (Context-Aware Knowledge Graph)
 
 ## 1. Abstract
-"Brain Dump" is a minimalist, mobile-first application designed to solve the "Fragmented Attention" problem. The system utilizes a **Client-Server Architecture** with a high-performance **FastAPI** backend and a **Flutter** frontend. It features a sophisticated **Two-Stage RAG Pipeline** (Retrival-Augmented Generation) with **Contextual Re-ranking** and **Streaming Responses** to provide near-instant, highly accurate cognitive assistance.
+"Brain Dump" is a minimalist, mobile-first application designed to solve the "Fragmented Attention" problem. The system utilizes a **Client-Server Architecture** with a modular **FastAPI** backend and a feature-first **Flutter** frontend. It features a sophisticated **Two-Stage RAG Pipeline** (Retrieval-Augmented Generation) with **Contextual Re-ranking** and **Streaming Responses** to provide near-instant, highly accurate cognitive assistance.
 
 ---
 
-## 2. Problem Statement
-* **The Issue:** Human thoughts are non-linear and context-dependent. Traditional tools (Notion, Notes) force linear structure, causing friction during the "capture" phase.
-* **The Consequence:** "Blank Page Paralysis" and lost ideas because the context is lost.
-* **The Solution:** A "Black Canvas" interface that reduces capture friction to zero, supports streaming AI dialogue, and utilizes advanced RAG to surface relevant context precisely when needed.
-
----
-
-## 3. High-Level System Architecture
+## 2. High-Level System Architecture
 The system follows a modern **Three-Tier Architecture** upgraded for AI workloads:
-1.  **Presentation Layer (Client):** Minimalist Flutter App using a "Black Canvas" design.
-2.  **Application Layer (Server):** FastAPI handling streaming (SSE) and background ingestion.
-3.  **Data Layer (Persistence):** PostgreSQL for structured data & Vector Store for semantic search.
+1.  **Presentation Layer (Client):** Minimalist Flutter App handling caching, markdown rendering, and local streaming.
+2.  **Application Layer (Server):** Modular FastAPI backend handling streaming (SSE), asynchronous RAG ingestion, and analytics orchestration.
+3.  **Data Layer (Persistence):** PostgreSQL (metadata, histories) & ChromaDB Vector Store (`BAAI/bge-base-en-v1.5` embeddings) for semantic search.
 
 ### 🏛️ Master System Diagram
-*Visualizing the flow from Raw Thought to Ranked Context.*
 
 ```mermaid
 graph TD
@@ -39,124 +29,115 @@ graph TD
     %% --- TIER 1: CLIENT (FLUTTER) ---
     subgraph Client_Layer ["📱 Presentation Layer (Flutter)"]
         direction TB
-        
-        subgraph UI_Components
-            UI_Input["Black Canvas <br> (Minimalist Input)"]:::client
-            UI_Vault["Integrated Vault <br> (File Manager)"]:::client
-            UI_Stream["Streaming Chat <br> (Real-time AI)"]:::client
-            UI_Dock["Pill Dock <br> (Navigation)"]:::client
-        end
-        
+        UI_Input["Black Canvas <br> (Minimalist Input)"]:::client
+        UI_Vault["Integrated Vault <br> (File Manager)"]:::client
+        UI_Stream["Streaming Chat <br> (Real-time AI)"]:::client
         State_Mgmt["Riverpod State <br> (Streaming Notifier)"]:::client
-        
-        UI_Input --> State_Mgmt
-        UI_Vault --> State_Mgmt
-        UI_Stream --> State_Mgmt
-        UI_Dock -.-> UI_Input
-        UI_Dock -.-> UI_Vault
+        UI_Input & UI_Vault & UI_Stream --> State_Mgmt
     end
 
     %% --- TIER 2: SERVER (FASTAPI) ---
     subgraph Server_Layer ["⚡ Application Layer (FastAPI)"]
         direction TB
-        API_Gateway["API Gateway <br> (Streaming SSE)"]:::server
+        API_Gateway["API Routers <br> (Auth, RAG, Analytics)"]:::server
         
         subgraph Core_Services
-            Auth_Svc["Auth Service <br> (JWT)"]:::server
-            Brain_Svc["Brain Service <br> (Orchestrator)"]:::server
+            Brain_Svc["RAG Engine <br> (Orchestrator)"]:::server
             Bkg_Tasks["Background Tasks <br> (Async Ingestion)"]:::server
         end
         
         subgraph AI_Services ["🧠 Intelligence Layer"]
-            Retriever["Bi-Encoder Retriever <br> (Fast Top-10)"]:::server
-            Reranker["Cross-Encoder Reranker <br> (Accurate Top-3)"]:::server
-            LLM_Eng["Gemini Engine <br> (Streaming Gen)"]:::server
+            Retriever["Vector + BM25 <br> (Hybrid Search)"]:::server
+            Reranker["Cross-Encoder <br> (Accurate Top-5)"]:::server
+            LLM_Eng["Gemini Service <br> (Streaming Gen)"]:::server
         end
         
-        API_Gateway --> Auth_Svc
         API_Gateway --> Brain_Svc
-        Brain_Svc --> Retriever
-        Retriever --> Reranker
-        Reranker --> LLM_Eng
+        Brain_Svc --> Retriever --> Reranker --> LLM_Eng
         Brain_Svc --> Bkg_Tasks
     end
 
     %% --- TIER 3: DATA (PERSISTENCE) ---
     subgraph Data_Layer ["💾 Persistence Layer"]
         direction TB
-        DB_Meta[("PostgreSQL <br> (Metadata)")]:::data
-        DB_Vector[("Chroma/pgvector <br> (Embeddings)")]:::data
-        DB_Blob["Local Storage <br> (/uploads)"]:::data
+        DB_Meta[("PostgreSQL <br> (Metadata, Analytics)")]:::data
+        DB_Vector[("ChromaDB <br> (Embeddings)")]:::data
     end
 
     %% --- TIER 4: EXTERNAL (WORLD) ---
     subgraph External_Layer ["🌍 External APIs"]
         GMModels["Gemini API <br> (Streaming LLM)"]:::ext
-        HFModels["HuggingFace <br> (Cross-Encoder)"]:::ext
     end
 
     %% --- DATA FLOWS ---
-    State_Mgmt == "SSE / Text Stream" ==> API_Gateway
-    Brain_Svc -.->|"Async Write"| Bkg_Tasks
-    Bkg_Tasks -.-> DB_Blob
+    State_Mgmt == "SSE / REST" ==> API_Gateway
+    Bkg_Tasks -.-> DB_Vector
     Retriever -.->|"Query Vector"| DB_Vector
     LLM_Eng -.->|"Stream"| GMModels
-````
+```
 
 ---
 
-## 4. Component Breakdown
+## 3. Component Breakdown
 
-### A. The Client (Flutter)
-- **Role:** The "Black Canvas." A distraction-free surface for immediate thought capture.
-- **Key Features:**
-    - **Streaming UI:** Uses `StreamBuilder` and `StateNotifier` to render AI responses word-by-word.
-    - **Integrated Vault:** Embedded within `IndexedStack` for seamless context switching without navigation overhead.
-    - **Pill Dock:** A blurring glassmorphism UI for high-level navigation (Home, Vault, Settings).
+### A. The Client (Flutter `lib/features/`)
+- **Philosophy:** The "Black Canvas." A distraction-free surface for immediate thought capture.
+- **Architecture:** Feature-first modular design (`feature_name/screens`, `feature_name/services`, `feature_name/providers`).
+- **Core Features:**
+    - **Streaming UI:** Uses `StreamBuilder` and `StateNotifier` to render AI responses chunk-by-chunk.
+    - **Analytical Dashboard:** Synchronizes with backend `/analytics` endpoints to visualize cognitive loops and themes.
+    - **Integrated Vault:** Embedded UI handling PDFs and markdown rendering seamlessly.
 
-### B. The Server (FastAPI)
-- **Role:** The "Cognitive Orchestrator."
-- **Why FastAPI?** Native support for `StreamingResponse` and `BackgroundTasks` allows for high-concurrency file processing and low-latency AI response starts (<500ms).
-- **Two-Stage RAG Pipeline:**
-    1.  **Stage 1 (Retrieval):** Uses bi-encoders to quickly find the top 10 relevant documents.
-    2.  **Stage 2 (Re-ranking):** Uses a Cross-Encoder to precisely rank the top 3 items to provide as context to the LLM.
+### B. The Server (FastAPI `backend/app/`)
+- **Structure:** Modularized into `routers/` (controllers), `services/` (business logic), and `models/` (DB definitions).
+- **Core Advantages:** High-concurrency async processing, separated thread pools (`ThreadPoolExecutor`) for heavy AI models, preventing event-loop blocking.
+- **Gemini Singleton:** A centralized singleton service guarding system prompts, stripping prompt injection attempts, and handling SSE generator states safely.
 
-### C. The Intelligence Layer (AI Services)
-- **Bi-Encoder (`all-MiniLM-L6-v2`):** Fast vector search for initial candidates.
-- **Cross-Encoder (`ms-marco-MiniLM-L-6-v2`):** Deep relevance analysis.
-- **SSE Streamer:** Pushes JSON chunks to the client as they are generated by Gemini.
+### C. The Intelligence Pipeline (RAG)
+1. **Stage 1 (Hybrid Retrieval):** Fuses BM25 (sparse keyword match) and Dense Vector search (`bge-base-en-v1.5`) via Reciprocal Rank Fusion (RRF).
+2. **Context Layers:** Injects Temporal context, location heuristics, emotional tone, and associative memories.
+3. **Stage 2 (Re-ranking):** Precise scoring via `ms-marco-MiniLM-L-6-v2` cross-encoder.
+4. **Generation:** Streams response directly to frontend via SSE.
 
 ---
 
-## 5. Critical Data Flows
+## 4. Current File Structure Map
 
-### Flow 1: The "Streaming Query" (AI Dialogue)
+```text
+brain-dump/
+├── backend/app/
+│   ├── api/routers/        # Modular API (auth.py, rag.py, analytics.py)
+│   ├── core/               # Setup (database config, rate limiter config)
+│   ├── models/             # SQLAlchemy schemas (models.py)
+│   ├── schemas/            # Pydantic validation (schemas.py)
+│   └── services/           # Business logic (rag_engine.py, gemini_service.py)
+│
+└── frontend/lib/
+    ├── core/               # Shared constants, theme, utility widgets
+    ├── features/           # Modularized feature domains
+    │   ├── analytics/      # Dashboard and charts
+    │   ├── auth/           # Login/Registration
+    │   ├── brain_dump/     # Core streaming & note capture
+    │   ├── dock/           # Bottom navigation pill
+    │   └── vault/          # Document management
+    └── screens/            # Top-level coordinator pages
+```
+
+---
+
+## 5. API Flow: The Streaming Query
 > _Goal: Interaction Start < 500ms_
 1. **User** types a question (e.g., "What did I note about Python?").
-2. **Flutter** opens an SSE connection to `/chat`.
-3. **FastAPI** performs Two-Stage RAG (Retrieve -> Re-rank).
-4. **Gemini** generates response while **FastAPI** `yields` chunks immediately.
-5. **Flutter** updates the UI in real-time.
-
-### Flow 2: The "Background Ingestion" (File Upload)
-> _Goal: Zero UI Blocking_
-1. **User** uploads a PDF/Note.
-2. **FastAPI** saves the file and immediately returns a `202 Accepted`.
-3. **BackgroundTasks** triggers the processing: text extraction, chunking, and vector embedding.
-4. **Result:** The UI remains responsive while the "Brain" grows in the background.
+2. **Flutter (`BrainService`)** opens an SSE connection to `/chat/chat`.
+3. **FastAPI (`routers/rag.py`)** persists message and delegates to `rag_engine`.
+4. **RAG Engine** executes BM25 + Vector search, runs RRF fusion, and hydrates context.
+5. **GeminiService** wraps query in secure XML tags and requests LLM generation.
+6. **FastAPI** `yields` JSON chunks immediately back over the SSE connection.
+7. **Flutter** updates UI in real-time.
 
 ---
 
-## 6. Future Roadmap (Updated)
-
-- **Phase 1 (Complete):** Basic CRUD Capture & File Storage.
-- **Phase 2 (Current):** **Contextual Optimization**. Implementing Two-Stage RAG, Streaming Responses, and "Black Canvas" UI.
-- **Phase 3 (Next):** **Neural Visualization**. Transforming ranked vectors into an interactive knowledge graph using force-directed graphs.
-- **Phase 4 (Future):** **Multi-Modal Context**. Integrating voice and spatial data for 360-degree memory rebuilding.
-
----
-
-**References:**
-- [[RAG_RERANKING_IMPLEMENTATION.md]]
-- [[FRONTEND.md]]
-- [[BACKEND.md]]
+## 6. Official Documentation References
+- **Backend Infrastructure & API:** `documentation/backend/BACKEND.md`
+- **Frontend Architecture:** `documentation/frontedn/FRONTEND.md`
+- **Deep RAG Analytics & Systems:** `documentation/backend/rag/RAG_SYSTEM.md`

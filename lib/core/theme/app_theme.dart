@@ -11,7 +11,7 @@ abstract class AppColors {
   static const surfaceHigh = Color(0xFF1E1E1E); // Elevated Surface
 
   // ── Accent ───────────────────────────────────────────────
-  static const accent = Color(0xFF10B981);     // Neon Emerald Green
+  static const accent = Color.fromARGB(112, 1, 141, 94);     // Neon Emerald Green
   static Color get accentDim => accent.withValues(alpha: 0.20);
   static Color get accentFaint => accent.withValues(alpha: 0.12);
 
