@@ -29,7 +29,12 @@ def upgrade() -> None:
         "UPDATE brain_embeddings SET user_id = CAST(metadata->>'user_id' AS INTEGER) WHERE metadata->>'user_id' IS NOT NULL"
     )
 
-    # 3. Alter column to be NOT NULL
+    # 3. Clean up orphaned embeddings (users who were deleted) before enforcing Foreign Key
+    op.execute(
+        "DELETE FROM brain_embeddings WHERE user_id IS NOT NULL AND user_id NOT IN (SELECT id FROM users)"
+    )
+
+    # 4. Alter column to be NOT NULL
     op.alter_column(
         "brain_embeddings", "user_id", existing_type=sa.Integer(), nullable=False
     )
