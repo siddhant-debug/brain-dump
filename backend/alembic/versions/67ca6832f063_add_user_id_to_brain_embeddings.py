@@ -24,9 +24,10 @@ def upgrade() -> None:
     # 1. Add column as nullable first
     op.add_column("brain_embeddings", sa.Column("user_id", sa.Integer(), nullable=True))
 
-    # 2. Backfill user_id from the metadata_ JSONB column
+    # 2. Backfill user_id from the metadata JSONB column
+    # NOTE: The python model property is `metadata_` but the DB column is `metadata`.
     op.execute(
-        "UPDATE brain_embeddings SET user_id = CAST(metadata_->>'user_id' AS INTEGER) WHERE metadata_->>'user_id' IS NOT NULL"
+        "UPDATE brain_embeddings SET user_id = CAST(metadata->>'user_id' AS INTEGER) WHERE metadata->>'user_id' IS NOT NULL"
     )
 
     # 3. Alter column to be NOT NULL
