@@ -25,7 +25,6 @@ def upgrade() -> None:
     op.add_column("brain_embeddings", sa.Column("user_id", sa.Integer(), nullable=True))
 
     # 2. Backfill user_id from the metadata JSONB column
-    # NOTE: The python model property is `metadata_` but the DB column is `metadata`.
     op.execute(
         "UPDATE brain_embeddings SET user_id = CAST(metadata->>'user_id' AS INTEGER) WHERE metadata->>'user_id' IS NOT NULL"
     )
