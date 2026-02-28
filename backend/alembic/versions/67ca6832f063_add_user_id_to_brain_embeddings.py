@@ -24,33 +24,30 @@ def upgrade() -> None:
     # 1. Add column as nullable first
     op.add_column("brain_embeddings", sa.Column("user_id", sa.Integer(), nullable=True))
 
-    # 2. Backfill user_id from the metadata JSONB column using SQLAlchemy Core
-    brain_embeddings_table = sa.table(
-        "brain_embeddings",
-        sa.column("user_id", sa.Integer),
-        sa.column("metadata", sa.JSON),
+    conn = op.get_bind()
+
+    # 2. Backfill user_id from the metadata JSONB column
+    op.execute(
+        "UPDATE brain_embeddings SET user_id = CAST(metadata->>'user_id' AS INTEGER) WHERE metadata->>'user_id' IS NOT NULL"
     )
 
+    # DEBUG: Count orphaned embeddings before delete
+    orphaned_count_query = "SELECT COUNT(*) FROM brain_embeddings WHERE user_id IS NOT NULL AND user_id NOT IN (SELECT id FROM users)"
+    before_count = conn.execute(sa.text(orphaned_count_query)).scalar()
+    print(f"\n[DEBUG] Orphaned embeddings before delete: {before_count}\n")
+
+    # 3. Clean up orphaned embeddings
     op.execute(
-        brain_embeddings_table.update()
-        .where(brain_embeddings_table.c.metadata.op("->>")("user_id") != None)
-        .values(
-            user_id=sa.cast(
-                brain_embeddings_table.c.metadata.op("->>")("user_id"), sa.Integer
-            )
-        )
+        "DELETE FROM brain_embeddings WHERE user_id IS NOT NULL AND user_id NOT IN (SELECT id FROM users)"
     )
 
-    # 3. Clean up orphaned embeddings (users who were deleted) before enforcing Foreign Key
-    users_table = sa.table("users", sa.column("id", sa.Integer))
-    op.execute(
-        brain_embeddings_table.delete().where(
-            sa.and_(
-                brain_embeddings_table.c.user_id != None,
-                ~brain_embeddings_table.c.user_id.in_(sa.select(users_table.c.id)),
-            )
-        )
-    )
+    # DEBUG: Count orphaned embeddings after delete
+    after_count = conn.execute(sa.text(orphaned_count_query)).scalar()
+    print(f"\n[DEBUG] Orphaned embeddings after delete: {after_count}\n")
+
+    # Fail intentionally if there are still orphans to prevent ForeignKey error from masking it
+    if after_count > 0:
+        raise Exception(f"Failed to delete {after_count} orphaned embeddings!")
 
     # 4. Alter column to be NOT NULL
     op.alter_column(
