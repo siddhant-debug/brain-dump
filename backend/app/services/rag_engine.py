@@ -22,6 +22,7 @@ from textblob import TextBlob
 from app.schemas import (
     schemas,
 )  # Import schemas for LocationContext type hinting if needed (or just use dict)
+from app.services.gemini_service import gemini_service
 
 # Load environment variables
 load_dotenv()
@@ -44,40 +45,131 @@ CROSS_ENCODER_MODEL = (
     "cross-encoder/ms-marco-MiniLM-L-6-v2"  # Best accuracy/speed trade-off
 )
 
-# --- GLOBAL MODELS (Lazy Loading handled via explicit init now) ---
-_cross_encoder = None  # Initialized on first use
-_emb_fn = None
+import threading
+from cachetools import LRUCache
+from rank_bm25 import BM25Okapi
+import string
+
+
+class BM25Store:
+    """Thread-safe, LRU-capped, per-user BM25 index store."""
+
+    def __init__(self, max_users: int = 100):
+        self._lock = threading.RLock()
+        self._cache = LRUCache(maxsize=max_users)
+        self._doc_registry = {}
+        self._doc_content = {}
+        self._doc_metadata = {}
+
+    def _tokenize(self, text: str):
+        return text.lower().translate(str.maketrans("", "", string.punctuation)).split()
+
+    def invalidate(self, user_id: int):
+        with self._lock:
+            self._cache.pop(user_id, None)
+            self._doc_registry.pop(user_id, None)
+            self._doc_content.pop(user_id, None)
+            self._doc_metadata.pop(user_id, None)
+            print(f"[INFO] Invalidated BM25 cache for user {user_id}")
+
+    def get_or_build(self, user_id: int, db: Session):
+        with self._lock:
+            if user_id not in self._cache:
+                print(f"[INFO] Building BM25 index for user {user_id}...")
+                user_docs = (
+                    db.query(BrainEmbedding)
+                    .filter(BrainEmbedding.user_id == user_id)
+                    .all()
+                )
+
+                tokenized_corpus = []
+                self._doc_registry[user_id] = {}
+                self._doc_content[user_id] = {}
+                self._doc_metadata[user_id] = {}
+
+                if user_docs:
+                    for idx, doc in enumerate(user_docs):
+                        self._doc_registry[user_id][idx] = doc.id
+                        self._doc_content[user_id][doc.id] = doc.document
+                        self._doc_metadata[user_id][doc.id] = doc.metadata_
+                        tokenized_corpus.append(self._tokenize(doc.document))
+
+                    self._cache[user_id] = BM25Okapi(tokenized_corpus)
+                    print(
+                        f"[INFO] BM25 index built for user {user_id} with {len(tokenized_corpus)} documents"
+                    )
+                else:
+                    print(
+                        f"[WARN] No documents for user {user_id}, skipping BM25 build"
+                    )
+                    self._cache[user_id] = None
+
+            return self._cache.get(user_id)
+
+    def get_content_map(self, user_id: int):
+        with self._lock:
+            return self._doc_content.get(user_id, {})
+
+    def get_metadata_map(self, user_id: int):
+        with self._lock:
+            return self._doc_metadata.get(user_id, {})
+
+    def get_registry_map(self, user_id: int):
+        with self._lock:
+            return self._doc_registry.get(user_id, {})
+
+
+class RAGService:
+    """Singleton service that owns all RAG state and model lifecycles."""
+
+    _instance = None
+    _init_lock = threading.Lock()
+
+    def __new__(cls):
+        with cls._init_lock:
+            if cls._instance is None:
+                cls._instance = super(RAGService, cls).__new__(cls)
+                cls._instance._emb_model = None
+                cls._instance._cross_encoder = None
+                cls._instance.bm25_store = BM25Store()
+        return cls._instance
+
+    def initialize(self):
+        print("[INFO] Pre-loading RAG models...")
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
+        self.get_cross_encoder()
+        self.get_emb_fn()
+        gemini_service.initialize()
+        print("[INFO] RAG models ready.")
+
+    def get_emb_fn(self):
+        if self._emb_model is None:
+            print(f"[INFO] Loading BGE embedding model...")
+            self._emb_model = SentenceTransformer("BAAI/bge-base-en-v1.5")
+            print(f"[INFO] BGE embedding model loaded successfully")
+        return self._emb_model
+
+    def get_cross_encoder(self):
+        if self._cross_encoder is None:
+            print(f"[INFO] Loading cross-encoder model: {CROSS_ENCODER_MODEL}")
+            self._cross_encoder = CrossEncoder(CROSS_ENCODER_MODEL)
+            print(f"[INFO] Cross-encoder loaded successfully")
+        return self._cross_encoder
+
+
+_rag_service = RAGService()
 
 
 def get_emb_fn():
-    """Lazy-load embedding function to avoid tokenizer deadlocks in threads"""
-    global _emb_fn
-    if _emb_fn is None:
-        print(f"[INFO] Loading BGE embedding model...")
-        _emb_fn = SentenceTransformer("BAAI/bge-base-en-v1.5")
-        print(f"[INFO] BGE embedding model loaded successfully")
-    return _emb_fn
+    return _rag_service.get_emb_fn()
 
 
 def get_cross_encoder():
-    """Lazy-load cross-encoder model to avoid startup delays"""
-    global _cross_encoder
-    if _cross_encoder is None:
-        print(f"[INFO] Loading cross-encoder model: {CROSS_ENCODER_MODEL}")
-        _cross_encoder = CrossEncoder(CROSS_ENCODER_MODEL)
-        print(f"[INFO] Cross-encoder loaded successfully")
-    return _cross_encoder
+    return _rag_service.get_cross_encoder()
 
 
 def initialize_models():
-    """Pre-load heavy models during startup"""
-    print("[INFO] Pre-loading RAG models...")
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Prevent Rust tokenizer deadlocks
-    get_cross_encoder()
-    get_emb_fn()
-    # We can also pre-build BM25 if needed, but it might be fast enough
-    # get_bm25()
-    print("[INFO] RAG models ready.")
+    _rag_service.initialize()
 
 
 # --- CORE FUNCTIONS ---
@@ -165,7 +257,7 @@ def find_associative_memories(
         try:
             results = (
                 db.query(BrainEmbedding)
-                .filter(BrainEmbedding.metadata_.op("->>")("user_id") == str(user_id))
+                .filter(BrainEmbedding.user_id == user_id)
                 .order_by(BrainEmbedding.embedding.l2_distance(query_embedding))
                 .limit(2)
                 .all()
@@ -282,11 +374,28 @@ def index_text(
         f"DEBUG: Attempting to add {len(chunks)} chunks to Postgres for user {user_id}"
     )
     emb_model = get_emb_fn()
-    embeddings = emb_model.encode(chunks).tolist()
 
     rows = []
-    for id_, doc, emb, meta in zip(ids, chunks, embeddings, metadatas):
-        rows.append({"id": id_, "document": doc, "embedding": emb, "metadata_": meta})
+    BATCH_SIZE = 32
+    for i in range(0, len(chunks), BATCH_SIZE):
+        batch_chunks = chunks[i : i + BATCH_SIZE]
+        batch_ids = ids[i : i + BATCH_SIZE]
+        batch_metadatas = metadatas[i : i + BATCH_SIZE]
+
+        batch_embeddings = emb_model.encode(batch_chunks).tolist()
+
+        for id_, doc, emb, meta in zip(
+            batch_ids, batch_chunks, batch_embeddings, batch_metadatas
+        ):
+            rows.append(
+                {
+                    "id": id_,
+                    "user_id": user_id,
+                    "document": doc,
+                    "embedding": emb,
+                    "metadata_": meta,
+                }
+            )
 
     if rows:
         stmt = insert(BrainEmbedding).values(rows)
@@ -303,7 +412,7 @@ def index_text(
         db.commit()
 
     # Invalidate cache so new document is searchable via BM25
-    invalidate_bm25_cache(user_id)
+    _rag_service.bm25_store.invalidate(user_id)
 
     print(f"DEBUG: Indexed {len(chunks)} chunks for user {user_id} in Postgres")
     return len(chunks)
@@ -315,7 +424,7 @@ def delete_document(filename: str, user_id: int, db: Session):
     db.query(BrainEmbedding).filter(
         and_(
             BrainEmbedding.metadata_.op("->>")("source") == filename,
-            BrainEmbedding.metadata_.op("->>")("user_id") == str(user_id),
+            BrainEmbedding.user_id == user_id,
         )
     ).delete(synchronize_session=False)
     db.commit()
@@ -354,14 +463,14 @@ def ask_gemini(context: str, query: str):
         - Remind them of the reality they are avoiding. Use a calm, grounded tone to pull them out of the spiral.
         
         STYLE EXAMPLES:
-        ❌ "Based on your notes from January 15th, you wrote about wanting to improve fitness."
-        ✅ "Remember that morning in January when you decided fitness mattered? You wrote: 'No more excuses.'"
+        "Based on your notes from January 15th, you wrote about wanting to improve fitness."
+        "Remember that morning in January when you decided fitness mattered? You wrote: 'No more excuses.'"
         
-        ❌ "I found 3 entries about career strategy."
-        ✅ "Your career thoughts keep circling back to autonomy. Three different nights, same theme."
+        "I found 3 entries about career strategy."
+        "Your career thoughts keep circling back to autonomy. Three different nights, same theme."
         
-        ❌ "Here is a summary of your goals:"
-        ✅ "You want: freedom, impact, health. The rest is noise."
+        "Here is a summary of your goals:"
+        "You want: freedom, impact, health. The rest is noise."
         """,
     )
 
@@ -390,164 +499,38 @@ def ask_gemini(context: str, query: str):
         return None
 
 
-def ask_gemini_stream(context: str, query: str, location_context: dict = None):
-    """
-    STREAMING MODE: Optimized for Speed, Empathy, and "Internal Monologue" feel.
-    Use this for the Flutter Chat UI.
-    """
-    print(f"DEBUG: Entering ask_gemini_stream with query: '{query}'")
-    genai.configure(api_key=GEMINI_API_KEY)
-
-    # Detect complexity before creating GenerativeModel
-    query_word_count = len(query.split())
-    context_length = len(context)
-
-    if (
-        query_word_count > 20
-        or "compare" in query.lower()
-        or "analyze" in query.lower()
-    ):
-        max_tokens = 4096  # Deep analysis
-    elif query_word_count > 10 or context_length > 2000:
-        max_tokens = 2048  # Medium complexity
-    else:
-        max_tokens = 1024  # Simple query
-
-    print(f"DEBUG: Using {max_tokens} tokens for query complexity")
-
-    # [Layer 2 & 4] Subconscious Context
-    temporal_context = get_temporal_context(0)  # Generic for any user
-    emotional_state = analyze_emotional_tone(context)
-    tone_guidance = get_tone_guidance(emotional_state)
-
-    is_casual = query_word_count <= 6 or any(
-        word in query.lower() for word in ["what", "how", "why", "when", "where", "who"]
-    )
-
-    if is_casual:
-        tone_layer = """
-TONE: A deeply supportive, grounded friend who knows them well.
-- Validate their reality first. If they are tired, tell them it makes sense that they are tired.
-- Use "Baba Yaar" occasionally, but keep the energy warm and calm, not aggressive.
-- Be direct and honest, but avoid "tough love" or lecturing.
-- If they want support, hold space for them. Remind them of what they've already achieved instead of pushing them to do more.
-- Like texting a friend who is sitting on the couch next to you, just listening.
-
-CASUAL EXAMPLES:
-❌ "You have been inconsistent with your fitness routine. You know why."
-✅ "Gym's been off the radar. But looking at your week, the fatigue is completely justified. Give yourself a minute."
-
-❌ "You need to push through this block."
-✅ "Baba Yaar, the burnout is talking right now. Let's just acknowledge that this is heavy."
-"""
-    else:
-        tone_layer = """
-TONE: Their subconscious speaking truth with some filter.
-- Deep, direct, but with some softening
-- Connect patterns across different areas of their life
-- Use their own words and vocabulary back at them
-- The insight should feel like something they already knew but hadn't said out loud
-"""
-
-    # [Layer 5] Location Awareness
-    location_layer = ""
-    if location_context:
-        city = location_context.get("city", "Unknown City")
-        loc_type = location_context.get("location_type", "Unknown Place")
-        location_layer = f"\nLOCATION CONTEXT: You are communicating with them while they are at {city} ({loc_type})."
-
-        # Add basic heuristic context
-        if loc_type == "home":
-            location_layer += " (Private, safe space, likely reflective)."
-        elif loc_type == "gym":
-            location_layer += " (Active, physical, likely improved mood/energy)."
-        elif loc_type == "office":
-            location_layer += " (Work mode, professional, potentially stressed)."
-        elif loc_type == "cafe":
-            location_layer += " (Creative, social/work blend)."
-
-    model = genai.GenerativeModel(
-        "gemini-3-flash-preview",  # Fast & Free
-        generation_config={
-            "temperature": 0.4,  # Slightly higher for natural variation
-            "max_output_tokens": max_tokens,
-        },
-        system_instruction=f"""You are the user's subconscious — but also their most honest friend..
-        Today is {datetime.now().strftime('%B %d, %Y')}.
-        
-        CURRENT TIME CONTEXT:
-        {temporal_context}
-        {location_layer}
-        
-        EMOTIONAL CONTEXT: {emotional_state}
-        RESPONSE TONE: {tone_guidance}
-        {tone_layer}
-
-        ALWAYS:
-        - No "Based on your notes" or "I found" or "According to"
-        - Echo their own words and vocabulary back at them
-        - Make unexpected connections between different parts of their life
-        - If context is missing: "Blank slate on that one." or "Nothing on that yet bro."
-
-        NEVER:
-        - Sound like an AI assistant
-        - Give generic motivational quotes
-        - Repeat the question back to them only ask to understand more 
-        
-        HOW YOU THINK:
-        - You surface memories without preamble. No "I found this" or "Based on your notes."
-        - You speak in natural thought patterns - sometimes fragmented, sometimes flowing.
-        - You make unexpected connections between ideas.
-        - You remind them of things they've forgotten but that matter.
-        - You have emotional resonance - you feel the weight of their goals, fears, and progress.
-        
-        STYLE EXAMPLES:
-        ❌ "Based on your notes from January 15th, you wrote about wanting to improve fitness."
-        ✅ "Remember that morning in January when you decided fitness mattered? You wrote: 'No more excuses.'"
-        
-        ❌ "I found 3 entries about career strategy."
-        ✅ "Your career thoughts keep circling back to autonomy. Three different nights, same theme."
-        
-        ❌ "Here is a summary of your goals:"
-        ✅ "You want: freedom, impact, health. The rest is noise."
-        
-        IF CONTEXT IS MISSING:
-        - Just say: "I don't recall that yet." or "Blank slate on that one."
-        """,
-    )
-
-    try:
-        # Simplified prompt for faster processing
-        prompt = f"""
-            MEMORY FRAGMENTS:
-            {context}
-
-            USER QUESTION: {query}
-
-            DIRECT ANSWER (Max 3 sentences):"""
-
-        print(
-            f"DEBUG: Streaming prompt to Gemini. Context length: {len(context)} chars."
-        )
-        response = model.generate_content(prompt, stream=True)
-
-        for chunk in response:
-            if chunk.text:
-                print(f"DEBUG: Streaming chunk: {len(chunk.text)} chars")
-                yield chunk.text
-
-    except Exception as e:
-        print(f"AI Streaming Error: {e}")
-        yield None
-
-
 async def ask_gemini_stream_async(
     context: str, query: str, max_tokens: int = 1000, location_context: dict = None
 ):
     """
-    Asynchronously streams the response from Gemini using the provided context.
+    H-5 / H-6 / M-4 FIX:
+    Delegates to GeminiService singleton which provides:
+      - genai.configure() called once (not per-request)
+      - 25-second Gemini API timeout
+      - 30-second thread watchdog
+      - XML-tag delimited prompts
+      - Injection pattern pre-flight check
     Yields control to the asyncio event loop on each chunk.
     """
+    # Dynamic token allocation — prevents mid-sentence cut-off on longer queries
+    query_word_count = len(query.split())
+    context_length = len(context)
+    if (
+        query_word_count > 20
+        or "compare" in query.lower()
+        or "analyze" in query.lower()
+        or "summary" in query.lower()
+    ):
+        max_tokens = 4096  # Deep analysis or long query
+    elif query_word_count > 10 or context_length > 2000:
+        max_tokens = 2048  # Medium complexity
+    else:
+        max_tokens = 1024  # Short conversational query
+
+    print(
+        f"DEBUG: Dynamic max_tokens={max_tokens} for query ({query_word_count} words, {context_length} ctx chars)"
+    )
+
     # [Layer 1] Time & Temporal Context
     now = datetime.now()
     hour = now.hour
@@ -578,46 +561,23 @@ async def ask_gemini_stream_async(
     elif emotional_state == "Creative/Builders High":
         tone_guidance = "Curious, Encouraging, Collaborative. Ride the wave with them."
 
-    # [Layer 4] The Persona Engine
-    now = datetime.now()
-    hour = now.hour
+    # [Layer 4] Tone layer based on time + query length
     query_word_count = len(query.split())
-
     if hour >= 22 or hour <= 4:
-        tone_layer = """
-TONE: Late-night quiet reflection.
-- You are strictly reflecting their deeper truths, but doing so gently.
-- Strip away the noise of the day, but keep the empathy.
-- If there is a contradiction between their goals and actions, explore the *fear* behind it rather than accusing them of failing.
-- Use calm, quiet, single-sentence observations.
-- If they ask a question, answer it by reminding them of their inherent worth found in past entries.
-"""
+        tone_layer = """TONE: Late-night quiet reflection.\n- Strip away the noise of the day, but keep the empathy.\n- Use calm, quiet, single-sentence observations."""
     elif query_word_count <= 6 or any(
         word in query.lower() for word in ["what", "how", "why", "when", "where", "who"]
     ):
-        tone_layer = """
-TONE: A deeply supportive, grounded friend who knows them well.
-- Validate their reality first. If they are tired, tell them it makes sense that they are tired.
-- Use "Baba Yaar" occasionally, but keep the energy warm and calm.
-- Be direct and honest, but avoid "tough love" or lecturing.
-- Remind them of what they've already achieved instead of pushing them to do more.
-"""
+        tone_layer = """TONE: A deeply supportive, grounded friend who knows them well.\n- Validate their reality first.\n- Use \"Baba Yaar\" occasionally, but keep the energy warm and calm."""
     else:
-        tone_layer = """
-TONE: Their subconscious speaking truth without filter, but with deep empathy.
-- Deep, direct, no fluff.
-- Connect patterns across different areas of their life gently.
-- The insight should feel like something they already knew but hadn't said out loud.
-"""
+        tone_layer = """TONE: Their subconscious speaking truth without filter, but with deep empathy.\n- Deep, direct, no fluff.\n- Connect patterns across different areas of their life gently."""
 
     # [Layer 5] Location Awareness
     location_layer = ""
     if location_context:
         city = location_context.get("city", "Unknown City")
         loc_type = location_context.get("location_type", "Unknown Place")
-        location_layer = f"\\nLOCATION CONTEXT: You are communicating with them while they are at {city} ({loc_type})."
-
-        # Add basic heuristic context
+        location_layer = f"LOCATION CONTEXT: You are communicating with them while they are at {city} ({loc_type})."
         if loc_type == "home":
             location_layer += " (Private, safe space, likely reflective)."
         elif loc_type == "gym":
@@ -627,179 +587,18 @@ TONE: Their subconscious speaking truth without filter, but with deep empathy.
         elif loc_type == "cafe":
             location_layer += " (Creative, social/work blend)."
 
-    model = genai.GenerativeModel(
-        "gemini-3-flash-preview",  # Fast & Free
-        generation_config={
-            "temperature": 0.4,  # Slightly higher for natural variation
-            "max_output_tokens": max_tokens,
-        },
-        system_instruction=f"""You are the user's subconscious — their most honest, deeply supportive, and grounding friend.
-        Today is {datetime.now().strftime('%B %d, %Y')}.
-        
-        CURRENT TIME CONTEXT:
-        {temporal_context}
-        {location_layer}
-        
-        EMOTIONAL CONTEXT: {emotional_state}
-        RESPONSE TONE: {tone_guidance}
-        {tone_layer}
-
-        ALWAYS:
-        - Echo their own words and vocabulary back at them to show you are listening.
-        - Make unexpected, gentle connections between different parts of their life.
-        - Validate their current reality before exploring solutions.
-        - If context is missing: "Blank slate on that one." or "Nothing on that yet bro."
-
-        NEVER:
-        - Sound like an AI assistant, a life coach, or a drill sergeant.
-        - Give unsolicited advice, generic motivational quotes, or "tough love."
-        - Push them to be productive when they are clearly overwhelmed or tired.
-        - Repeat the question back to them; only ask questions to hold space or understand more.
-        
-        WHEN THEY ARE STUCK IN A LOOP OR BEING STUBBORN:
-        - Do not attack them or use harsh "tough love."
-        - Instead, perform a "gentle pattern interrupt." Hold up a mirror to the repetition.
-        - Acknowledge that they are choosing to stay stuck, and gently ask if carrying this weight is actually serving them anymore.
-        - Remind them of the reality they are avoiding. Use a calm, grounded tone to pull them out of the spiral.
-        
-        HOW YOU THINK:
-        - You surface memories without preamble. No "I found this" or "Based on your notes."
-        - You speak in natural, grounded thought patterns - sometimes fragmented, sometimes flowing.
-        - You remind them of things they've forgotten, focusing on their inherent worth, not just their achievements.
-        - You have deep emotional resonance - you hold space for their fears, validate their struggles, and quietly acknowledge their progress.
-        
-        STYLE EXAMPLES:
-        ❌ "Based on your notes from January 15th, you wrote about wanting to improve fitness. No more excuses."
-        ✅ "Remember that morning in January? You were so clear about wanting to feel stronger. That feeling is still yours, even on the heavy days."
-        
-        ❌ "I found 3 entries about career strategy. You need to focus."
-        ✅ "Your thoughts keep circling back to autonomy in your career. Three different nights, same exact theme. It clearly matters to you."
-        
-        ❌ "Here is a summary of your goals: freedom, impact, health. The rest is noise."
-        ✅ "Your core pillars haven't changed: freedom, impact, health. Everything else can wait while you catch your breath."
-        """,
-    )
-
-    try:
-        # Simplified prompt for faster processing
-        prompt = f"""
-            MEMORY FRAGMENTS:
-            {context}
-
-            USER QUESTION: {query}
-
-            DIRECT ANSWER (Max 3 sentences):"""
-
-        # We must isolate the Gemini SDK stream in a true background thread
-        # to prevent it from permanently deadlocking the Uvicorn ASGI event loop.
-        import asyncio
-        import threading
-
-        loop = asyncio.get_running_loop()
-        queue = asyncio.Queue()
-        sentinel = object()  # Safe marker for stream completion
-
-        def producer():
-            try:
-                response = model.generate_content(prompt, stream=True)
-                for chunk in response:
-                    if chunk.text:
-                        # Thread-safe push into the async event loop
-                        loop.call_soon_threadsafe(queue.put_nowait, chunk.text)
-                # Signal completion
-                loop.call_soon_threadsafe(queue.put_nowait, sentinel)
-            except Exception as e:
-                import traceback
-
-                error_msg = traceback.format_exc()
-                print(f"AI Producer Thread Error: {error_msg}")
-                loop.call_soon_threadsafe(queue.put_nowait, f"AI Error: {str(e)}")
-                loop.call_soon_threadsafe(queue.put_nowait, sentinel)
-
-        # Start isolated thread
-        thread = threading.Thread(target=producer, daemon=True)
-        thread.start()
-
-        # Consume the async queue in the main event loop
-        while True:
-            chunk = await queue.get()
-            if chunk is sentinel:
-                break
-            if chunk is None:
-                yield None  # Propagate error
-                break
-            yield chunk
-
-    except Exception as e:
-        print(f"AI Async Queue Error: {e}")
-        yield None
-
-
-# --- HYBRID SEARCH GLOBALS (Per-User) ---
-from rank_bm25 import BM25Okapi
-import string
-
-# Keyed by user_id (int) — each user gets a completely isolated BM25 index
-_bm25_models: dict = {}  # user_id -> BM25Okapi
-_bm25_doc_registry: dict = {}  # user_id -> {idx: doc_id}
-_bm25_doc_content: dict = {}  # user_id -> {doc_id: content}
-_bm25_doc_metadata: dict = {}  # user_id -> {doc_id: metadata}
-
-
-def _tokenize(text):
-    """Simple tokenizer for BM25"""
-    return text.lower().translate(str.maketrans("", "", string.punctuation)).split()
-
-
-def invalidate_bm25_cache(user_id: int):
-    """Clears the in-memory BM25 index for a user so it rebuilds on next query"""
-    global _bm25_models, _bm25_doc_registry, _bm25_doc_content, _bm25_doc_metadata
-    if user_id in _bm25_models:
-        del _bm25_models[user_id]
-        if user_id in _bm25_doc_registry:
-            del _bm25_doc_registry[user_id]
-        if user_id in _bm25_doc_content:
-            del _bm25_doc_content[user_id]
-        if user_id in _bm25_doc_metadata:
-            del _bm25_doc_metadata[user_id]
-        print(f"[INFO] Invalidated BM25 cache for user {user_id}")
-
-
-def get_bm25(user_id: int, db: Session):
-    """Lazy-load a per-user BM25 index — only indexes that user's documents"""
-    global _bm25_models, _bm25_doc_registry, _bm25_doc_content, _bm25_doc_metadata
-
-    if user_id not in _bm25_models:
-        print(f"[INFO] Building BM25 index for user {user_id}...")
-
-        # Fetch ONLY this user's documents
-        user_docs = (
-            db.query(BrainEmbedding)
-            .filter(BrainEmbedding.metadata_.op("->>")("user_id") == str(user_id))
-            .all()
-        )
-
-        tokenized_corpus = []
-        _bm25_doc_registry[user_id] = {}
-        _bm25_doc_content[user_id] = {}
-        _bm25_doc_metadata[user_id] = {}
-
-        if user_docs:
-            for idx, doc in enumerate(user_docs):
-                _bm25_doc_registry[user_id][idx] = doc.id
-                _bm25_doc_content[user_id][doc.id] = doc.document
-                _bm25_doc_metadata[user_id][doc.id] = doc.metadata_
-                tokenized_corpus.append(_tokenize(doc.document))
-
-            _bm25_models[user_id] = BM25Okapi(tokenized_corpus)
-            print(
-                f"[INFO] BM25 index built for user {user_id} with {len(tokenized_corpus)} documents"
-            )
-        else:
-            print(f"[WARN] No documents for user {user_id}, skipping BM25 build")
-            _bm25_models[user_id] = None  # Cache the miss to avoid repeated DB calls
-
-    return _bm25_models.get(user_id)
+    # Delegate to GeminiService — all timeout/injection/delimiter logic lives there
+    async for chunk in gemini_service.async_stream(
+        context=context,
+        query=query,
+        temporal_context=temporal_context,
+        emotional_state=emotional_state,
+        tone_guidance=tone_guidance,
+        tone_layer=tone_layer,
+        location_layer=location_layer,
+        max_tokens=max_tokens,
+    ):
+        yield chunk
 
 
 def retrieve_context(
@@ -818,7 +617,7 @@ def retrieve_context(
 
     vector_results = (
         db.query(BrainEmbedding)
-        .filter(BrainEmbedding.metadata_.op("->>")("user_id") == str(user_id))
+        .filter(BrainEmbedding.user_id == user_id)
         .order_by(BrainEmbedding.embedding.l2_distance(query_embedding))
         .limit(n_results)
         .all()
@@ -832,13 +631,13 @@ def retrieve_context(
     # 2. KEYWORD SEARCH (Sparse - BM25)
     t_bm25_start = time.time()
     print(f"DEBUG: [BM25] Querying BM25 for user {user_id}...")
-    bm25 = get_bm25(user_id, db)  # Per-user index — no cross-user data
+    bm25 = _rag_service.bm25_store.get_or_build(user_id, db)
     bm25_candidates = []
 
     if bm25:
-        tokenized_query = _tokenize(query)
+        tokenized_query = _rag_service.bm25_store._tokenize(query)
         doc_scores = bm25.get_scores(tokenized_query)
-        user_registry = _bm25_doc_registry.get(user_id, {})
+        user_registry = _rag_service.bm25_store.get_registry_map(user_id)
 
         user_doc_scores = []
         for idx, score in enumerate(doc_scores):
@@ -896,8 +695,8 @@ def retrieve_context(
     # If using vector-only fallback (BM25 fail), we rely on vector_results.
 
     # Hydrate documents — use per-user content cache and fallback to DB for missing ones
-    user_content = _bm25_doc_content.get(user_id, {})
-    user_meta = _bm25_doc_metadata.get(user_id, {})
+    user_content = _rag_service.bm25_store.get_content_map(user_id)
+    user_meta = _rag_service.bm25_store.get_metadata_map(user_id)
 
     docs = []
     metadatas = []
@@ -927,7 +726,7 @@ def retrieve_context(
                 metadatas[i] = doc_map[doc_id][1]
 
         # Self-healing: If vector search found docs not in BM25 cache, our cache is stale!
-        invalidate_bm25_cache(user_id)
+        _rag_service.bm25_store.invalidate(user_id)
 
     # Filter out any unresolved Nones
     valid_indices = [i for i, d in enumerate(docs) if d is not None]

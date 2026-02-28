@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -18,8 +19,8 @@ takes a callback function that returns an instance of AuthController.
 
 final authControllerProvider =
     StateNotifierProvider<AuthController, AsyncValue<void>>((ref) {
-  return AuthController(ref);
-});
+      return AuthController(ref);
+    });
 
 final isNewUserProvider = StateProvider<bool>((ref) => false);
 /*
@@ -141,9 +142,9 @@ It exposes an AsyncValue<void> to the UI to represent loading/success/error stat
 */
 class AuthController extends StateNotifier<AsyncValue<void>> {
   AuthController(this.ref)
-      : _dio = ref.read(dioProvider),
-        _storage = ref.read(secureStorageProvider),
-        super(const AsyncValue.data(null));
+    : _dio = ref.read(dioProvider),
+      _storage = ref.read(secureStorageProvider),
+      super(const AsyncValue.data(null));
 
   /*
   10 : ref is a Ref object that is used to interact with other providers or invalidate
@@ -209,8 +210,9 @@ class AuthController extends StateNotifier<AsyncValue<void>> {
       await login(email, password);
     } on DioException catch (e, stack) {
       String errorMessage = 'Registration failed';
-      print(
-          'Signup Validation error [${e.response?.statusCode}]: ${e.response?.data}');
+      debugPrint(
+        'Signup Validation error [${e.response?.statusCode}]: ${e.response?.data}',
+      );
       if (e.response?.statusCode == 400) {
         errorMessage = 'Email already registered';
       } else if (e.response?.statusCode == 422) {
@@ -240,7 +242,7 @@ class AuthController extends StateNotifier<AsyncValue<void>> {
       ref.invalidate(isAuthenticatedProvider);
       state = const AsyncValue.data(null);
     } catch (e, stack) {
-      print('Logout error: $e');
+      debugPrint('Logout error: $e');
       state = AsyncValue.error(e, stack);
     }
   }

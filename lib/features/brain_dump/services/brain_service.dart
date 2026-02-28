@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../core/constants/timeout_constants.dart';
@@ -32,7 +33,7 @@ class BrainService {
     try {
       final response = await _dio.post(
         '/chat/chat',
-        data: {'query': query, if (location != null) 'location': location},
+        data: {'query': query, 'location': ?location},
         options: Options(
           headers: {
             'Authorization': 'Bearer $token',
@@ -49,14 +50,14 @@ class BrainService {
           .cast<List<int>>()
           .transform(utf8.decoder)
           .timeout(
-        TimeoutConstants.streamTimeout,
-        onTimeout: (sink) {
-          sink.addError(
-            Exception('Response took too long. Please try again.'),
+            TimeoutConstants.streamTimeout,
+            onTimeout: (sink) {
+              sink.addError(
+                Exception('Response took too long. Please try again.'),
+              );
+              sink.close();
+            },
           );
-          sink.close();
-        },
-      );
 
       await for (var chunk in streamWithTimeout) {
         // SSE format: "data: {json}\n\n"
@@ -84,7 +85,7 @@ class BrainService {
               malformedChunkCount++;
 
               // Log for debugging
-              print('Warning: Malformed SSE chunk: $jsonStr');
+              debugPrint('Warning: Malformed SSE chunk: $jsonStr');
 
               // Fail fast if too many errors
               if (malformedChunkCount >= TimeoutConstants.maxMalformedChunks) {
@@ -154,21 +155,21 @@ class BrainService {
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
 
-      print('DEBUG HISTORY RAW: ${response.data}');
+      debugPrint('DEBUG HISTORY RAW: ${response.data}');
       final List<dynamic> data = response.data;
       final result = data.map((json) {
         try {
           return ChatMessage.fromJson(json);
         } catch (e, st) {
-          print('Error parsing message $json: $e\\n$st');
+          debugPrint('Error parsing message $json: $e\\n$st');
           rethrow;
         }
       }).toList();
-      print('DEBUG HISTORY PARSED: ${result.length} items');
+      debugPrint('DEBUG HISTORY PARSED: ${result.length} items');
       return result;
     } catch (e) {
       // Return empty list on error to not block UI, but print loudly
-      print('Failed to fetch chat history: $e');
+      debugPrint('Failed to fetch chat history: $e');
       return [];
     }
   }

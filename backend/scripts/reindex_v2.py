@@ -65,13 +65,13 @@ def sync_all_data():
             chunks = index_text(clean_filename, row.content_text, row.user_id)
             
             if chunks > 0:
-                print(f"   ✅ Indexed File: {clean_filename}")
+                print(f"   Indexed File: {clean_filename}")
                 total_indexed += 1
 
-        print(f"\n🎉 Sync Complete! Total {total_indexed} items (Notes + Files) are now in your Brain.")
+        print(f"\nSync Complete! Total {total_indexed} items (Notes + Files) are now in your Brain.")
         
     except Exception as e:
-        print(f"❌ Database Sync Error: {e}")
+        print(f"Database Sync Error: {e}")
     finally:
         db.close()
 

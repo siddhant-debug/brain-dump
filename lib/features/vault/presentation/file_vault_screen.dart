@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:dio/dio.dart';
 import '../services/file_service.dart';
 import '../../../core/widgets/persistent_header.dart';
 import '../../auth/controllers/auth_controller.dart';
+import '../widgets/secure_pdf_viewer.dart';
 
 /*
 1 : FileVaultScreen is now exclusively for file storage (The Vault).
@@ -68,6 +70,18 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
     final filename = file['filename'];
     final type = file['file_type'];
 
+    if (filename.toString().endsWith('.pdf')) {
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) =>
+                SecurePdfViewer(fileId: fileId, filename: filename),
+          ),
+        );
+      }
+      return;
+    }
+
     try {
       final content = await ref
           .read(fileServiceProvider)
@@ -83,9 +97,18 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
       }
     } catch (e) {
       if (!mounted) return;
+
+      String errorMsg = e.toString().replaceAll('Exception: ', '');
+      if (e is DioException) {
+        final detail = e.response?.data?['detail'];
+        errorMsg = detail != null
+            ? detail.toString()
+            : e.message ?? 'Network error occurred';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not open file: $e'),
+          content: Text('Could not open file: $errorMsg'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -97,7 +120,7 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
     final filesState = ref.watch(filesProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D), // Match minimal theme
+      backgroundColor: const Color(0xFF111111), // Match minimal theme
       appBar: widget.isEmbedded
           ? null // No AppBar if embedded
           : AppBar(
@@ -311,7 +334,7 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
           loading: () => const Center(
             child: CircularProgressIndicator(color: Colors.white24),
           ),
-          error: (e, __) => Center(
+          error: (e, _) => Center(
             child: Text(
               'Error: $e',
               style: const TextStyle(color: Colors.redAccent),
@@ -354,14 +377,6 @@ class FileViewer extends StatelessWidget {
         styleSheet: MarkdownStyleSheet.fromTheme(
           Theme.of(context),
         ).copyWith(p: const TextStyle(color: Colors.white70)),
-      );
-    } else if (filename.endsWith('.pdf')) {
-      // Placeholder for PDF viewer - In real scenario use syncfusion_flutter_pdfviewer or similar
-      return const Center(
-        child: Text(
-          'PDF Viewing requires device implementation',
-          style: TextStyle(color: Colors.white),
-        ),
       );
     } else {
       return SingleChildScrollView(

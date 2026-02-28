@@ -35,16 +35,30 @@ class AnalyticsScreen extends ConsumerWidget {
                   ],
                 ),
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 160),
-                    child: Column(
-                      children: const [
-                        _ConsistencyCard(),
-                        SizedBox(height: 16),
-                        _ThemesCard(),
-                        SizedBox(height: 16),
-                        _LoopsCard(),
-                      ],
+                  child: RefreshIndicator(
+                    onRefresh: () async {
+                      ref.invalidate(consistencyProvider);
+                      ref.invalidate(themesProvider);
+                      ref.invalidate(loopsProvider);
+                      ref.invalidate(pipelineProvider);
+                      // Adding a small delay to let the UI show the loading indicator
+                      await Future.delayed(const Duration(milliseconds: 500));
+                    },
+                    color: Colors.white,
+                    backgroundColor: const Color(0xFF111111),
+                    child: SingleChildScrollView(
+                      physics:
+                          const AlwaysScrollableScrollPhysics(), // Important for RefreshIndicator
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 160),
+                      child: Column(
+                        children: const [
+                          _ConsistencyCard(),
+                          SizedBox(height: 16),
+                          _ThemesCard(),
+                          SizedBox(height: 16),
+                          _LoopsCard(),
+                        ],
+                      ),
                     ),
                   ),
                 ),

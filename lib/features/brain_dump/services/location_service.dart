@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -50,7 +51,7 @@ class LocationService {
           }
         }
       } catch (e) {
-        print(
+        debugPrint(
           "[LocationService] Geocoding unavailable (non-fatal, using coords only): $e",
         );
         // Continue with just coordinates if geocoding fails (common on simulators)
@@ -64,7 +65,7 @@ class LocationService {
         'location_type': locationType,
       };
     } catch (e) {
-      print("Location fetch failed: $e");
+      debugPrint("Location fetch failed: $e");
       return null;
     }
   }

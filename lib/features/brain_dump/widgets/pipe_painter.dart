@@ -22,7 +22,7 @@ class PipePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeJoin = StrokeJoin.miter
       ..strokeCap = StrokeCap.square
-      ..color = activeColor.withOpacity(0.8);
+      ..color = activeColor.withValues(alpha: 0.8);
 
     // Drawing in pairs [Parent, Child] for better hierarchical control
     for (int i = 0; i < points.length - 1; i += 2) {
@@ -45,7 +45,7 @@ class PipePainter extends CustomPainter {
 
       // Subtle glow
       final glowPaint = Paint()
-        ..color = activeColor.withOpacity(0.2)
+        ..color = activeColor.withValues(alpha: 0.2)
         ..strokeWidth = 3.0
         ..style = PaintingStyle.stroke
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1);

@@ -81,7 +81,7 @@ class InteractiveNeuralTree extends ConsumerWidget {
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.blueAccent.withOpacity(0.8),
+                                color: Colors.blueAccent.withValues(alpha: 0.8),
                                 blurRadius: 15,
                                 spreadRadius: 4,
                               ),
@@ -100,7 +100,7 @@ class InteractiveNeuralTree extends ConsumerWidget {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.6),
+                              color: Colors.black.withValues(alpha: 0.6),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(color: Colors.white12),
                             ),
@@ -124,7 +124,7 @@ class InteractiveNeuralTree extends ConsumerWidget {
             );
           },
           loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
         );
       },
     );

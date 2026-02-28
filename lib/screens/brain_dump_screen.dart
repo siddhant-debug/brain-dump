@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 
 import '../features/brain_dump/models/chat_message.dart';
 import '../features/brain_dump/providers/brain_dump_provider.dart';
@@ -10,6 +11,7 @@ import '../features/auth/controllers/auth_controller.dart';
 import '../features/vault/presentation/file_vault_screen.dart';
 import '../features/vault/presentation/thoughts_screen.dart';
 import '../core/widgets/persistent_header.dart';
+import '../core/theme/app_theme.dart';
 import '../features/analytics/presentation/analytics_screen.dart';
 import '../features/analytics/services/analytics_service.dart';
 
@@ -23,7 +25,7 @@ class BrainDumpScreen extends ConsumerStatefulWidget {
 }
 
 class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
@@ -38,6 +40,13 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
   bool _showCheckmark = false;
   late AnimationController _checkmarkController;
 
+  // "Leaving mind" ghost text animation for journal mode
+  String _ghostText = '';
+  bool _showGhost = false;
+  late AnimationController _ghostController;
+  late Animation<double> _ghostOpacity;
+  late Animation<Offset> _ghostSlide;
+
   @override
   void initState() {
     super.initState();
@@ -47,12 +56,18 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
       duration: const Duration(milliseconds: 1000),
     );
 
-    // Auto-focus on load — chat is now tab 1
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_selectedIndex == 1) {
-        _focusNode.requestFocus();
-      }
-    });
+    _ghostController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _ghostOpacity = Tween<double>(
+      begin: 1.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _ghostController, curve: Curves.easeOut));
+    _ghostSlide = Tween<Offset>(
+      begin: Offset.zero,
+      end: const Offset(0, -0.5),
+    ).animate(CurvedAnimation(parent: _ghostController, curve: Curves.easeOut));
   }
 
   @override
@@ -61,6 +76,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     _focusNode.dispose();
     _scrollController.dispose();
     _checkmarkController.dispose();
+    _ghostController.dispose();
     super.dispose();
   }
 
@@ -68,7 +84,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     if (_scrollController.hasClients) {
       Future.delayed(const Duration(milliseconds: 100), () {
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+          0.0, // Because the list is reversed, 0.0 is the bottom
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
@@ -76,63 +92,84 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     }
   }
 
-  void _autoFocusAfterResponse() {
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted && _selectedIndex == 1) {
-        _focusNode.requestFocus();
-      }
-    });
-  }
-
   Future<void> _onSubmitted() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
-    // [Architect] UX FIX: CLEAN INPUT EARLY
-    // We clear the input field immediately so the user doesn't feel "blocked".
-    // The previous logic waited for the AI stream to finish, which was bad UX.
-    _controller.clear();
+    final isChatMode = ref.read(brainDumpProvider).isChatMode;
 
-    // Maintain focus for rapid-fire thoughts
-    if (_selectedIndex == 1) {
-      _focusNode.requestFocus();
+    // In journal mode, capture text for ghost animation before clearing
+    if (!isChatMode) {
+      setState(() {
+        _ghostText = text;
+        _showGhost = true;
+      });
     }
 
-    final isQuery = text.endsWith('?');
+    // [Architect] UX FIX: CLEAN INPUT EARLY
+    _controller.clear();
 
     try {
-      if (isQuery) {
-        // Query: Show in chat and get AI response
+      if (isChatMode) {
+        // Chat mode: All input goes to AI as conversation
         await ref.read(brainDumpProvider.notifier).processInput(text);
       } else {
-        // Note: Save silently with checkmark feedback
+        // Journal mode: Save silently with "leaving mind" animation
         await ref.read(brainDumpProvider.notifier).saveNoteSilently(text);
         if (!mounted) return;
 
-        // Show checkmark animation
-        setState(() => _showCheckmark = true);
-        _checkmarkController.forward();
-
-        // Hide checkmark after 1 second
-        Future.delayed(const Duration(milliseconds: 1000), () {
+        // Play ghost float-away animation
+        _ghostController.forward().then((_) {
           if (mounted) {
-            setState(() => _showCheckmark = false);
-            _checkmarkController.reset();
+            setState(() => _showGhost = false);
+            _ghostController.reset();
+          }
+        });
+
+        // Show checkmark after ghost begins fading
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (mounted) {
+            setState(() => _showCheckmark = true);
+            _checkmarkController.forward();
+
+            Future.delayed(const Duration(milliseconds: 800), () {
+              if (mounted) {
+                setState(() => _showCheckmark = false);
+                _checkmarkController.reset();
+              }
+            });
           }
         });
       }
 
-      // [Architect] Invalidate analytics providers to force a refresh of the Insights tab
+      // [Architect] Invalidate analytics providers to force a refresh
       ref.invalidate(consistencyProvider);
       ref.invalidate(themesProvider);
       ref.invalidate(loopsProvider);
       ref.invalidate(pipelineProvider);
     } catch (e) {
       debugPrint('[DEBUG] Error: $e');
+
+      // Reset ghost state on error
+      if (!isChatMode && mounted) {
+        setState(() => _showGhost = false);
+        _ghostController.reset();
+      }
       if (!mounted) return;
-      // Show error in chat
+
+      String errorMsg = e.toString().replaceAll('Exception: ', '');
+      if (e is DioException) {
+        final detail = e.response?.data?['detail'];
+        errorMsg = detail != null
+            ? detail.toString()
+            : e.message ?? 'Network error occurred';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Error: $errorMsg'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -141,44 +178,40 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
   Widget build(BuildContext context) {
     final brainDumpState = ref.watch(brainDumpProvider);
     debugPrint(
-        'DEBUG UI RENDER: brainDumpState.messages.length = ${brainDumpState.messages.length}');
+      'DEBUG UI RENDER: brainDumpState.messages.length = ${brainDumpState.messages.length}',
+    );
 
     // Auto-scroll when new messages arrive
     if (brainDumpState.messages.length > _previousMessageCount) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToBottom();
-        // Auto-focus if the last message is from AI
-        if (brainDumpState.messages.isNotEmpty &&
-            brainDumpState.messages.last.sender == MessageSender.ai &&
-            brainDumpState.messages.last.status == MessageStatus.sent) {
-          _autoFocusAfterResponse();
-        }
       });
       _previousMessageCount = brainDumpState.messages.length;
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF000000), // Pure black
+      backgroundColor: AppColors.background, // Pure black
       resizeToAvoidBottomInset: true,
       body: SafeArea(
-        top: false,
         child: Stack(
           children: [
-            // LAYER 1: CONTENT (Chat or Vault)
+            // LAYER 1: CONTENT — routes between Journal/Chat on tab 1
             Positioned.fill(
               child: IndexedStack(
                 index: _selectedIndex,
                 children: [
                   const AnalyticsScreen(),
-                  _buildChatLayer(brainDumpState),
+                  brainDumpState.isChatMode
+                      ? _buildChatLayer(brainDumpState)
+                      : _buildJournalLayout(),
                   const ThoughtsScreen(isEmbedded: true),
                   const FileVaultScreen(isEmbedded: true),
                 ],
               ),
             ),
 
-            // LAYER 2: MINIMAL INPUT (Only visible on Chat screen — tab 1)
-            if (_selectedIndex == 1)
+            // LAYER 2: MINIMAL INPUT (Chat mode only, on tab 1)
+            if (_selectedIndex == 1 && brainDumpState.isChatMode)
               Positioned(
                 bottom: 100, // Above dock
                 left: 24,
@@ -197,11 +230,6 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                   onTabSelected: (index) {
                     setState(() {
                       _selectedIndex = index;
-                      if (index == 1) {
-                        Future.delayed(const Duration(milliseconds: 100), () {
-                          _focusNode.requestFocus();
-                        });
-                      }
                     });
                   },
                 ),
@@ -213,69 +241,110 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     );
   }
 
+  /// Shared header — mode toggle + clear + logout
+  Widget _buildHeader(bool isChatMode) {
+    return PersistentHeader(
+      title: 'BrainDumps',
+      subtitle: _buildModeToggle(isChatMode),
+      actions: [
+        // Clear History Button — only in chat mode
+        if (isChatMode)
+          IconButton(
+            icon: const Icon(
+              Icons.cleaning_services_rounded,
+              color: AppColors.textSecondary,
+              size: 20,
+            ),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  backgroundColor: AppColors.background,
+                  title: const Text(
+                    'Clear Screen?',
+                    style: TextStyle(color: AppColors.textPrimary),
+                  ),
+                  content: const Text(
+                    'This will clear messages from your screen but keep them in your brain.',
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                  actions: [
+                    TextButton(
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                    TextButton(
+                      child: const Text(
+                        'Clear',
+                        style: TextStyle(color: AppColors.error),
+                      ),
+                      onPressed: () {
+                        ref
+                            .read(brainDumpProvider.notifier)
+                            .clearLocalHistory();
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        // Logout Button
+        IconButton(
+          icon: const Icon(Icons.logout_rounded, color: Colors.white24),
+          onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
+        ),
+      ],
+    );
+  }
+
+  /// Mode toggle
+  Widget _buildModeToggle(bool isChatMode) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          isChatMode ? 'Chat' : 'Journal',
+          style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+        const SizedBox(width: 6),
+        SizedBox(
+          height: 18,
+          child: Switch.adaptive(
+            value: isChatMode,
+            onChanged: (_) {
+              ref.read(brainDumpProvider.notifier).toggleMode();
+            },
+            activeThumbColor: AppColors.textPrimary.withValues(alpha: 0.6),
+            activeTrackColor: AppColors.textPrimary.withValues(alpha: 0.1),
+            inactiveThumbColor: AppColors.accent,
+            inactiveTrackColor: AppColors.accent.withValues(alpha: 0.3),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Chat layout — messages list, input at bottom via Layer 2 overlay
   Widget _buildChatLayer(BrainDumpState state) {
     return Column(
       children: [
-        PersistentHeader(
-          title: 'BrainDumps',
-          actions: [
-            // Clear History Button - Local only
-            IconButton(
-              icon: const Icon(
-                Icons.cleaning_services_rounded,
-                color: Colors.white24,
-                size: 20,
-              ),
-              onPressed: () {
-                // Confirm before clearing
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    backgroundColor: const Color(0xFF1C1C1E),
-                    title: const Text(
-                      'Clear Screen?',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    content: const Text(
-                      'This will clear messages from your screen but keep them in your brain.',
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                    actions: [
-                      TextButton(
-                        child: const Text(
-                          'Cancel',
-                          style: TextStyle(color: Colors.white54),
-                        ),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                      TextButton(
-                        child: const Text(
-                          'Clear',
-                          style: TextStyle(color: Colors.redAccent),
-                        ),
-                        onPressed: () {
-                          ref
-                              .read(brainDumpProvider.notifier)
-                              .clearLocalHistory();
-                          Navigator.pop(context);
-                        },
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            // Logout Button
-            IconButton(
-              icon: const Icon(Icons.logout_rounded, color: Colors.white24),
-              onPressed: () =>
-                  ref.read(authControllerProvider.notifier).signOut(),
-            ),
-          ],
-        ),
+        _buildHeader(state.isChatMode),
         Expanded(
           child: ListView.builder(
+            reverse:
+                true, // Forces layout from bottom, so it naturally anchors to bottom
             controller: _scrollController,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.only(
               left: 24,
               right: 24,
@@ -284,8 +353,12 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
             ),
             itemCount: state.messages.length,
             itemBuilder: (context, index) {
-              final msg = state.messages[index];
-              final isLast = index == state.messages.length - 1;
+              // Because reverse is true, index 0 is at the bottom. We want index 0 to be the NEWEST message.
+              // state.messages[last] is newest. So reversed access:
+              final msgIndex = state.messages.length - 1 - index;
+              final msg = state.messages[msgIndex];
+              // To maintain normal spacing (last item has 0 bottom padding), check if it's the newest
+              final isLast = msgIndex == state.messages.length - 1;
 
               return Padding(
                 padding: EdgeInsets.only(
@@ -300,6 +373,85 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     );
   }
 
+  /// Journal layout — input at top with green text, ghost animation
+  Widget _buildJournalLayout() {
+    return Column(
+      children: [
+        _buildHeader(false),
+        // Input area at top — full remaining space
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: Stack(
+              children: [
+                // Ghost text — floats up and fades after save
+                if (_showGhost)
+                  SlideTransition(
+                    position: _ghostSlide,
+                    child: FadeTransition(
+                      opacity: _ghostOpacity,
+                      child: Text(
+                        _ghostText,
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 18,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                // Animated hint at input position
+                ValueListenableBuilder(
+                  valueListenable: _controller,
+                  builder: (context, value, child) {
+                    return value.text.isEmpty
+                        ? const _AnimatedHintText(text: 'dump your thoughts...')
+                        : const SizedBox.shrink();
+                  },
+                ),
+                // Actual input — green text
+                TextField(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  maxLines: null,
+                  minLines: 1,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _onSubmitted(),
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 16,
+                    height: 1.5,
+                  ),
+                  cursorColor: AppColors.accent,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    hintText: null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Checkmark indicator — centered below input after save
+        if (_showCheckmark)
+          FadeTransition(
+            opacity: _checkmarkController,
+            child: const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Icon(
+                Icons.check_circle_outline,
+                color: AppColors.textSecondary,
+                size: 28,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Minimal input for Chat mode — positioned at bottom via Stack overlay
   Widget _buildMinimalInput() {
     return Row(
       children: [
@@ -312,7 +464,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                 valueListenable: _controller,
                 builder: (context, value, child) {
                   return value.text.isEmpty
-                      ? const _AnimatedHintText()
+                      ? const _AnimatedHintText(text: 'start asking...')
                       : const SizedBox.shrink();
                 },
               ),
@@ -323,13 +475,16 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                 maxLines: null,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _onSubmitted(),
-                style: const TextStyle(color: Colors.white, fontSize: 16),
-                cursorColor: Colors.white,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 16,
+                ),
+                cursorColor: AppColors.accent,
                 decoration: const InputDecoration(
                   border: InputBorder.none,
                   isDense: true,
                   contentPadding: EdgeInsets.zero,
-                  hintText: null, // Disabled in favor of animated hint
+                  hintText: null,
                 ),
               ),
             ],
@@ -341,7 +496,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
             opacity: _checkmarkController,
             child: const Padding(
               padding: EdgeInsets.only(left: 8),
-              child: Icon(Icons.check, color: Colors.white, size: 20),
+              child: Icon(Icons.check, color: AppColors.textPrimary, size: 16),
             ),
           ),
       ],
@@ -386,7 +541,7 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator> {
     return Text(
       'thinking$dots',
       style: const TextStyle(
-        color: Colors.white54,
+        color: AppColors.textSecondary,
         fontSize: 14,
         fontStyle: FontStyle.italic,
       ),
@@ -403,22 +558,22 @@ class _MinimalMessageRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = msg.sender == MessageSender.user;
-    final isThinking = msg.status == MessageStatus.thinking;
 
     return Row(
-      mainAxisAlignment:
-          isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+      mainAxisAlignment: isUser
+          ? MainAxisAlignment.end
+          : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.start, // Align to top
       children: [
         // AI AVATAR (Left)
         if (!isUser) ...[
           CircleAvatar(
             radius: 16,
-            backgroundColor: Colors.white12,
+            backgroundColor: AppColors.textPrimary.withValues(alpha: 0.12),
             child: const Icon(
               Icons.psychology,
               size: 18,
-              color: Colors.white70,
+              color: AppColors.textSecondary,
             ),
           ),
           const SizedBox(width: 12),
@@ -429,22 +584,55 @@ class _MinimalMessageRow extends StatelessWidget {
           // Use Flexible to allow wrapping
           child: Container(
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width *
+              maxWidth:
+                  MediaQuery.of(context).size.width *
                   0.75, // Slightly reduced width to fit avatars
             ),
             child: Column(
-              crossAxisAlignment:
-                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: isUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
-                isThinking
-                    ? const ThinkingIndicator()
-                    : Text(
-                        msg.content,
+                // Show thinking indicator if we are in thinking or sending status
+                (msg.status == MessageStatus.thinking ||
+                        msg.status == MessageStatus.sending)
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (msg.content.isNotEmpty &&
+                              msg.content != 'Thinking...') ...[
+                            Expanded(
+                              child: Text.rich(
+                                TextSpan(
+                                  children: [TextSpan(text: msg.content)],
+                                ),
+                                textAlign: isUser
+                                    ? TextAlign.right
+                                    : TextAlign.left,
+                                style: TextStyle(
+                                  color: isUser
+                                      ? AppColors.textPrimary
+                                      : AppColors.textSecondary,
+                                  fontSize: 16,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          const Padding(
+                            padding: EdgeInsets.only(top: 2.0),
+                            child: ThinkingIndicator(),
+                          ),
+                        ],
+                      )
+                    : Text.rich(
+                        TextSpan(children: [TextSpan(text: msg.content)]),
                         textAlign: isUser ? TextAlign.right : TextAlign.left,
                         style: TextStyle(
                           color: isUser
-                              ? Colors.white
-                              : const Color(0xFFE0E0E0), // [Architect] AI Color
+                              ? AppColors.textPrimary
+                              : AppColors.textSecondary, // [Architect] AI Color
                           fontSize: 16,
                           height: 1.5,
                         ),
@@ -466,8 +654,12 @@ class _MinimalMessageRow extends StatelessWidget {
           const SizedBox(width: 12),
           CircleAvatar(
             radius: 16,
-            backgroundColor: Colors.blueGrey.withValues(alpha: 0.2),
-            child: const Icon(Icons.person, size: 18, color: Colors.blueGrey),
+            backgroundColor: AppColors.surfaceHigh,
+            child: const Icon(
+              Icons.person,
+              size: 18,
+              color: AppColors.textSecondary,
+            ),
           ),
         ],
       ],
@@ -492,9 +684,9 @@ class _PillDock extends StatelessWidget {
           width: 280,
           height: 60,
           decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E).withValues(alpha: 0.4),
+            color: AppColors.surface.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            border: Border.all(color: AppColors.divider),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -507,7 +699,7 @@ class _PillDock extends StatelessWidget {
               ),
               _DockItem(
                 icon: Icons.chat_bubble_rounded,
-                label: 'chat',
+                label: 'Dump',
                 isSelected: selectedIndex == 1,
                 onTap: () => onTabSelected(1),
               ),
@@ -553,8 +745,7 @@ class _DockItem extends StatelessWidget {
         children: [
           Icon(
             icon,
-            color:
-                isSelected ? Colors.white : Colors.white.withValues(alpha: 0.4),
+            color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
             size: 24,
           ),
           const SizedBox(height: 4),
@@ -562,8 +753,8 @@ class _DockItem extends StatelessWidget {
             label,
             style: TextStyle(
               color: isSelected
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.4),
+                  ? AppColors.textPrimary
+                  : AppColors.textSecondary,
               fontSize: 11,
               fontWeight: FontWeight.w500,
             ),
@@ -579,11 +770,7 @@ class _CollapsibleSources extends StatefulWidget {
   final List<String> sources;
   final Map<String, dynamic>? locationContext;
 
-  const _CollapsibleSources({
-    super.key,
-    required this.sources,
-    this.locationContext,
-  });
+  const _CollapsibleSources({required this.sources, this.locationContext});
 
   @override
   State<_CollapsibleSources> createState() => _CollapsibleSourcesState();
@@ -606,8 +793,12 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
       final type = widget.locationContext!['location_type'] as String?;
 
       if (city != null) {
-        locationText = " • at $city";
-        if (type != null && type != 'outdoor' && type != 'Unknown Place') {
+        String cleanCity = city.replaceAll('(specific_location)', '').trim();
+        locationText = " • at $cleanCity";
+        if (type != null &&
+            type != 'outdoor' &&
+            type != 'Unknown Place' &&
+            type != 'specific_location') {
           locationText += " ($type)";
         }
       }
@@ -620,7 +811,7 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
         child: Text(
           'from ${widget.sources.length} memories$locationText',
           style: TextStyle(
-            color: Colors.grey[500],
+            color: AppColors.textSecondary,
             fontSize: 11,
             fontStyle: FontStyle.italic,
           ),
@@ -642,7 +833,7 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
             padding: const EdgeInsets.only(top: 8, bottom: 4),
             child: Text(
               _isExpanded ? '↑ sources' : '↓ sources',
-              style: TextStyle(color: Colors.grey[500], fontSize: 11),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
             ),
           ),
         ),
@@ -659,25 +850,23 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: AppColors.surfaceHigh.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.1),
-                    ),
+                    border: Border.all(color: AppColors.divider),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(
                         Icons.description,
-                        color: Colors.white54,
+                        color: AppColors.textSecondary,
                         size: 12,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         source, // Filename (e.g., notes.txt)
                         style: const TextStyle(
-                          color: Colors.white70,
+                          color: AppColors.textPrimary,
                           fontSize: 10,
                         ),
                       ),
@@ -692,9 +881,11 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
   }
 }
 
-/// Animated Hint Text - Breathing effect + optional typewriter animation
+/// Animated Hint Text - Breathing effect, accepts configurable text
 class _AnimatedHintText extends StatefulWidget {
-  const _AnimatedHintText({super.key});
+  final String text;
+
+  const _AnimatedHintText({this.text = 'start typing ...'});
 
   @override
   State<_AnimatedHintText> createState() => _AnimatedHintTextState();
@@ -728,10 +919,10 @@ class _AnimatedHintTextState extends State<_AnimatedHintText>
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _opacity,
-      child: const Text(
-        'start typing ...',
-        style: TextStyle(
-          color: Colors.white, // Opacity handles the dimming
+      child: Text(
+        widget.text,
+        style: const TextStyle(
+          color: AppColors.textPrimary, // Opacity handles the dimming
           fontSize: 20,
           fontWeight: FontWeight.w300,
           fontStyle: FontStyle.italic,

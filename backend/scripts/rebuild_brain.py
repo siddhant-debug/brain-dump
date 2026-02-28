@@ -13,22 +13,22 @@ from app.models import models
 from app.services import rag_engine
 
 def rebuild_brain():
-    print("🧠 Starting Brain Rebuild Process...")
-    print(f"🔗 Using Database: {os.environ['DATABASE_URL']}")
+    print("Starting Brain Rebuild Process...")
+    print(f"Using Database: {os.environ['DATABASE_URL']}")
     
     db: Session = SessionLocal()
     try:
         # 1. Fetch Users
         users = db.query(models.User).all()
         if not users:
-            print("❌ No users found in the database. Did you restore backup.sql?")
+            print("No users found in the database. Did you restore backup.sql?")
             return
             
         print(f"👥 Found {len(users)} users.")
         
         # 2. Re-index Notes
         notes = db.query(models.Note).all()
-        print(f"📝 Found {len(notes)} notes. Re-indexing...")
+        print(f"Found {len(notes)} notes. Re-indexing...")
         for note in notes:
             try:
                 rag_engine.index_text(
@@ -54,7 +54,7 @@ def rebuild_brain():
             except Exception as e:
                 print(f"  [ERROR] Failed to index file {file.id}: {e}")
 
-        print("✅ Brain Rebuild Complete! ChromaDB is fully restored.")
+        print("Brain Rebuild Complete! ChromaDB is fully restored.")
         
     finally:
         db.close()

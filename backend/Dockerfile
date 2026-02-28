@@ -12,7 +12,9 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements first to leverage Docker layer caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Use BuildKit cache to keep downloaded packages between rebuilds
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
 
 # Copy the rest of the application code
 COPY . .
