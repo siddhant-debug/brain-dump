@@ -388,7 +388,13 @@ def index_text(
             batch_ids, batch_chunks, batch_embeddings, batch_metadatas
         ):
             rows.append(
-                {"id": id_, "document": doc, "embedding": emb, "metadata_": meta}
+                {
+                    "id": id_,
+                    "user_id": user_id,
+                    "document": doc,
+                    "embedding": emb,
+                    "metadata_": meta,
+                }
             )
 
     if rows:
