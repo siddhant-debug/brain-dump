@@ -32,13 +32,13 @@ def upgrade() -> None:
     )
 
     # DEBUG: Count orphaned embeddings before delete
-    orphaned_count_query = "SELECT COUNT(*) FROM brain_embeddings WHERE user_id IS NOT NULL AND user_id NOT IN (SELECT id FROM users)"
+    orphaned_count_query = "SELECT COUNT(*) FROM brain_embeddings WHERE user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users WHERE users.id = brain_embeddings.user_id)"
     before_count = conn.execute(sa.text(orphaned_count_query)).scalar()
     print(f"\n[DEBUG] Orphaned embeddings before delete: {before_count}\n")
 
     # 3. Clean up orphaned embeddings
     op.execute(
-        "DELETE FROM brain_embeddings WHERE user_id IS NOT NULL AND user_id NOT IN (SELECT id FROM users)"
+        "DELETE FROM brain_embeddings WHERE user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users WHERE users.id = brain_embeddings.user_id)"
     )
 
     # DEBUG: Count orphaned embeddings after delete
