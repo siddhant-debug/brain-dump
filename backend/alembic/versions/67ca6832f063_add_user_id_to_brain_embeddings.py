@@ -24,14 +24,32 @@ def upgrade() -> None:
     # 1. Add column as nullable first
     op.add_column("brain_embeddings", sa.Column("user_id", sa.Integer(), nullable=True))
 
-    # 2. Backfill user_id from the metadata JSONB column
+    # 2. Backfill user_id from the metadata JSONB column using SQLAlchemy Core
+    brain_embeddings_table = sa.table(
+        "brain_embeddings",
+        sa.column("user_id", sa.Integer),
+        sa.column("metadata", sa.JSON),
+    )
+
     op.execute(
-        "UPDATE brain_embeddings SET user_id = CAST(metadata->>'user_id' AS INTEGER) WHERE metadata->>'user_id' IS NOT NULL"
+        brain_embeddings_table.update()
+        .where(brain_embeddings_table.c.metadata.op("->>")("user_id") != None)
+        .values(
+            user_id=sa.cast(
+                brain_embeddings_table.c.metadata.op("->>")("user_id"), sa.Integer
+            )
+        )
     )
 
     # 3. Clean up orphaned embeddings (users who were deleted) before enforcing Foreign Key
+    users_table = sa.table("users", sa.column("id", sa.Integer))
     op.execute(
-        "DELETE FROM brain_embeddings WHERE user_id IS NOT NULL AND user_id NOT IN (SELECT id FROM users)"
+        brain_embeddings_table.delete().where(
+            sa.and_(
+                brain_embeddings_table.c.user_id != None,
+                ~brain_embeddings_table.c.user_id.in_(sa.select(users_table.c.id)),
+            )
+        )
     )
 
     # 4. Alter column to be NOT NULL
