@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 class PersistentHeader extends StatelessWidget {
   final String title;
@@ -28,9 +29,8 @@ class PersistentHeader extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 32,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.bold,
                   ),
                   overflow: TextOverflow.ellipsis,

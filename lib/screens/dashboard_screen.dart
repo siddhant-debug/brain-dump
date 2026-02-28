@@ -25,7 +25,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: AppColors.background,
       body: _screens[_currentIndex],
       bottomNavigationBar: _buildGlassBottomNav(),
     );
@@ -37,10 +37,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.5),
-            border: Border(
-              top: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-            ),
+            color: AppColors.background.withValues(alpha: 0.5),
+            border: Border(top: BorderSide(color: AppColors.divider)),
           ),
           child: BottomNavigationBar(
             currentIndex: _currentIndex,
@@ -57,8 +55,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             },
             backgroundColor: Colors.transparent, // Important for glass effect
             elevation: 0,
-            selectedItemColor: Colors.white,
-            unselectedItemColor: Colors.white38,
+            selectedItemColor: AppColors.textPrimary,
+            unselectedItemColor: AppColors.textSecondary,
             type: BottomNavigationBarType.fixed,
             items: const [
               BottomNavigationBarItem(
@@ -92,10 +90,10 @@ class _HomeTab extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 1. Header
-            const Text(
+            Text(
               "Command Center",
               style: TextStyle(
-                color: Colors.white,
+                color: AppColors.textPrimary,
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
                 letterSpacing: -1,
@@ -104,10 +102,10 @@ class _HomeTab extends ConsumerWidget {
             const SizedBox(height: 32),
 
             // 2. Connected Apps
-            const Text(
+            Text(
               "Connected Apps",
               style: TextStyle(
-                color: Colors.white70,
+                color: AppColors.textSecondary,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 1.2,
@@ -123,8 +121,8 @@ class _HomeTab extends ConsumerWidget {
                     "Spotify",
                     Icons.music_note,
                     musicState.spotifyPlaying != null
-                        ? Colors.green
-                        : Colors.grey[800]!,
+                        ? AppColors.accent
+                        : AppColors.surfaceHigh,
                     musicState.spotifyPlaying != null ? "Active" : "Linked",
                   ),
                   const SizedBox(width: 16),
@@ -133,7 +131,7 @@ class _HomeTab extends ConsumerWidget {
                     Icons.apple,
                     musicState.applePlaying != null
                         ? Colors.redAccent
-                        : Colors.grey[800]!,
+                        : AppColors.surfaceHigh,
                     musicState.applePlaying != null ? "Active" : "Linked",
                   ),
                 ],
@@ -146,17 +144,20 @@ class _HomeTab extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   "Recent Uploads",
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: AppColors.textSecondary,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 1.2,
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.refresh, color: Colors.white38),
+                  icon: const Icon(
+                    Icons.refresh,
+                    color: AppColors.textSecondary,
+                  ),
                   onPressed: () => ref.invalidate(filesProvider),
                   tooltip: "Refresh Files",
                 ),
@@ -170,21 +171,21 @@ class _HomeTab extends ConsumerWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.all(AppTheme.pagePadding),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E1E1E),
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white12),
+                      border: Border.all(color: AppColors.divider),
                     ),
                     child: const Column(
                       children: [
                         Icon(
                           Icons.folder_off_outlined,
-                          color: Colors.white38,
+                          color: AppColors.textSecondary,
                           size: 48,
                         ),
                         SizedBox(height: 16),
                         Text(
                           "No files uploaded yet.",
-                          style: TextStyle(color: Colors.white38),
+                          style: TextStyle(color: AppColors.textSecondary),
                         ),
                       ],
                     ),
@@ -206,7 +207,7 @@ class _HomeTab extends ConsumerWidget {
               error: (err, stack) => Center(
                 child: Text(
                   "Error loading files: $err",
-                  style: const TextStyle(color: Colors.redAccent),
+                  style: TextStyle(color: AppColors.error),
                 ),
               ),
             ),
@@ -221,9 +222,11 @@ class _HomeTab extends ConsumerWidget {
       width: 140,
       padding: const EdgeInsets.all(AppTheme.cardPadding),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(
+          color: AppColors.textPrimary.withValues(alpha: 0.05),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,7 +239,7 @@ class _HomeTab extends ConsumerWidget {
               Text(
                 name,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
                 ),
@@ -260,21 +263,21 @@ class _HomeTab extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(AppTheme.cardPadding),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: AppColors.divider),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.blueAccent.withValues(alpha: 0.1),
+              color: AppColors.accentFaint,
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(
               Icons.description,
-              color: Colors.blueAccent,
+              color: AppColors.accent,
               size: 20,
             ),
           ),
@@ -286,7 +289,7 @@ class _HomeTab extends ConsumerWidget {
                 Text(
                   file['filename'] ?? 'Unknown',
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,
                     fontSize: 15,
                   ),
@@ -297,7 +300,10 @@ class _HomeTab extends ConsumerWidget {
                           file['created_at'],
                         ).toString().split('.')[0]
                       : 'Just now',
-                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),

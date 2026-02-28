@@ -196,7 +196,6 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
 
     // 3. Stream AI response
     String fullAnswer = "";
-    bool isFirstChunk = true;
     List<String> sources = [];
 
     try {
@@ -237,8 +236,6 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
             return msg;
           }).toList(),
         );
-
-        isFirstChunk = false;
       }
 
       // Mark as complete

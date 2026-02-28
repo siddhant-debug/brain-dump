@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 /// An organic, upside-down tree (hanging roots / lightning) that grows
 /// downward from the top-right corner.
@@ -169,7 +170,7 @@ class _SynapticRootsPainter extends CustomPainter {
     final connectionGlow = connectionT * 0.5;
 
     final paint = Paint()
-      ..color = Colors.white.withValues(
+      ..color = AppColors.accent.withValues(
         alpha: (opacity * (pulse + connectionGlow)).clamp(0.0, 1.0),
       )
       ..strokeWidth = strokeWidth
@@ -185,14 +186,14 @@ class _SynapticRootsPainter extends CustomPainter {
     // 10 : Draw interactive 'node' glow if fully connected to a target
     if (isTip && connectionT > 0.5 && myTargetIdx >= 0) {
       final nodePaint = Paint()
-        ..color = Colors.white.withValues(
+        ..color = AppColors.accent.withValues(
           alpha: (connectionT * 0.6).clamp(0.0, 1.0),
         )
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
       canvas.drawCircle(currentEnd, 6.0 * connectionT, nodePaint);
 
       final corePaint = Paint()
-        ..color = Colors.white.withValues(alpha: connectionT);
+        ..color = AppColors.accent.withValues(alpha: connectionT);
       canvas.drawCircle(currentEnd, 3.0 * connectionT, corePaint);
     }
 

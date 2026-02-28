@@ -120,7 +120,7 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
     final filesState = ref.watch(filesProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D), // Match minimal theme
+      backgroundColor: const Color(0xFF111111), // Match minimal theme
       appBar: widget.isEmbedded
           ? null // No AppBar if embedded
           : AppBar(

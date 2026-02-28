@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 /// A subtle, ghost-style icon button for the minimalist UI.
 /*
@@ -30,7 +31,7 @@ class MinimalIconButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: AppColors.surfaceHigh.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -43,14 +44,10 @@ class MinimalIconButton extends StatelessWidget {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.white24,
+                      color: AppColors.accent,
                     ),
                   )
-                : Icon(
-                    icon,
-                    size: 20,
-                    color: Colors.white.withValues(alpha: 0.35),
-                  ),
+                : Icon(icon, size: 20, color: AppColors.textSecondary),
           ),
         ),
       ),

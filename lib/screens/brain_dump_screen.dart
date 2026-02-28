@@ -11,6 +11,7 @@ import '../features/auth/controllers/auth_controller.dart';
 import '../features/vault/presentation/file_vault_screen.dart';
 import '../features/vault/presentation/thoughts_screen.dart';
 import '../core/widgets/persistent_header.dart';
+import '../core/theme/app_theme.dart';
 import '../features/analytics/presentation/analytics_screen.dart';
 import '../features/analytics/services/analytics_service.dart';
 
@@ -189,7 +190,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF000000), // Pure black
+      backgroundColor: AppColors.background, // Pure black
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Stack(
@@ -251,34 +252,34 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
           IconButton(
             icon: const Icon(
               Icons.cleaning_services_rounded,
-              color: Colors.white24,
+              color: AppColors.textSecondary,
               size: 20,
             ),
             onPressed: () {
               showDialog(
                 context: context,
                 builder: (context) => AlertDialog(
-                  backgroundColor: const Color(0xFF1C1C1E),
+                  backgroundColor: AppColors.background,
                   title: const Text(
                     'Clear Screen?',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppColors.textPrimary),
                   ),
                   content: const Text(
                     'This will clear messages from your screen but keep them in your brain.',
-                    style: TextStyle(color: Colors.white70),
+                    style: TextStyle(color: AppColors.textSecondary),
                   ),
                   actions: [
                     TextButton(
                       child: const Text(
                         'Cancel',
-                        style: TextStyle(color: Colors.white54),
+                        style: TextStyle(color: AppColors.textSecondary),
                       ),
                       onPressed: () => Navigator.pop(context),
                     ),
                     TextButton(
                       child: const Text(
                         'Clear',
-                        style: TextStyle(color: Colors.redAccent),
+                        style: TextStyle(color: AppColors.error),
                       ),
                       onPressed: () {
                         ref
@@ -303,15 +304,13 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
 
   /// Mode toggle
   Widget _buildModeToggle(bool isChatMode) {
-    // Journal = green toggle, Chat = white/grey toggle
-    const journalGreen = Color(0xFF4CAF50);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           isChatMode ? 'Chat' : 'Journal',
           style: const TextStyle(
-            color: Colors.white54,
+            color: AppColors.textSecondary,
             fontSize: 14,
             fontWeight: FontWeight.w500,
             fontStyle: FontStyle.italic,
@@ -325,10 +324,10 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
             onChanged: (_) {
               ref.read(brainDumpProvider.notifier).toggleMode();
             },
-            activeThumbColor: const Color.fromARGB(156, 255, 255, 255),
-            activeTrackColor: Colors.white10,
-            inactiveThumbColor: journalGreen,
-            inactiveTrackColor: journalGreen.withValues(alpha: 0.3),
+            activeThumbColor: AppColors.textPrimary.withValues(alpha: 0.6),
+            activeTrackColor: AppColors.textPrimary.withValues(alpha: 0.1),
+            inactiveThumbColor: AppColors.accent,
+            inactiveTrackColor: AppColors.accent.withValues(alpha: 0.3),
           ),
         ),
       ],
@@ -376,7 +375,6 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
 
   /// Journal layout — input at top with green text, ghost animation
   Widget _buildJournalLayout() {
-    const journalGreen = Color(0xFF4CAF50);
     return Column(
       children: [
         _buildHeader(false),
@@ -395,7 +393,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                       child: Text(
                         _ghostText,
                         style: TextStyle(
-                          color: Colors.white60,
+                          color: AppColors.textSecondary,
                           fontSize: 18,
                           height: 1.5,
                         ),
@@ -420,11 +418,11 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => _onSubmitted(),
                   style: const TextStyle(
-                    color: Colors.white60,
+                    color: AppColors.textPrimary,
                     fontSize: 16,
                     height: 1.5,
                   ),
-                  cursorColor: journalGreen,
+                  cursorColor: AppColors.accent,
                   decoration: const InputDecoration(
                     border: InputBorder.none,
                     isDense: true,
@@ -444,7 +442,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
               padding: EdgeInsets.only(bottom: 12),
               child: Icon(
                 Icons.check_circle_outline,
-                color: Colors.white38,
+                color: AppColors.textSecondary,
                 size: 28,
               ),
             ),
@@ -477,8 +475,11 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                 maxLines: null,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _onSubmitted(),
-                style: const TextStyle(color: Colors.white, fontSize: 16),
-                cursorColor: Colors.white,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 16,
+                ),
+                cursorColor: AppColors.accent,
                 decoration: const InputDecoration(
                   border: InputBorder.none,
                   isDense: true,
@@ -495,7 +496,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
             opacity: _checkmarkController,
             child: const Padding(
               padding: EdgeInsets.only(left: 8),
-              child: Icon(Icons.check, color: Colors.white, size: 16),
+              child: Icon(Icons.check, color: AppColors.textPrimary, size: 16),
             ),
           ),
       ],
@@ -540,7 +541,7 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator> {
     return Text(
       'thinking$dots',
       style: const TextStyle(
-        color: Colors.white54,
+        color: AppColors.textSecondary,
         fontSize: 14,
         fontStyle: FontStyle.italic,
       ),
@@ -568,11 +569,11 @@ class _MinimalMessageRow extends StatelessWidget {
         if (!isUser) ...[
           CircleAvatar(
             radius: 16,
-            backgroundColor: Colors.white12,
+            backgroundColor: AppColors.textPrimary.withValues(alpha: 0.12),
             child: const Icon(
               Icons.psychology,
               size: 18,
-              color: Colors.white70,
+              color: AppColors.textSecondary,
             ),
           ),
           const SizedBox(width: 12),
@@ -610,8 +611,8 @@ class _MinimalMessageRow extends StatelessWidget {
                                     : TextAlign.left,
                                 style: TextStyle(
                                   color: isUser
-                                      ? Colors.white
-                                      : const Color(0xFFE0E0E0),
+                                      ? AppColors.textPrimary
+                                      : AppColors.textSecondary,
                                   fontSize: 16,
                                   height: 1.5,
                                 ),
@@ -630,8 +631,8 @@ class _MinimalMessageRow extends StatelessWidget {
                         textAlign: isUser ? TextAlign.right : TextAlign.left,
                         style: TextStyle(
                           color: isUser
-                              ? Colors.white
-                              : const Color(0xFFE0E0E0), // [Architect] AI Color
+                              ? AppColors.textPrimary
+                              : AppColors.textSecondary, // [Architect] AI Color
                           fontSize: 16,
                           height: 1.5,
                         ),
@@ -653,8 +654,12 @@ class _MinimalMessageRow extends StatelessWidget {
           const SizedBox(width: 12),
           CircleAvatar(
             radius: 16,
-            backgroundColor: Colors.blueGrey.withValues(alpha: 0.2),
-            child: const Icon(Icons.person, size: 18, color: Colors.blueGrey),
+            backgroundColor: AppColors.surfaceHigh,
+            child: const Icon(
+              Icons.person,
+              size: 18,
+              color: AppColors.textSecondary,
+            ),
           ),
         ],
       ],
@@ -679,9 +684,9 @@ class _PillDock extends StatelessWidget {
           width: 280,
           height: 60,
           decoration: BoxDecoration(
-            color: const Color(0xFF1C1C1E).withValues(alpha: 0.4),
+            color: AppColors.surface.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            border: Border.all(color: AppColors.divider),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -740,9 +745,7 @@ class _DockItem extends StatelessWidget {
         children: [
           Icon(
             icon,
-            color: isSelected
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.4),
+            color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
             size: 24,
           ),
           const SizedBox(height: 4),
@@ -750,8 +753,8 @@ class _DockItem extends StatelessWidget {
             label,
             style: TextStyle(
               color: isSelected
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.4),
+                  ? AppColors.textPrimary
+                  : AppColors.textSecondary,
               fontSize: 11,
               fontWeight: FontWeight.w500,
             ),
@@ -808,7 +811,7 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
         child: Text(
           'from ${widget.sources.length} memories$locationText',
           style: TextStyle(
-            color: Colors.grey[500],
+            color: AppColors.textSecondary,
             fontSize: 11,
             fontStyle: FontStyle.italic,
           ),
@@ -830,7 +833,7 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
             padding: const EdgeInsets.only(top: 8, bottom: 4),
             child: Text(
               _isExpanded ? '↑ sources' : '↓ sources',
-              style: TextStyle(color: Colors.grey[500], fontSize: 11),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
             ),
           ),
         ),
@@ -847,25 +850,23 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: AppColors.surfaceHigh.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.1),
-                    ),
+                    border: Border.all(color: AppColors.divider),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(
                         Icons.description,
-                        color: Colors.white54,
+                        color: AppColors.textSecondary,
                         size: 12,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         source, // Filename (e.g., notes.txt)
                         style: const TextStyle(
-                          color: Colors.white70,
+                          color: AppColors.textPrimary,
                           fontSize: 10,
                         ),
                       ),
@@ -921,7 +922,7 @@ class _AnimatedHintTextState extends State<_AnimatedHintText>
       child: Text(
         widget.text,
         style: const TextStyle(
-          color: Colors.white, // Opacity handles the dimming
+          color: AppColors.textPrimary, // Opacity handles the dimming
           fontSize: 20,
           fontWeight: FontWeight.w300,
           fontStyle: FontStyle.italic,

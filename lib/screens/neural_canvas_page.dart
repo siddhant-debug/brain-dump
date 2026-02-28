@@ -4,6 +4,7 @@ import 'dart:ui';
 import '../features/brain_dump/widgets/pipe_painter.dart';
 import '../features/vault/services/file_service.dart';
 import '../features/vault/presentation/file_vault_screen.dart';
+import '../core/theme/app_theme.dart';
 
 class NeuralCanvasPage extends ConsumerStatefulWidget {
   const NeuralCanvasPage({super.key});
@@ -105,7 +106,7 @@ class _NeuralCanvasPageState extends ConsumerState<NeuralCanvasPage> {
                   painter: PipePainter(
                     points: pipePoints,
                     activeStates: pipeActivity,
-                    activeColor: const Color(0xFF00E5FF), // Cyan trace
+                    activeColor: AppColors.accent, // Trace color
                   ),
                 ),
 
@@ -155,22 +156,22 @@ class _NeuralCanvasPageState extends ConsumerState<NeuralCanvasPage> {
                     width: 30,
                     height: 30,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0D0D0D),
+                      color: AppColors.background,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: const Color(0xFF00E5FF).withValues(alpha: 0.5),
+                        color: AppColors.accent.withValues(alpha: 0.5),
                         width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF00E5FF).withValues(alpha: 0.2),
+                          color: AppColors.accent.withValues(alpha: 0.2),
                           blurRadius: 10,
                         ),
                       ],
                     ),
                     child: const Icon(
                       Icons.memory,
-                      color: Color(0xFF00E5FF),
+                      color: AppColors.accent,
                       size: 16,
                     ),
                   ),
@@ -205,10 +206,10 @@ class _MicroChip extends StatelessWidget {
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.8),
+              color: AppColors.surfaceHigh.withValues(alpha: 0.8),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: const Color(0xFF00E5FF).withValues(alpha: 0.5),
+                color: AppColors.accent.withValues(alpha: 0.5),
                 width: 1.0,
               ),
             ),
@@ -220,13 +221,16 @@ class _MicroChip extends StatelessWidget {
                       ? Icons.picture_as_pdf
                       : Icons.description,
                   size: 14,
-                  color: const Color(0xFF00E5FF),
+                  color: AppColors.accent,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     file['filename'],
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 12,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),

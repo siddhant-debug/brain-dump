@@ -28,7 +28,7 @@ class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
+          backgroundColor: const Color(0xFF111111),
           title: const Text(
             'Add New Thought',
             style: TextStyle(color: Colors.white),
@@ -102,7 +102,7 @@ class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
     final notesState = ref.watch(notesProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor:const Color(0xFF111111),
       appBar: widget.isEmbedded
           ? null
           : AppBar(

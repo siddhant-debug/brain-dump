@@ -6,37 +6,21 @@ import 'package:google_fonts/google_fonts.dart';
 /// Single source of truth for every color in the app.
 abstract class AppColors {
   // ── Backgrounds ──────────────────────────────────────────
-  /// Main scaffold background — warm deep charcoal (#13111A)
-  static const background = Color(0xFF13111A);
-
-  /// Cards, dock, sheets, dialogs (#1E1B2E)
-  static const surface = Color(0xFF1E1B2E);
-
-  /// Elevated surfaces, input borders (#2A2740)
-  static const surfaceHigh = Color(0xFF2A2740);
+  static const background = Color(0xFF000000); // True OLED Black
+  static const surface = Color(0xFF121212);    // Standard Dark Surface
+  static const surfaceHigh = Color(0xFF1E1E1E); // Elevated Surface
 
   // ── Accent ───────────────────────────────────────────────
-  /// Soft lavender-violet — AI elements, active states (#C084FC)
-  static const accent = Color(0xFFC084FC);
-
-  /// Accent at 20% — subtle glows, inactive borders
+  static const accent = Color(0xFF10B981);     // Neon Emerald Green
   static Color get accentDim => accent.withValues(alpha: 0.20);
-
-  /// Accent at 12% — very subtle backgrounds on AI avatars
   static Color get accentFaint => accent.withValues(alpha: 0.12);
 
   // ── Text ─────────────────────────────────────────────────
-  /// Primary text — warm off-white (#F4F0FF)
-  static const textPrimary = Color(0xFFF4F0FF);
-
-  /// Secondary text — muted lilac-grey (#8B83A3)
-  static const textSecondary = Color(0xFF8B83A3);
+  static const textPrimary = Color(0xFFFFFFFF); // Pure White
+  static const textSecondary = Color(0xFFA1A1AA); // Zinc Gray
 
   // ── Utility ──────────────────────────────────────────────
-  /// Error / destructive (#F87171)
-  static const error = Color(0xFFF87171);
-
-  /// Dividers, subtle separators
+  static const error = Color(0xFFF87171);       // Soft Red
   static Color get divider => textSecondary.withValues(alpha: 0.15);
 }
 
