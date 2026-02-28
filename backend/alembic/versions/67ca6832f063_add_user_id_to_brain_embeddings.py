@@ -24,30 +24,15 @@ def upgrade() -> None:
     # 1. Add column as nullable first
     op.add_column("brain_embeddings", sa.Column("user_id", sa.Integer(), nullable=True))
 
-    conn = op.get_bind()
-
     # 2. Backfill user_id from the metadata JSONB column
     op.execute(
         "UPDATE brain_embeddings SET user_id = CAST(metadata->>'user_id' AS INTEGER) WHERE metadata->>'user_id' IS NOT NULL"
     )
 
-    # DEBUG: Count orphaned embeddings before delete
-    orphaned_count_query = "SELECT COUNT(*) FROM brain_embeddings WHERE user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users WHERE users.id = brain_embeddings.user_id)"
-    before_count = conn.execute(sa.text(orphaned_count_query)).scalar()
-    print(f"\n[DEBUG] Orphaned embeddings before delete: {before_count}\n")
-
     # 3. Clean up orphaned embeddings
     op.execute(
         "DELETE FROM brain_embeddings WHERE user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users WHERE users.id = brain_embeddings.user_id)"
     )
-
-    # DEBUG: Count orphaned embeddings after delete
-    after_count = conn.execute(sa.text(orphaned_count_query)).scalar()
-    print(f"\n[DEBUG] Orphaned embeddings after delete: {after_count}\n")
-
-    # Fail intentionally if there are still orphans to prevent ForeignKey error from masking it
-    if after_count > 0:
-        raise Exception(f"Failed to delete {after_count} orphaned embeddings!")
 
     # 4. Alter column to be NOT NULL
     op.alter_column(
