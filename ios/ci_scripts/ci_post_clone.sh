@@ -13,6 +13,9 @@ export PATH="$PATH:$HOME/flutter/bin"
 # Install Flutter artifacts for iOS (--ios), or macOS (--macos) platforms.
 flutter precache --ios
 
+# Clean project to ensure no cached, problematic artifacts exist.
+flutter clean
+
 # Install Flutter dependencies.
 flutter pub get
 

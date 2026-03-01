@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from app.core.limiter import limiter
 
-
 from sqlalchemy.orm import Session
 from jose import jwt
 import bcrypt
