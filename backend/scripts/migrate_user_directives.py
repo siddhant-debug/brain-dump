@@ -1,7 +1,6 @@
 import sys
 import os
 from sqlalchemy import create_engine
-from passlib.context import CryptContext
 
 sys.path.append(os.path.abspath(os.path.join(os.getcwd())))
 
