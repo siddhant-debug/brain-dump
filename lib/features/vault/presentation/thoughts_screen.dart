@@ -1,3 +1,4 @@
+import 'package:brain_dump/core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../notes/services/note_service.dart';
@@ -102,7 +103,7 @@ class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
     final notesState = ref.watch(notesProvider);
 
     return Scaffold(
-      backgroundColor:const Color(0xFF111111),
+      backgroundColor: AppColors.background,
       appBar: widget.isEmbedded
           ? null
           : AppBar(

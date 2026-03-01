@@ -182,7 +182,7 @@ class _ConsistencyContent extends StatelessWidget {
               Text(
                 '${data.currentStreak}',
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: Colors.green,
                   fontSize: 52,
                   fontWeight: FontWeight.w700,
                   height: 1,
@@ -192,7 +192,7 @@ class _ConsistencyContent extends StatelessWidget {
               const Padding(
                 padding: EdgeInsets.only(bottom: 8),
                 child: Text(
-                  'day streak',
+                  'days streak',
                   style: TextStyle(color: Colors.white54, fontSize: 16),
                 ),
               ),
@@ -227,7 +227,7 @@ class _HeatmapRow extends StatelessWidget {
         final intensity = max == 0 ? 0.0 : day.count / max;
         final color = day.count == 0
             ? Colors.white.withValues(alpha: 0.07)
-            : Colors.white.withValues(alpha: 0.15 + intensity * 0.75);
+            : const Color.fromARGB(255, 61, 224, 36).withValues(alpha: 0.15 + intensity * 0.75);
 
         return Tooltip(
           message: '${day.date}: ${day.count} note${day.count == 1 ? '' : 's'}',

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:brain_dump/core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
@@ -120,7 +121,7 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
     final filesState = ref.watch(filesProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF111111), // Match minimal theme
+      backgroundColor: AppColors.background, // Match minimal theme
       appBar: widget.isEmbedded
           ? null // No AppBar if embedded
           : AppBar(

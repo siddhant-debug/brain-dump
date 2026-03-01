@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
@@ -698,7 +699,7 @@ class _PillDock extends StatelessWidget {
                 onTap: () => onTabSelected(0),
               ),
               _DockItem(
-                icon: Icons.chat_bubble_rounded,
+                icon: Icons.note_alt_outlined,
                 label: 'Dump',
                 isSelected: selectedIndex == 1,
                 onTap: () => onTabSelected(1),
