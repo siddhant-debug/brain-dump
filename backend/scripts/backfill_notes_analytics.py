@@ -84,8 +84,8 @@ try:
         db.commit()
         processed += 1
 
-        # Sleep for 4.2 seconds to safely stay under Gemini Free Tier limits of 15 Requests/Minute
-        time.sleep(4.2)
+        # Sleep for 16.5 seconds to safely stay under Gemini Free Tier limits of 5 Requests/Minute
+        time.sleep(16.5)
 
     print(f"Backfill Complete: {processed} notes updated.")
 
