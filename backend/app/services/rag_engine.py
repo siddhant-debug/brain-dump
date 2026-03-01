@@ -431,6 +431,39 @@ def delete_document(filename: str, user_id: int, db: Session):
     return True
 
 
+def analyze_thought_insights(content: str) -> dict:
+    """
+    Analyzes a raw thought to extract sentiment and categories via Gemini JSON mode.
+    Returns a dict with 'sentiment' and 'categories'.
+    """
+    genai.configure(api_key=GEMINI_API_KEY)
+
+    model = genai.GenerativeModel(
+        "gemini-1.5-flash",
+        generation_config={
+            "temperature": 0.1,
+            "response_mime_type": "application/json",
+        },
+        system_instruction="You are an analytical assistant classifying a user's journal entry. Categories should be lowercase tags (e.g., work, health, personal, finance, learning, relationships, anxiety, goals, creativity). Max 3 categories. Sentiment must be EXACTLY 'Positive', 'Negative', or 'Neutral'.",
+    )
+
+    prompt = f"""
+    Analyze the following thought. Return a JSON object with this exact structure:
+    {{
+        "sentiment": "Positive" | "Negative" | "Neutral",
+        "categories": ["tag1", "tag2"]
+    }}
+
+    Thought: "{content}"
+    """
+    try:
+        response = model.generate_content(prompt)
+        return json.loads(response.text)
+    except Exception as e:
+        print(f"[ERROR] LLM Insight Analysis failed: {e}")
+        return {"sentiment": "Neutral", "categories": []}
+
+
 def ask_gemini(context: str, query: str):
     """
     BATCH MODE: Optimized for Structure, Deep Logic, and Database Categorization.

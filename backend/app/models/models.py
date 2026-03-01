@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, JSON
 from sqlalchemy.sql import func
 from app.core.database import Base
 
@@ -34,6 +34,8 @@ class Note(Base):
     user_id = Column(Integer, index=True)  # Linked to User.id
     content = Column(String, nullable=False)
     is_favorite = Column(Boolean, default=False)
+    sentiment = Column(String, nullable=True)  # "Positive", "Negative", "Neutral"
+    categories = Column(JSON, nullable=True)  # Array of strings
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
