@@ -7,7 +7,8 @@ from langchain_text_splitters import (
     MarkdownHeaderTextSplitter,
     Language,
 )
-import google.generativeai as genai
+from google import genai
+from google.generativeai import types
 from dotenv import load_dotenv
 from sentence_transformers import CrossEncoder, SentenceTransformer
 from sqlalchemy.orm import Session
@@ -436,16 +437,7 @@ def analyze_thought_insights(content: str) -> dict:
     Analyzes a raw thought to extract sentiment and categories via Gemini JSON mode.
     Returns a dict with 'sentiment' and 'categories'.
     """
-    genai.configure(api_key=GEMINI_API_KEY)
-
-    model = genai.GenerativeModel(
-        "gemini-3-flash-preview",
-        generation_config={
-            "temperature": 0.1,
-            "response_mime_type": "application/json",
-        },
-        system_instruction="You are an analytical assistant classifying a user's journal entry. Categories should be lowercase tags (e.g., work, health, personal, finance, learning, relationships, anxiety, goals, creativity). Max 3 categories. Sentiment must be EXACTLY 'Positive', 'Negative', or 'Neutral'.",
-    )
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
     prompt = f"""
     Analyze the following thought. Return a JSON object with this exact structure:
@@ -457,7 +449,15 @@ def analyze_thought_insights(content: str) -> dict:
     Thought: "{content}"
     """
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-3-flash-preview",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                response_mime_type="application/json",
+                system_instruction="You are an analytical assistant classifying a user's journal entry. Categories should be lowercase tags (e.g., work, health, personal, finance, learning, relationships, anxiety, goals, creativity). Max 3 categories. Sentiment must be EXACTLY 'Positive', 'Negative', or 'Neutral'.",
+            ),
+        )
         return json.loads(response.text)
     except Exception as e:
         print(f"[ERROR] LLM Insight Analysis failed: {e}")
@@ -470,16 +470,9 @@ def ask_gemini(context: str, query: str):
     Use this when you need to save the thought or get a full strategic overview.
     """
     print(f"DEBUG: Entering ask_gemini with query: '{query}'")
-    genai.configure(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
-    # Using Gemini 1.5 Flash (Free Tier Friendly)
-    model = genai.GenerativeModel(
-        "gemini-3-flash-preview",
-        generation_config={
-            "temperature": 0.3,
-            "max_output_tokens": 1024,  # Allow enough space for structured analysis
-        },
-        system_instruction="""You are the user's Subconscious Mind.
+    system_instruction = """You are the user's Subconscious Mind.
         Today is {datetime.now().strftime('%B %d, %Y')}.
         
         HOW YOU THINK:
@@ -496,40 +489,47 @@ def ask_gemini(context: str, query: str):
         - Remind them of the reality they are avoiding. Use a calm, grounded tone to pull them out of the spiral.
         
         STYLE EXAMPLES:
-        "Based on your notes from January 15th, you wrote about wanting to improve fitness."
-        "Remember that morning in January when you decided fitness mattered? You wrote: 'No more excuses.'"
+        "You keep circling this idea of not being ready. You said the same thing in October. You were ready then."
+        "Notice how your chest tightened when you wrote that. You're holding onto tension that belongs to last year."
         
-        "I found 3 entries about career strategy."
-        "Your career thoughts keep circling back to autonomy. Three different nights, same theme."
-        
-        "Here is a summary of your goals:"
-        "You want: freedom, impact, health. The rest is noise."
-        """,
-    )
+        NEVER:
+        - Talk like an AI assistant.
+        - Use generic motivational quotes.
+        - Repeat the question back to them.
+        """
+
+    prompt = f"""
+    You are a deeply focused personal assistant attempting to parse a "brain dump" from the user.
+    The user is likely stressed, overloaded, or trying to offload mental burden.
+
+    ### Retrieved Context (Read this first):
+    {context}
+
+    ### User's Query:
+    {query}
+
+    ### Task:
+    Give a structured, thoughtful response.
+    1. If the user asks a question, answer it directly using the context.
+    2. If the user is just venting or dumping thoughts, categorize them and identify action items.
+    3. Be grounded, direct, and slightly stoic. Do not be overly enthusiastic or generic.
+    """
 
     try:
-        prompt = f"""
-            ### CONTEXTUAL FRAGMENTS:
-            {context}
-
-            ### USER QUESTION: 
-            {query}
-
-            ### INSTRUCTIONS:
-            - Answer the question with deep strategic insight.
-            - Assign a single word 'Category' (Feeling Folder) at the end.
-            
-            STRATEGIC RESPONSE:"""
-
-        print(f"DEBUG: Sending prompt to Gemini. Context length: {len(context)} chars.")
-        response = model.generate_content(prompt)
-        print(
-            f"DEBUG: Received response from Gemini. Length: {len(response.text)} chars."
+        response = client.models.generate_content(
+            model="gemini-3-flash-preview",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=1024,
+                system_instruction=system_instruction,
+            ),
         )
+        print(f"DEBUG: LLM Response received: {response.text[:100]}...")
         return response.text
     except Exception as e:
-        print(f"AI Error: {e}")
-        return None
+        print(f"DEBUG: Error in ask_gemini: {e}")
+        return f"Brain malfunction: {e}"
 
 
 async def ask_gemini_stream_async(

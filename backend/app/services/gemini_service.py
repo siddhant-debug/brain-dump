@@ -15,7 +15,8 @@ import re
 from datetime import datetime
 from typing import AsyncIterator
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +110,9 @@ class GeminiService:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable is not set.")
-        genai.configure(api_key=api_key)
+        self._client = genai.Client(api_key=api_key)
         self._initialized = True
-        logger.info("[GeminiService] Configured — genai.configure() called once.")
+        logger.info("[GeminiService] Configured — genai.Client instantiated once.")
 
     # ------------------------------------------------------------------ #
     # H-6: Injection guard                                                 #
@@ -190,18 +191,12 @@ class GeminiService:
 
         return base_prompt
 
-    def _get_model(
-        self, system_instruction: str, max_tokens: int
-    ) -> genai.GenerativeModel:
         # ⚠️  DO NOT CHANGE THIS MODEL NAME — gemini-3-flash-preview is the
         # agreed production model for BrainDump. It handles the required quota
         # and latency profile for the subconscious streaming UX.
-        return genai.GenerativeModel(
-            "gemini-3-flash-preview",
-            generation_config={
-                "temperature": 0.4,
-                "max_output_tokens": max_tokens,
-            },
+        return types.GenerateContentConfig(
+            temperature=0.4,
+            max_output_tokens=max_tokens,
             system_instruction=system_instruction,
         )
 
@@ -242,7 +237,7 @@ class GeminiService:
             location_layer,
             directives,
         )
-        model = self._get_model(system_instruction, max_tokens)
+        config = self._get_model(system_instruction, max_tokens)
 
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue = asyncio.Queue()
@@ -250,11 +245,9 @@ class GeminiService:
 
         def producer():
             try:
-                # H-5: 25-second hard timeout on the Gemini API call
-                response = model.generate_content(
-                    prompt,
-                    stream=True,
-                    request_options={"timeout": 25},
+                # H-5: Generate streaming content with the new SDK
+                response = self._client.models.generate_content_stream(
+                    model="gemini-3-flash-preview", contents=prompt, config=config
                 )
                 for chunk in response:
                     if chunk.text:

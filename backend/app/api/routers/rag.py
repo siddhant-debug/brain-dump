@@ -210,7 +210,8 @@ def extract_and_save_identity(user_id: int, message_content: str):
     """Background task to extract user facts or behavioral directives."""
     import json
     import os
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
     from datetime import datetime
     import uuid
     from app.services.rag_engine import get_emb_fn, _rag_service
@@ -221,19 +222,19 @@ def extract_and_save_identity(user_id: int, message_content: str):
         if not api_key:
             return
 
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            "gemini-3-flash-preview",
-            generation_config={
-                "temperature": 0.1,
-                "response_mime_type": "application/json",
-            },
-            system_instruction="""Analyze the user's message and determine if it contains a persistent Fact (e.g. "My name is Sid") or a Behavioral Directive (e.g. "Ask me about the gym every day").
-            Return JSON: {"type": "fact" | "directive" | "none", "content": "Extracted fact/directive or empty"}""",
-        )
+        client = genai.Client(api_key=api_key)
 
         prompt = f"Message: {message_content}"
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-3-flash-preview",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                response_mime_type="application/json",
+                system_instruction="""Analyze the user's message and determine if it contains a persistent Fact (e.g. "My name is Sid") or a Behavioral Directive (e.g. "Ask me about the gym every day").
+            Return JSON: {"type": "fact" | "directive" | "none", "content": "Extracted fact/directive or empty"}""",
+            ),
+        )
         result = json.loads(response.text)
 
         if result.get("type") == "fact" and result.get("content"):
