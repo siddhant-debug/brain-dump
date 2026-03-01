@@ -136,22 +136,29 @@ class GeminiService:
     # ------------------------------------------------------------------ #
     # Prompt assembly helpers                                              #
     # ------------------------------------------------------------------ #
-    def _build_prompt(self, context: str, query: str) -> str:
+    def _build_prompt(self, context: str, query: str, chat_history: list = None) -> str:
         """
         H-6: XML-tag delimiters structurally separate user data from instructions.
         The LLM sees context and query as tagged data, not executable instructions.
         """
         safe_context = self._sanitize(context)
         safe_query = self._sanitize(query)
-        return (
-            "<user_context>\n"
-            f"{safe_context}\n"
-            "</user_context>\n\n"
-            "<user_question>\n"
-            f"{safe_query}\n"
-            "</user_question>\n\n"
-            "DIRECT ANSWER (Max 3 sentences):"
-        )
+
+        prompt_parts = []
+
+        prompt_parts.append("<user_context>\n" + safe_context + "\n</user_context>\n")
+
+        if chat_history:
+            prompt_parts.append("<recent_conversation>")
+            for msg in chat_history:
+                sender_label = "User" if msg["sender"] == "user" else "AI"
+                prompt_parts.append(f"{sender_label}: {self._sanitize(msg['content'])}")
+            prompt_parts.append("</recent_conversation>\n")
+
+        prompt_parts.append("<user_question>\n" + safe_query + "\n</user_question>\n")
+        prompt_parts.append("DIRECT ANSWER (Max 3 sentences):")
+
+        return "\n".join(prompt_parts)
 
     def _build_system_instruction(
         self,
@@ -160,8 +167,9 @@ class GeminiService:
         tone_guidance: str,
         tone_layer: str,
         location_layer: str,
+        directives: list = None,
     ) -> str:
-        return _SYSTEM_PROMPT.format(
+        base_prompt = _SYSTEM_PROMPT.format(
             date=datetime.now().strftime("%B %d, %Y"),
             temporal_context=temporal_context,
             emotional_state=emotional_state,
@@ -169,6 +177,18 @@ class GeminiService:
             tone_layer=tone_layer,
             location_layer=location_layer,
         )
+
+        if directives:
+            directives_block = "<subconscious_directives>\n"
+            for d in directives:
+                directives_block += f"- {d}\n"
+            directives_block += "</subconscious_directives>\n"
+            directives_block += "You MUST strictly follow the behaviors defined in <subconscious_directives> for this specific user.\n"
+
+            # Prepend directives strongly at the very top of system prompt
+            base_prompt = directives_block + "\n" + base_prompt
+
+        return base_prompt
 
     def _get_model(
         self, system_instruction: str, max_tokens: int
@@ -198,6 +218,8 @@ class GeminiService:
         tone_layer: str,
         location_layer: str,
         max_tokens: int = 1000,
+        chat_history: list = None,
+        directives: list = None,
     ) -> AsyncIterator[str]:
         """
         Async streaming wrapper.
@@ -211,9 +233,14 @@ class GeminiService:
                 "GeminiService.initialize() must be called before streaming."
             )
 
-        prompt = self._build_prompt(context, query)
+        prompt = self._build_prompt(context, query, chat_history)
         system_instruction = self._build_system_instruction(
-            temporal_context, emotional_state, tone_guidance, tone_layer, location_layer
+            temporal_context,
+            emotional_state,
+            tone_guidance,
+            tone_layer,
+            location_layer,
+            directives,
         )
         model = self._get_model(system_instruction, max_tokens)
 

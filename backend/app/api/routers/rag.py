@@ -206,12 +206,87 @@ async def upload_to_brain(
             os.remove(temp_path)
 
 
+def extract_and_save_identity(user_id: int, message_content: str):
+    """Background task to extract user facts or behavioral directives."""
+    import json
+    import os
+    import google.generativeai as genai
+    from datetime import datetime
+    import uuid
+    from app.services.rag_engine import get_emb_fn, _rag_service
+
+    db = database.SessionLocal()
+    try:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            "gemini-3-flash-preview",
+            generation_config={
+                "temperature": 0.1,
+                "response_mime_type": "application/json",
+            },
+            system_instruction="""Analyze the user's message and determine if it contains a persistent Fact (e.g. "My name is Sid") or a Behavioral Directive (e.g. "Ask me about the gym every day").
+            Return JSON: {"type": "fact" | "directive" | "none", "content": "Extracted fact/directive or empty"}""",
+        )
+
+        prompt = f"Message: {message_content}"
+        response = model.generate_content(prompt)
+        result = json.loads(response.text)
+
+        if result.get("type") == "fact" and result.get("content"):
+            content = result["content"]
+            emb_model = get_emb_fn()
+            embedding = emb_model.encode([content]).tolist()[0]
+
+            fact_id = f"{user_id}_fact_{uuid.uuid4().hex[:8]}"
+            meta = {
+                "source": "user_identity",
+                "user_id": user_id,
+                "type": "user_identity",
+                "timestamp": datetime.now().isoformat(),
+            }
+            db.execute(
+                models.BrainEmbedding.__table__.insert().values(
+                    id=fact_id,
+                    user_id=user_id,
+                    document=content,
+                    embedding=embedding,
+                    metadata_=meta,
+                )
+            )
+            db.commit()
+
+            # Invalidate BM25 cache
+            _rag_service.bm25_store.invalidate(user_id)
+            logger.info(f"[Identity] Saved new fact: {content}")
+
+        elif result.get("type") == "directive" and result.get("content"):
+            content = result["content"]
+            new_directive = models.UserDirective(
+                user_id=user_id, directive_content=content, is_active=True
+            )
+            db.add(new_directive)
+            db.commit()
+            logger.info(f"[Identity] Saved new directive: {content}")
+
+    except Exception as e:
+        logger.error(f"[extract_and_save_identity] Error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 # --- RAG ENDPOINT 2: CHAT (The Mouth) ---
 @router.post("/chat")
 @limiter.limit("60/hour")
 async def chat_endpoint(
     request: Request,
     request_body: schemas.ChatRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
     """Streaming chat endpoint - returns Server-Sent Events (SSE)"""
@@ -228,6 +303,37 @@ async def chat_endpoint(
 
     # 1. Save User Message to History using the _save_message helper (M-1 fix)
     _save_message(current_user.id, request_body.query, "user")
+
+    # 2. Extract facts/directives in the background
+    background_tasks.add_task(
+        extract_and_save_identity, current_user.id, request_body.query
+    )
+
+    # 3. Retrieve short-term memory (last 8-10 messages)
+    history_messages = (
+        db.query(models.ChatMessage)
+        .filter(models.ChatMessage.user_id == current_user.id)
+        .order_by(models.ChatMessage.timestamp.desc())
+        .limit(10)
+        .all()
+    )
+    # Exclude the exact message we just saved so it's not duplicated
+    history_messages = [m for m in history_messages if m.content != request_body.query]
+    history_messages = history_messages[::-1]  # oldest to newest
+    chat_history_list = [
+        {"sender": msg.sender, "content": msg.content} for msg in history_messages
+    ]
+
+    # 4. Fetch Subconscious Directives
+    active_directives = (
+        db.query(models.UserDirective)
+        .filter(
+            models.UserDirective.user_id == current_user.id,
+            models.UserDirective.is_active == True,
+        )
+        .all()
+    )
+    directives_list = [d.directive_content for d in active_directives]
 
     async def event_generator():
         """Generator that yields SSE-formatted chunks"""
@@ -263,7 +369,11 @@ async def chat_endpoint(
             # 3. Stream AI response
             full_response = ""
             async for chunk in rag_engine.ask_gemini_stream_async(
-                context_text, request_body.query, location_context=location_dict
+                context_text,
+                request_body.query,
+                location_context=location_dict,
+                chat_history=chat_history_list,
+                directives=directives_list,
             ):
                 if chunk is None:
                     # Error occurred

@@ -533,7 +533,12 @@ def ask_gemini(context: str, query: str):
 
 
 async def ask_gemini_stream_async(
-    context: str, query: str, max_tokens: int = 1000, location_context: dict = None
+    context: str,
+    query: str,
+    max_tokens: int = 1000,
+    location_context: dict = None,
+    chat_history: list = None,
+    directives: list = None,
 ):
     """
     H-5 / H-6 / M-4 FIX:
@@ -630,6 +635,8 @@ async def ask_gemini_stream_async(
         tone_layer=tone_layer,
         location_layer=location_layer,
         max_tokens=max_tokens,
+        chat_history=chat_history,
+        directives=directives,
     ):
         yield chunk
 
