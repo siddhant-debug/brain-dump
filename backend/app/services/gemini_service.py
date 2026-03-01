@@ -191,6 +191,9 @@ class GeminiService:
 
         return base_prompt
 
+    def _get_model(
+        self, system_instruction: str, max_tokens: int
+    ) -> types.GenerateContentConfig:
         # ⚠️  DO NOT CHANGE THIS MODEL NAME — gemini-3-flash-preview is the
         # agreed production model for BrainDump. It handles the required quota
         # and latency profile for the subconscious streaming UX.

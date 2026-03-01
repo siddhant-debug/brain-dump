@@ -8,7 +8,7 @@ from langchain_text_splitters import (
     Language,
 )
 from google import genai
-from google.generativeai import types
+from google.genai import types
 from dotenv import load_dotenv
 from sentence_transformers import CrossEncoder, SentenceTransformer
 from sqlalchemy.orm import Session
