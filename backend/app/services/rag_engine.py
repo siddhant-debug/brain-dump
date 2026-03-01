@@ -439,7 +439,7 @@ def analyze_thought_insights(content: str) -> dict:
     genai.configure(api_key=GEMINI_API_KEY)
 
     model = genai.GenerativeModel(
-        "gemini-1.5-flash",
+        "gemini-3-flash-preview",
         generation_config={
             "temperature": 0.1,
             "response_mime_type": "application/json",
