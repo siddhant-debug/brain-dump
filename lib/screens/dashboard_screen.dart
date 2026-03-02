@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:ui' as ui; // For glassmorphism
 
 import '../core/theme/app_theme.dart';
+import '../core/theme/theme_provider.dart';
 
 // Screens
 import 'brain_dump_screen.dart';
@@ -27,49 +27,44 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: _screens[_currentIndex],
-      bottomNavigationBar: _buildGlassBottomNav(),
+      bottomNavigationBar: _buildFlatBottomNav(),
     );
   }
 
-  Widget _buildGlassBottomNav() {
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.background.withValues(alpha: 0.5),
-            border: Border(top: BorderSide(color: AppColors.divider)),
+  Widget _buildFlatBottomNav() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        border: Border(top: BorderSide(color: AppColors.divider)),
+      ),
+      child: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          if (index == 1) {
+            // 1 is Brain Dump Screen which contains the analytics
+            // Silently refresh analytics to keep them up to date when the user switches to this tab
+            ref.invalidate(consistencyProvider);
+            ref.invalidate(themesProvider);
+            ref.invalidate(loopsProvider);
+            ref.invalidate(pipelineProvider);
+          }
+          setState(() => _currentIndex = index);
+        },
+        backgroundColor: AppColors.background,
+        elevation: 0,
+        selectedItemColor: AppColors.accent,
+        unselectedItemColor: AppColors.textSecondary,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard_rounded),
+            label: 'Home',
           ),
-          child: BottomNavigationBar(
-            currentIndex: _currentIndex,
-            onTap: (index) {
-              if (index == 1) {
-                // 1 is Brain Dump Screen which contains the analytics
-                // Silently refresh analytics to keep them up to date when the user switches to this tab
-                ref.invalidate(consistencyProvider);
-                ref.invalidate(themesProvider);
-                ref.invalidate(loopsProvider);
-                ref.invalidate(pipelineProvider);
-              }
-              setState(() => _currentIndex = index);
-            },
-            backgroundColor: Colors.transparent, // Important for glass effect
-            elevation: 0,
-            selectedItemColor: AppColors.textPrimary,
-            unselectedItemColor: AppColors.textSecondary,
-            type: BottomNavigationBarType.fixed,
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(Icons.dashboard_rounded),
-                label: 'Home',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.chat_bubble_rounded),
-                label: 'Brain Chat',
-              ),
-            ],
+          BottomNavigationBarItem(
+            icon: Icon(Icons.chat_bubble_rounded),
+            label: 'Brain Chat',
           ),
-        ),
+        ],
       ),
     );
   }
@@ -90,14 +85,31 @@ class _HomeTab extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 1. Header
-            Text(
-              "Command Center",
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                letterSpacing: -1,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Command Center",
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: -1,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    ref.watch(themeModeProvider)
+                        ? Icons.light_mode
+                        : Icons.dark_mode,
+                    color: AppColors.textSecondary,
+                  ),
+                  onPressed: () {
+                    ref.read(themeModeProvider.notifier).toggleTheme();
+                  },
+                  tooltip: 'Toggle Theme',
+                ),
+              ],
             ),
             const SizedBox(height: 32),
 
@@ -154,10 +166,7 @@ class _HomeTab extends ConsumerWidget {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(
-                    Icons.refresh,
-                    color: AppColors.textSecondary,
-                  ),
+                  icon: Icon(Icons.refresh, color: AppColors.textSecondary),
                   onPressed: () => ref.invalidate(filesProvider),
                   tooltip: "Refresh Files",
                 ),
@@ -175,7 +184,7 @@ class _HomeTab extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: AppColors.divider),
                     ),
-                    child: const Column(
+                    child: Column(
                       children: [
                         Icon(
                           Icons.folder_off_outlined,
@@ -238,7 +247,7 @@ class _HomeTab extends ConsumerWidget {
             children: [
               Text(
                 name,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.textPrimary,
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
@@ -275,11 +284,7 @@ class _HomeTab extends ConsumerWidget {
               color: AppColors.accentFaint,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(
-              Icons.description,
-              color: AppColors.accent,
-              size: 20,
-            ),
+            child: Icon(Icons.description, color: AppColors.accent, size: 20),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -288,7 +293,7 @@ class _HomeTab extends ConsumerWidget {
               children: [
                 Text(
                   file['filename'] ?? 'Unknown',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,
                     fontSize: 15,
@@ -300,7 +305,7 @@ class _HomeTab extends ConsumerWidget {
                           file['created_at'],
                         ).toString().split('.')[0]
                       : 'Just now',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 12,
                   ),

@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -195,45 +194,44 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
       body: SafeArea(
         child: Stack(
           children: [
-            // LAYER 1: CONTENT — routes between Journal/Chat on tab 1
-            Positioned.fill(
-              child: IndexedStack(
-                index: _selectedIndex,
-                children: [
-                  const AnalyticsScreen(),
-                  brainDumpState.isChatMode
-                      ? _buildChatLayer(brainDumpState)
-                      : _buildJournalLayout(),
-                  const ThoughtsScreen(isEmbedded: true),
-                  const FileVaultScreen(isEmbedded: true),
-                ],
-              ),
-            ),
-
-            // LAYER 2: MINIMAL INPUT (Chat mode only, on tab 1)
-            if (_selectedIndex == 1 && brainDumpState.isChatMode)
-              Positioned(
-                bottom: 100, // Above dock
-                left: 24,
-                right: 24,
-                child: _buildMinimalInput(),
-              ),
-
-            // LAYER 3: PILL-SHAPED DOCK
-            Positioned(
-              bottom: 20,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: _PillDock(
-                  selectedIndex: _selectedIndex,
-                  onTabSelected: (index) {
-                    setState(() {
-                      _selectedIndex = index;
-                    });
-                  },
+            // LAYER 1: UNIFIED LAYOUT
+            Column(
+              children: [
+                // Top section: Routes between Journal/Chat/etc
+                Expanded(
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: [
+                      const AnalyticsScreen(),
+                      brainDumpState.isChatMode
+                          ? _buildChatLayer(brainDumpState)
+                          : _buildJournalLayout(),
+                      const ThoughtsScreen(isEmbedded: true),
+                      const FileVaultScreen(isEmbedded: true),
+                    ],
+                  ),
                 ),
-              ),
+
+                // Bottom section: Unified Input (if chat) + Dock
+                Container(
+                  color: AppColors.background, // Block scrolling text
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_selectedIndex == 1 && brainDumpState.isChatMode)
+                        _buildMinimalInput(),
+                      _PillDock(
+                        selectedIndex: _selectedIndex,
+                        onTabSelected: (index) {
+                          setState(() {
+                            _selectedIndex = index;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -250,7 +248,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
         // Clear History Button — only in chat mode
         if (isChatMode)
           IconButton(
-            icon: const Icon(
+            icon: Icon(
               Icons.cleaning_services_rounded,
               color: AppColors.textSecondary,
               size: 20,
@@ -260,17 +258,17 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                 context: context,
                 builder: (context) => AlertDialog(
                   backgroundColor: AppColors.background,
-                  title: const Text(
+                  title: Text(
                     'Clear Screen?',
                     style: TextStyle(color: AppColors.textPrimary),
                   ),
-                  content: const Text(
+                  content: Text(
                     'This will clear messages from your screen but keep them in your brain.',
                     style: TextStyle(color: AppColors.textSecondary),
                   ),
                   actions: [
                     TextButton(
-                      child: const Text(
+                      child: Text(
                         'Cancel',
                         style: TextStyle(color: AppColors.textSecondary),
                       ),
@@ -309,7 +307,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
       children: [
         Text(
           isChatMode ? 'Chat' : 'Journal',
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.textSecondary,
             fontSize: 14,
             fontWeight: FontWeight.w500,
@@ -324,7 +322,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
             onChanged: (_) {
               ref.read(brainDumpProvider.notifier).toggleMode();
             },
-            activeThumbColor: AppColors.textPrimary.withValues(alpha: 0.6),
+            activeThumbColor: const Color.fromARGB(106, 92, 83, 48),
             activeTrackColor: AppColors.textPrimary.withValues(alpha: 0.1),
             inactiveThumbColor: AppColors.accent,
             inactiveTrackColor: AppColors.accent.withValues(alpha: 0.3),
@@ -349,7 +347,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
               left: 24,
               right: 24,
               top: 0,
-              bottom: 180, // Space for input + dock
+              bottom: 24, // Space around messages
             ),
             itemCount: state.messages.length,
             itemBuilder: (context, index) {
@@ -417,7 +415,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                   minLines: 1,
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => _onSubmitted(),
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.textPrimary,
                     fontSize: 16,
                     height: 1.5,
@@ -438,7 +436,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
         if (_showCheckmark)
           FadeTransition(
             opacity: _checkmarkController,
-            child: const Padding(
+            child: Padding(
               padding: EdgeInsets.only(bottom: 12),
               child: Icon(
                 Icons.check_circle_outline,
@@ -451,55 +449,80 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     );
   }
 
-  /// Minimal input for Chat mode — positioned at bottom via Stack overlay
+  /// Minimal input for Chat mode — attached robust box
   Widget _buildMinimalInput() {
-    return Row(
-      children: [
-        Expanded(
-          child: Stack(
-            alignment: Alignment.centerLeft,
-            children: [
-              // Custom Animated Hint
-              ValueListenableBuilder(
-                valueListenable: _controller,
-                builder: (context, value, child) {
-                  return value.text.isEmpty
-                      ? const _AnimatedHintText(text: 'start asking...')
-                      : const SizedBox.shrink();
-                },
-              ),
-              // Actual Input
-              TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                maxLines: null,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _onSubmitted(),
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 16,
-                ),
-                cursorColor: AppColors.accent,
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: EdgeInsets.zero,
-                  hintText: null,
-                ),
-              ),
-            ],
-          ),
-        ),
-        // Checkmark indicator
-        if (_showCheckmark)
-          FadeTransition(
-            opacity: _checkmarkController,
-            child: const Padding(
-              padding: EdgeInsets.only(left: 8),
-              child: Icon(Icons.check, color: AppColors.textPrimary, size: 16),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      decoration: BoxDecoration(
+        color: AppColors.background, // Match footer background perfectly
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // Attachment Button
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Icon(
+              Icons.add_a_photo_outlined,
+              color: AppColors.textSecondary,
+              size: 20,
             ),
           ),
-      ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                // Custom Animated Hint
+                ValueListenableBuilder(
+                  valueListenable: _controller,
+                  builder: (context, value, child) {
+                    return value.text.isEmpty
+                        ? const _AnimatedHintText(text: 'start asking...')
+                        : const SizedBox.shrink();
+                  },
+                ),
+                // Actual Input
+                TextField(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  maxLines: null, // Allow wrapping
+                  minLines: 1,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _onSubmitted(),
+                  style: TextStyle(color: AppColors.textPrimary, fontSize: 16),
+                  cursorColor: AppColors.accent,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    hintText: null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Voice Button OR Checkmark (depending on state)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: _showCheckmark
+                ? FadeTransition(
+                    opacity: _checkmarkController,
+                    child: Icon(
+                      Icons.check,
+                      color: AppColors.textPrimary,
+                      size: 20,
+                    ),
+                  )
+                : Icon(
+                    Icons.mic_none_outlined,
+                    color: AppColors.textSecondary,
+                    size: 20,
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -540,7 +563,7 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator> {
     final dots = '.' * _dotCount;
     return Text(
       'thinking$dots',
-      style: const TextStyle(
+      style: TextStyle(
         color: AppColors.textSecondary,
         fontSize: 14,
         fontStyle: FontStyle.italic,
@@ -570,7 +593,7 @@ class _MinimalMessageRow extends StatelessWidget {
           CircleAvatar(
             radius: 16,
             backgroundColor: AppColors.textPrimary.withValues(alpha: 0.12),
-            child: const Icon(
+            child: Icon(
               Icons.psychology,
               size: 18,
               color: AppColors.textSecondary,
@@ -655,11 +678,7 @@ class _MinimalMessageRow extends StatelessWidget {
           CircleAvatar(
             radius: 16,
             backgroundColor: AppColors.surfaceHigh,
-            child: const Icon(
-              Icons.person,
-              size: 18,
-              color: AppColors.textSecondary,
-            ),
+            child: Icon(Icons.person, size: 18, color: AppColors.textSecondary),
           ),
         ],
       ],
@@ -667,7 +686,7 @@ class _MinimalMessageRow extends StatelessWidget {
   }
 }
 
-/// Pill-Shaped Dock - Minimal, glass effect
+/// Pill-Shaped Dock - Minimal, glass effect replaced by a flat, solid dark UI
 class _PillDock extends StatelessWidget {
   final int selectedIndex;
   final Function(int) onTabSelected;
@@ -676,48 +695,43 @@ class _PillDock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(30),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          width: 280,
-          height: 60,
-          decoration: BoxDecoration(
-            color: AppColors.surface.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: AppColors.divider),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.background, // Solid dark background for the dock
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _DockItem(
+            icon: Icons.bar_chart_rounded,
+            label: 'Insights',
+            isSelected: selectedIndex == 0,
+            onTap: () => onTabSelected(0),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _DockItem(
-                icon: Icons.bar_chart_rounded,
-                label: 'Insights',
-                isSelected: selectedIndex == 0,
-                onTap: () => onTabSelected(0),
-              ),
-              _DockItem(
-                icon: Icons.note_alt_outlined,
-                label: 'Dump',
-                isSelected: selectedIndex == 1,
-                onTap: () => onTabSelected(1),
-              ),
-              _DockItem(
-                icon: Icons.lightbulb_outline,
-                label: 'Thoughts',
-                isSelected: selectedIndex == 2,
-                onTap: () => onTabSelected(2),
-              ),
-              _DockItem(
-                icon: Icons.folder_copy_rounded,
-                label: 'Vault',
-                isSelected: selectedIndex == 3,
-                onTap: () => onTabSelected(3),
-              ),
-            ],
+          _DockItem(
+            icon: Icons.note_alt_outlined,
+            label: 'Dump',
+            isSelected: selectedIndex == 1,
+            onTap: () => onTabSelected(1),
           ),
-        ),
+          _DockItem(
+            icon: Icons.lightbulb_outline,
+            label: 'Thoughts',
+            isSelected: selectedIndex == 2,
+            onTap: () => onTabSelected(2),
+          ),
+          _DockItem(
+            icon: Icons.folder_copy_rounded,
+            label: 'Vault',
+            isSelected: selectedIndex == 3,
+            onTap: () => onTabSelected(3),
+          ),
+        ],
       ),
     );
   }
@@ -738,28 +752,46 @@ class _DockItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
-            size: 24,
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.surfaceHigh : Colors.transparent,
+            borderRadius: BorderRadius.circular(24),
           ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: isSelected
-                  ? AppColors.textPrimary
-                  : AppColors.textSecondary,
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                color: isSelected
+                    ? AppColors.textPrimary
+                    : AppColors.textSecondary,
+                size: 20,
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isSelected
+                        ? AppColors.textPrimary
+                        : AppColors.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -857,7 +889,7 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.description,
                         color: AppColors.textSecondary,
                         size: 12,
@@ -865,7 +897,7 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
                       const SizedBox(width: 4),
                       Text(
                         source, // Filename (e.g., notes.txt)
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: 10,
                         ),
@@ -921,7 +953,7 @@ class _AnimatedHintTextState extends State<_AnimatedHintText>
       opacity: _opacity,
       child: Text(
         widget.text,
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.textPrimary, // Opacity handles the dimming
           fontSize: 20,
           fontWeight: FontWeight.w300,

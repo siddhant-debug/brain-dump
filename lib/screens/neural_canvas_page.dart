@@ -169,7 +169,7 @@ class _NeuralCanvasPageState extends ConsumerState<NeuralCanvasPage> {
                         ),
                       ],
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.memory,
                       color: AppColors.accent,
                       size: 16,
@@ -227,7 +227,7 @@ class _MicroChip extends StatelessWidget {
                 Expanded(
                   child: Text(
                     file['filename'],
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 12,
                     ),

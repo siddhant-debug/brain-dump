@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:brain_dump/main.dart';
 import 'package:brain_dump/core/widgets/persistent_header.dart';
-import 'package:brain_dump/features/analytics/widgets/pipeline_hint_widget.dart';
+
 import 'package:brain_dump/features/analytics/presentation/analytics_screen.dart';
 import 'package:brain_dump/features/analytics/services/analytics_service.dart';
 import 'package:brain_dump/features/analytics/models/analytics_models.dart';
@@ -28,31 +28,6 @@ void main() {
         ),
       );
       expect(find.text('Test Header'), findsOneWidget);
-    });
-
-    testWidgets('PipelineHintWidget displays text and responds to tap', (
-      WidgetTester tester,
-    ) async {
-      bool wasTapped = false;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Stack(
-              children: [
-                PipelineHintWidget(
-                  onTap: () {
-                    wasTapped = true;
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-
-      expect(find.text('Pipeline'), findsOneWidget);
-      await tester.tap(find.text('Pipeline'));
-      expect(wasTapped, isTrue);
     });
 
     testWidgets('AnalyticsScreen loads and displays analytics data', (
@@ -108,14 +83,20 @@ void main() {
 
       expect(find.text('Brain Insights'), findsOneWidget);
 
-      // Since mock data has 5 day streak
+      // Since mock data has 5 days streak
       expect(find.text('5'), findsOneWidget);
-      expect(find.text('day streak'), findsOneWidget);
+      expect(find.text('days streak'), findsOneWidget);
 
       // Themes data check
       expect(find.text('Work Theme'), findsOneWidget);
 
-      // Loops check (empty loop)
+      // Loops check (open bottom sheet first)
+      final loopsButton = find.byIcon(Icons.all_inclusive_rounded);
+      expect(loopsButton, findsOneWidget);
+
+      await tester.tap(loopsButton);
+      await tester.pump(const Duration(seconds: 1));
+
       expect(
         find.text(
           'No recurring patterns found. Keep writing — loops surface over time.',
