@@ -284,12 +284,18 @@ class GeminiService:
         thread = threading.Thread(target=producer, daemon=True)
         thread.start()
 
-        # H-5: 30-second watchdog — if the producer thread is still alive, it's hung
+        # H-5: watchdog — if the producer thread is still alive after the timeout, it's hung.
+        # Set to 300s (5 min) to allow Gemini to handle large RAG contexts without false triggers.
+        _PRODUCER_TIMEOUT_S = (
+            90  # 90s: enough for RAG (~2s) + Gemini on slow home server
+        )
+
         async def _watchdog():
-            await asyncio.sleep(30)
+            await asyncio.sleep(_PRODUCER_TIMEOUT_S)
             if thread.is_alive():
                 logger.error(
-                    "[GeminiService] Producer thread timed out after 30 s — sending sentinel."
+                    "[GeminiService] Producer thread timed out after %ds — sending sentinel.",
+                    _PRODUCER_TIMEOUT_S,
                 )
                 loop.call_soon_threadsafe(
                     queue.put_nowait, TimeoutError("LLM producer timed out")
