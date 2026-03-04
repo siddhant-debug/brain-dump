@@ -13,6 +13,7 @@ import '../core/widgets/persistent_header.dart';
 import '../core/theme/app_theme.dart';
 import '../features/analytics/presentation/analytics_screen.dart';
 import '../features/analytics/services/analytics_service.dart';
+import '../features/music/controllers/music_sync_controller.dart';
 
 /// Black Canvas - Minimalist Digital Notebook
 /// Design: Pure black background, invisible list, hand-drawn spacing
@@ -334,9 +335,13 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
 
   /// Chat layout — messages list, input at bottom via Layer 2 overlay
   Widget _buildChatLayer(BrainDumpState state) {
+    final musicState = ref.watch(musicSyncControllerProvider);
+
     return Column(
       children: [
         _buildHeader(state.isChatMode),
+        if (musicState.isPlaying && musicState.currentSong != null)
+          _buildMusicChip(musicState),
         Expanded(
           child: ListView.builder(
             reverse:
@@ -373,9 +378,13 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
 
   /// Journal layout — input at top with green text, ghost animation
   Widget _buildJournalLayout() {
+    final musicState = ref.watch(musicSyncControllerProvider);
+
     return Column(
       children: [
         _buildHeader(false),
+        if (musicState.isPlaying && musicState.currentSong != null)
+          _buildMusicChip(musicState),
         // Input area at top — full remaining space
         Expanded(
           child: SingleChildScrollView(
@@ -520,6 +529,32 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
                     color: AppColors.textSecondary,
                     size: 20,
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMusicChip(MusicContextState state) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.music_note, size: 14, color: AppColors.accent),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '${state.currentSong?.title ?? "Unknown"} • ${state.analyzedVibe?.primaryTone ?? (state.isAnalyzing ? "Analyzing vibe..." : "")}',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            ),
           ),
         ],
       ),

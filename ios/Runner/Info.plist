@@ -53,5 +53,7 @@
 <string>BrainDump needs location access to tag your notes with your current location.</string>
 <key>NSLocationWhenInUseUsageDescription</key>
 <string>BrainDump needs location access to tag your notes with your current location.</string>
+<key>NSAppleMusicUsageDescription</key>
+<string>BrainDump needs access to Apple Music to deeply contextualize your journal entries with your auditory environment.</string>
 </dict>
 </plist>

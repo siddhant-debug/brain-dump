@@ -1,3 +1,4 @@
+import 'package:brain_dump/features/analytics/presentation/settingspage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../features/auth/controllers/auth_controller.dart';
@@ -25,6 +26,21 @@ class AnalyticsScreen extends ConsumerWidget {
                 PersistentHeader(
                   title: 'Brain Insights',
                   actions: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.settings_rounded,
+                        color: Colors.white24,
+                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const MySettings(),
+                          ),
+                        );
+                      },
+                      tooltip: 'Settings',
+                    ),
                     IconButton(
                       icon: const Icon(
                         Icons.logout_rounded,
@@ -298,7 +314,7 @@ class _ConsistencyContent extends ConsumerWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
     );
   }
 

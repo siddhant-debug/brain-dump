@@ -60,6 +60,22 @@ class LocationContext(BaseModel):
     location_type: Optional[str] = None  # home, cafe, gym, office, outdoor
 
 
+class MusicTrack(BaseModel):
+    title: str
+    artist: str
+
+
+class MusicContextRequest(BaseModel):
+    is_playing_now: bool
+    current_song: Optional[MusicTrack] = None
+    recent_songs: Optional[List[MusicTrack]] = None
+
+
+class MusicContextResponse(BaseModel):
+    primary_tone: str
+    short_description: str
+
+
 class NoteCreate(BaseModel):
     # MED-8: cap at 50k characters to prevent unbounded DB / memory usage
     content: str = Field(..., min_length=1, max_length=50000)
@@ -82,6 +98,7 @@ class ChatRequest(BaseModel):
     # MED-8: cap at 2k characters — prevents token exhaustion in Gemini
     query: str = Field(..., min_length=1, max_length=2000)
     location: Optional[LocationContext] = None
+    music_context: Optional[dict] = None
 
 
 class ChatResponse(BaseModel):

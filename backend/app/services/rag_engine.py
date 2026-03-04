@@ -537,6 +537,7 @@ async def ask_gemini_stream_async(
     query: str,
     max_tokens: int = 1000,
     location_context: dict = None,
+    music_layer: str = "",
     chat_history: list = None,
     directives: list = None,
 ):
@@ -634,6 +635,7 @@ async def ask_gemini_stream_async(
         tone_guidance=tone_guidance,
         tone_layer=tone_layer,
         location_layer=location_layer,
+        music_layer=music_layer,
         max_tokens=max_tokens,
         chat_history=chat_history,
         directives=directives,

@@ -61,6 +61,18 @@ class UserDirective(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class MusicVibeCache(Base):
+    __tablename__ = "music_vibe_cache"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cache_key = Column(String, unique=True, index=True, nullable=False)
+    primary_tone = Column(String, nullable=False)
+    short_description = Column(String, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import JSONB
 

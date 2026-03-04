@@ -6,6 +6,7 @@ import '../services/brain_service.dart';
 import '../../notes/services/note_service.dart';
 import '../models/chat_message.dart';
 import '../services/location_service.dart';
+import '../../music/controllers/music_sync_controller.dart';
 import 'package:dio/dio.dart';
 
 String _formatError(dynamic e) {
@@ -153,8 +154,27 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
       debugPrint("[DEBUG] Location fetch skipped (Timeout/Error): $e");
     }
 
+    // [CONTEXT] Fetch Music Vibe natively
+    Map<String, dynamic>? musicContext;
     try {
-      await _handleQuery(trimmed, locationContext, aiMsgId);
+      final musicState = ref.read(musicSyncControllerProvider);
+      if (musicState.isPlaying && musicState.currentSong != null) {
+        musicContext = {
+          "is_playing_now": true,
+          "current_song": {
+            "title": musicState.currentSong!.title ?? "Unknown",
+            "artist": musicState.currentSong!.artistName ?? "Unknown",
+          },
+          "primary_tone": musicState.analyzedVibe?.primaryTone,
+          "short_description": musicState.analyzedVibe?.shortDescription,
+        };
+      }
+    } catch (e) {
+      debugPrint("[DEBUG] Music context fetch skipped: $e");
+    }
+
+    try {
+      await _handleQuery(trimmed, locationContext, musicContext, aiMsgId);
     } catch (e) {
       // Update ONLY the specific message by ID
       state = state.copyWith(
@@ -178,6 +198,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
   Future<void> _handleQuery(
     String text,
     Map<String, dynamic>? location,
+    Map<String, dynamic>? musicContext,
     String aiMsgId,
   ) async {
     // 2.5 Update placeholder with location if available
@@ -202,7 +223,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
       await for (var data
           in ref
               .read(brainServiceProvider)
-              .askBrain(text, location: location)) {
+              .askBrain(text, location: location, musicContext: musicContext)) {
         // Handle text chunk
         if (data['chunk'] != null) {
           fullAnswer += data['chunk'];

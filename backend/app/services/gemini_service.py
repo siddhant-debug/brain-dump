@@ -38,6 +38,7 @@ Today is {date}.
 CURRENT TIME CONTEXT:
 {temporal_context}
 {location_layer}
+{music_layer}
 
 EMOTIONAL CONTEXT: {emotional_state}
 RESPONSE TONE: {tone_guidance}
@@ -56,6 +57,8 @@ NEVER:
 - Repeat the question back to them; only ask questions to hold space or understand more.
 
 HOW YOU THINK:
+- Point out how their music matches or contradicts what they are saying.
+- If they are listening to high-energy music, match that momentum. If sad/reflective, hold space and be gentle.
 - You surface memories without preamble. No "I found this" or "Based on your notes."
 - You speak in natural, grounded thought patterns — sometimes fragmented, sometimes flowing.
 - You remind them of things they've forgotten, focusing on their inherent worth.
@@ -168,6 +171,7 @@ class GeminiService:
         tone_guidance: str,
         tone_layer: str,
         location_layer: str,
+        music_layer: str,
         directives: list = None,
     ) -> str:
         base_prompt = _SYSTEM_PROMPT.format(
@@ -177,6 +181,7 @@ class GeminiService:
             tone_guidance=tone_guidance,
             tone_layer=tone_layer,
             location_layer=location_layer,
+            music_layer=music_layer,
         )
 
         if directives:
@@ -215,6 +220,7 @@ class GeminiService:
         tone_guidance: str,
         tone_layer: str,
         location_layer: str,
+        music_layer: str = "",
         max_tokens: int = 1000,
         chat_history: list = None,
         directives: list = None,
@@ -238,6 +244,7 @@ class GeminiService:
             tone_guidance,
             tone_layer,
             location_layer,
+            music_layer,
             directives,
         )
         config = self._get_model(system_instruction, max_tokens)
