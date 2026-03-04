@@ -115,14 +115,18 @@ class GeminiService:
             raise ValueError("GEMINI_API_KEY environment variable is not set.")
         import httpx
 
-        # connect_timeout: 10s — fail fast if can't reach Google
-        # read_timeout: None — never cut off a streaming response mid-generation
-        # pool_timeout: 10s — don't wait forever for a connection slot
-        timeout = httpx.Timeout(connect=10.0, read=None, write=10.0, pool=10.0)
-        self._client = genai.Client(
-            api_key=api_key,
-            http_options={"timeout": timeout},
-        )
+        # genai.Client's HttpOptions.timeout only accepts int — create client first,
+        # then patch the internal httpx client to set granular timeouts:
+        # connect=10s (fail fast), read=None (never cut off streaming responses)
+        self._client = genai.Client(api_key=api_key)
+        _fine_timeout = httpx.Timeout(connect=10.0, read=None, write=30.0, pool=10.0)
+        try:
+            self._client._api_client._httpx_client.timeout = _fine_timeout
+        except AttributeError:
+            # Fallback if internal structure changes in a future SDK version
+            logger.warning(
+                "[GeminiService] Could not patch httpx timeout — using SDK default."
+            )
         self._initialized = True
         logger.info("[GeminiService] Configured — genai.Client instantiated once.")
 
