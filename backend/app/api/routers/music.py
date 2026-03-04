@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 import logging
 
 from app.schemas.schemas import MusicContextRequest, MusicContextResponse, UserResponse
-from app.api.deps import get_db, get_current_active_user
+from app.core.database import get_db
+from app.api.routers.auth import get_current_user
 from app.services.music_analyzer import MusicAnalyzerService
 
 router = APIRouter()
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 @router.post("/context", response_model=MusicContextResponse)
 def analyze_music_context(
     request_data: MusicContextRequest,
-    current_user: UserResponse = Depends(get_current_active_user),
+    current_user: UserResponse = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
