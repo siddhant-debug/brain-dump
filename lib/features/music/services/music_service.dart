@@ -69,6 +69,10 @@ class MusicService {
       return false;
     }
   }
+
+  /// Stream of player state changes to trigger UI updates
+  Stream<dynamic> get onPlayerStateChanged =>
+      _musicKit.onMusicPlayerStateChanged;
 }
 
 // Global provider for the underlying MusicKit plugin instance

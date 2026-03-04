@@ -1,5 +1,10 @@
 version: '3.8'
 
+networks:
+  braindump-net:
+    driver: bridge
+    enable_ipv6: false
+
 services:
   # The FastAPI Python App
   braindump-backend:
@@ -16,6 +21,14 @@ services:
     volumes:
       # Mount the upload vault
       - ./uploads:/app/uploads
+    # Force IPv4-only DNS to fix SSL timeouts when server has no working IPv6
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+    networks:
+      - braindump-net
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,3 +53,5 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - braindump-net

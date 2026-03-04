@@ -75,6 +75,17 @@ class MusicSyncController extends StateNotifier<MusicContextState> {
     state = state.copyWith(isAuthorized: authStatus);
     if (authStatus) {
       await refreshMusicContext();
+    } else {
+      // Automatically request permission if we aren't authorized yet.
+      // iOS will only show the popup once. If previously denied, it silently returns false.
+      await requestPermission();
+    }
+
+    // Listen for state changes (e.g. song starts playing or changes)
+    if (state.isAuthorized) {
+      _musicService.onPlayerStateChanged.listen((_) {
+        refreshMusicContext();
+      });
     }
   }
 
@@ -83,6 +94,11 @@ class MusicSyncController extends StateNotifier<MusicContextState> {
     state = state.copyWith(isAuthorized: granted);
     if (granted) {
       await refreshMusicContext();
+
+      // Hook up real-time playback listeners now that we have permission
+      _musicService.onPlayerStateChanged.listen((_) {
+        refreshMusicContext();
+      });
     }
   }
 
