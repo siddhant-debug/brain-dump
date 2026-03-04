@@ -51,6 +51,7 @@ class MusicAnalyzerService:
     def _save_to_cache(cache_key: str, tone_data: dict, db: Session):
         """Saves a new analysis to the DB cache."""
         try:
+            logger.info(f"[MusicAnalyzer] Saving new vibe to cache: {tone_data}")
             new_cache = MusicVibeCache(
                 cache_key=cache_key,
                 primary_tone=tone_data.get("primary_tone", "Neutral"),
@@ -69,16 +70,29 @@ class MusicAnalyzerService:
         """
         Main entry point. Generates key, checks cache, and falls back to LLM.
         """
+        logger.info(
+            f"[MusicAnalyzer] Incoming request - is_playing: {request.is_playing_now}, current: {request.current_song}, recent count: {len(request.recent_songs) if request.recent_songs else 0}"
+        )
+
         # Validate input
         if request.is_playing_now and not request.current_song:
+            logger.warning(
+                "[MusicAnalyzer] Invalid request: is_playing_now is True but no current_song provided."
+            )
             return {
                 "primary_tone": "Unknown",
                 "short_description": "Playing, but no song data provided.",
             }
-        if not request.is_playing_now and not request.recent_songs:
+
+        if not request.is_playing_now and (
+            not request.recent_songs or len(request.recent_songs) == 0
+        ):
+            logger.warning(
+                "[MusicAnalyzer] Invalid request: Not playing AND no recent history provided."
+            )
             return {
                 "primary_tone": "Unknown",
-                "short_description": "No recent songs provided.",
+                "short_description": "No music playing and no recent history.",
             }
 
         cache_key = MusicAnalyzerService._generate_cache_key(request)
@@ -86,21 +100,38 @@ class MusicAnalyzerService:
         # 1. Check Cache
         cached_vibe = MusicAnalyzerService._get_cached_vibe(cache_key, db)
         if cached_vibe:
-            logger.info(f"[MusicAnalyzer] Cache HIT for key {cache_key}")
+            logger.info(f"[MusicAnalyzer] Cache HIT for key {cache_key}: {cached_vibe}")
             return cached_vibe
 
         logger.info(
-            f"[MusicAnalyzer] Cache MISS for key {cache_key}. Calling Gemini..."
+            f"[MusicAnalyzer] Cache MISS for key {cache_key}. Proceeding to Gemini analysis."
         )
 
         # 2. Build the LLM prompt payload
-        if request.is_playing_now:
+        if request.is_playing_now and request.current_song:
             song_context = f"Currently Playing: '{request.current_song.title}' by {request.current_song.artist}"
-        else:
+
+            # Optionally append some history to the current song for a fuller picture
+            if request.recent_songs:
+                song_list_str = "\n".join(
+                    [f"- '{s.title}' by {s.artist}" for s in request.recent_songs[:5]]
+                )
+                song_context += f"\n\nRecently Played Before This:\n{song_list_str}"
+
+        elif request.recent_songs:
             song_list_str = "\n".join(
                 [f"- '{s.title}' by {s.artist}" for s in request.recent_songs]
             )
-            song_context = f"Recently Played (Last 10 tracks):\n{song_list_str}"
+            song_context = f"Not currently playing, but Recently Played (Last {len(request.recent_songs)} tracks):\n{song_list_str}"
+        else:
+            return {
+                "primary_tone": "Neutral",
+                "short_description": "No valid music context.",
+            }
+
+        logger.info(
+            f"[MusicAnalyzer] Constructed Song Context for Gemini:\n{song_context}"
+        )
 
         prompt = f"""
         Analyze the following song(s): 
@@ -129,6 +160,8 @@ class MusicAnalyzerService:
                     system_instruction="You are a music analysis engine classifying emotional tone and listener mindset based purely on song titles and artists.",
                 ),
             )
+
+            logger.info(f"[MusicAnalyzer] Gemini raw response: {response.text}")
 
             # 4. Parse response
             result = json.loads(response.text)

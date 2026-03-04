@@ -158,16 +158,34 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     Map<String, dynamic>? musicContext;
     try {
       final musicState = ref.read(musicSyncControllerProvider);
-      if (musicState.isPlaying && musicState.currentSong != null) {
+
+      final hasCurrentSong =
+          musicState.isPlaying && musicState.currentSong != null;
+      final hasRecentSongs = musicState.recentSongs.isNotEmpty;
+
+      if (hasCurrentSong || hasRecentSongs) {
         musicContext = {
-          "is_playing_now": true,
-          "current_song": {
-            "title": musicState.currentSong!.title ?? "Unknown",
-            "artist": musicState.currentSong!.artistName ?? "Unknown",
-          },
+          "is_playing_now": hasCurrentSong,
+          "current_song": hasCurrentSong
+              ? {
+                  "title": musicState.currentSong!.title ?? "Unknown",
+                  "artist": musicState.currentSong!.artistName ?? "Unknown",
+                }
+              : null,
+          "recent_songs": musicState.recentSongs
+              .map(
+                (s) => {
+                  "title": s.title ?? "Unknown",
+                  "artist": s.artistName ?? "Unknown",
+                },
+              )
+              .toList(),
           "primary_tone": musicState.analyzedVibe?.primaryTone,
           "short_description": musicState.analyzedVibe?.shortDescription,
         };
+        debugPrint(
+          "[DEBUG] Injecting Music Context to Chat Payload: $musicContext",
+        );
       }
     } catch (e) {
       debugPrint("[DEBUG] Music context fetch skipped: $e");

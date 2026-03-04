@@ -9,6 +9,8 @@ import '../models/analytics_models.dart';
 
 import '../widgets/pipeline_sheet.dart';
 import '../widgets/loops_bottom_sheet.dart';
+import '../../music/controllers/music_sync_controller.dart';
+import '../../music/presentation/widgets/music_vibe_bottom_sheet.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});
@@ -212,6 +214,7 @@ class _ConsistencyContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final loopsState = ref.watch(loopsProvider);
+    final musicState = ref.watch(musicSyncControllerProvider);
 
     return _Card(
       title: 'Consistency',
@@ -220,6 +223,8 @@ class _ConsistencyContent extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildPipelineButton(context),
+          const SizedBox(width: 8),
+          _buildMusicButton(context, musicState),
           const SizedBox(width: 8),
           _buildLoopsButton(context, loopsState),
         ],
@@ -315,6 +320,36 @@ class _ConsistencyContent extends ConsumerWidget {
         ),
       ),
       error: (_, _) => const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildMusicButton(BuildContext context, MusicContextState musicState) {
+    return IconButton(
+      icon: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceHigh,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          musicState.isPlaying
+              ? Icons.graphic_eq_rounded
+              : Icons.music_note_rounded,
+          color: musicState.isPlaying
+              ? AppColors.accent
+              : AppColors.textSecondary,
+          size: 20,
+        ),
+      ),
+      tooltip: 'Current Music Vibe',
+      onPressed: () {
+        showModalBottomSheet(
+          context: context,
+          backgroundColor: Colors.transparent,
+          isScrollControlled: true,
+          builder: (context) => MusicVibeBottomSheet(musicState: musicState),
+        );
+      },
     );
   }
 

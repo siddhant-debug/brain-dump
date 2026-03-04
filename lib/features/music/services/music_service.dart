@@ -39,17 +39,24 @@ class MusicService {
   Future<MusicItem?> getCurrentSong() async {
     try {
       final playerState = await _musicKit.musicPlayerState;
+      debugPrint('[MusicService] Raw playerState: $playerState');
+
       // Depending on the version of music_kit, playerState may contain playbackState or currentEntry
       // Let's use dynamic to extract safely
       final dynamic stateDynamic = playerState;
       final currentEntry = stateDynamic.currentEntry;
 
+      debugPrint('[MusicService] currentEntry: $currentEntry');
+
       if (currentEntry != null && currentEntry.item != null) {
         final attributes = currentEntry.item.attributes;
+        debugPrint('[MusicService] attributes: $attributes');
         return MusicItem(
           title: attributes?['name']?.toString() ?? 'Unknown',
           artistName: attributes?['artistName']?.toString() ?? 'Unknown',
         );
+      } else {
+        debugPrint('[MusicService] currentEntry or currentEntry.item is null');
       }
       return null;
     } catch (e) {
@@ -58,21 +65,36 @@ class MusicService {
     }
   }
 
+  /// Temporary debug helper to fetch raw state
+  Future<String> getRawPlayerState() async {
+    try {
+      final playerState = await _musicKit.musicPlayerState;
+      final dynamic stateDynamic = playerState;
+      final currentEntry = stateDynamic.currentEntry;
+      return "Status: ${playerState.playbackStatus}\nEntry: $currentEntry\nAttrs: ${currentEntry?.item?.attributes}";
+    } catch (e) {
+      return "Raw State Error: $e";
+    }
+  }
+
   /// Check if music is currently playing
   Future<bool> isPlaying() async {
     try {
       final playerState = await _musicKit.musicPlayerState;
-      return playerState.playbackStatus.toString().toLowerCase().contains(
-        'playing',
-      );
+      final status = playerState.playbackStatus.toString().toLowerCase();
+      debugPrint('[MusicService] isPlaying status: $status');
+      return status.contains('playing');
     } catch (e) {
+      debugPrint('[MusicService] Error in isPlaying: $e');
       return false;
     }
   }
 
   /// Stream of player state changes to trigger UI updates
-  Stream<dynamic> get onPlayerStateChanged =>
-      _musicKit.onMusicPlayerStateChanged;
+  Stream<dynamic> get onPlayerStateChanged {
+    debugPrint('[MusicService] Setting up onPlayerStateChanged listener');
+    return _musicKit.onMusicPlayerStateChanged;
+  }
 }
 
 // Global provider for the underlying MusicKit plugin instance
