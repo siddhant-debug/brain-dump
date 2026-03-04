@@ -113,7 +113,16 @@ class GeminiService:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable is not set.")
-        self._client = genai.Client(api_key=api_key, http_options={"timeout": 60.0})
+        import httpx
+
+        # connect_timeout: 10s — fail fast if can't reach Google
+        # read_timeout: None — never cut off a streaming response mid-generation
+        # pool_timeout: 10s — don't wait forever for a connection slot
+        timeout = httpx.Timeout(connect=10.0, read=None, write=10.0, pool=10.0)
+        self._client = genai.Client(
+            api_key=api_key,
+            http_options={"timeout": timeout},
+        )
         self._initialized = True
         logger.info("[GeminiService] Configured — genai.Client instantiated once.")
 
