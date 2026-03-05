@@ -347,7 +347,7 @@ class _ConsistencyContent extends ConsumerWidget {
           context: context,
           backgroundColor: Colors.transparent,
           isScrollControlled: true,
-          builder: (context) => MusicVibeBottomSheet(musicState: musicState),
+          builder: (context) => const MusicVibeBottomSheet(),
         );
       },
     );

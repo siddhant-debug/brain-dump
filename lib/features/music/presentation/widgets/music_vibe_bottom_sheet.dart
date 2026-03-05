@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../controllers/music_sync_controller.dart';
+import '../../services/music_service.dart';
 
-class MusicVibeBottomSheet extends StatelessWidget {
-  final MusicContextState musicState;
-
-  const MusicVibeBottomSheet({super.key, required this.musicState});
+/// A live-reactive bottom sheet: uses ConsumerWidget so it watches
+/// musicSyncControllerProvider directly and re-renders on every state change.
+class MusicVibeBottomSheet extends ConsumerWidget {
+  const MusicVibeBottomSheet({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // LIVE watch — re-renders automatically when music state changes.
+    // This fixes the auth dot and recent songs not updating inside the modal.
+    final musicState = ref.watch(musicSyncControllerProvider);
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
       decoration: BoxDecoration(
@@ -102,13 +107,13 @@ class MusicVibeBottomSheet extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
-          _buildContent(),
+          _buildContent(musicState),
         ],
       ),
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(MusicContextState musicState) {
     if (musicState.isAnalyzing) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 32),
@@ -134,7 +139,14 @@ class MusicVibeBottomSheet extends StatelessWidget {
       );
     }
 
+    // Show "play a song" message only if there are also no recent songs to fall back on
     if (!musicState.isPlaying || musicState.currentSong == null) {
+      // If we have recent songs + a vibe from history, show that instead
+      if (musicState.recentSongs.isNotEmpty ||
+          musicState.analyzedVibe != null) {
+        // Fall through to the main content below — render vibe from recent history
+        return _buildVibeContent(null, musicState);
+      }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -164,77 +176,90 @@ class MusicVibeBottomSheet extends StatelessWidget {
       );
     }
 
-    final song = musicState.currentSong!;
-    final vibe = musicState.analyzedVibe;
+    return _buildVibeContent(musicState.currentSong, musicState);
+  }
 
+  Widget _buildVibeContent(MusicItem? song, MusicContextState musicState) {
+    final vibe = musicState.analyzedVibe;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Now Playing
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceHigh,
-            borderRadius: BorderRadius.circular(16),
+        // Now Playing (only when a song is actively playing)
+        if (song != null) ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceHigh,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.album_rounded,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Now Playing',
+                        style: TextStyle(
+                          color: AppColors.accent,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        song.title ?? 'Unknown Song',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        song.artistName ?? 'Unknown Artist',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 14,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                // Animated bars icon
+                Icon(Icons.graphic_eq_rounded, color: AppColors.accent),
+              ],
+            ),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.album_rounded,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Now Playing',
-                      style: TextStyle(
-                        color: AppColors.accent,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      song.title ?? 'Unknown Song',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      song.artistName ?? 'Unknown Artist',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 14,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              // Animated bars icon
-              Icon(Icons.graphic_eq_rounded, color: AppColors.accent),
-            ],
+          const SizedBox(height: 24),
+        ] else if (musicState.recentSongs.isNotEmpty) ...[
+          Text(
+            'Based on your recent listening',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+              fontStyle: FontStyle.italic,
+            ),
           ),
-        ),
-
-        const SizedBox(height: 24),
+          const SizedBox(height: 16),
+        ],
 
         // Vibe Analysis
         if (vibe != null) ...[
