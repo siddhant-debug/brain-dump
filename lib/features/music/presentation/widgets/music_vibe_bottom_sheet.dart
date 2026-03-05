@@ -103,6 +103,23 @@ class MusicVibeBottomSheet extends ConsumerWidget {
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
+              // Manual refresh button for triggering state update
+              IconButton(
+                icon: Icon(
+                  Icons.refresh_rounded,
+                  color: AppColors.textSecondary,
+                  size: 20,
+                ),
+                tooltip: 'Refresh',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: musicState.isAnalyzing
+                    ? null
+                    : () => ref
+                          .read(musicSyncControllerProvider.notifier)
+                          .refreshMusicContext(),
+              ),
             ],
           ),
           const SizedBox(height: 24),

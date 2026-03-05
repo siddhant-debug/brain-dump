@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:music_kit/music_kit.dart';
 import 'package:flutter/foundation.dart';
+import 'music_service_interface.dart';
 
 class MusicItem {
   final String? title;
@@ -8,7 +9,7 @@ class MusicItem {
   MusicItem({this.title, this.artistName});
 }
 
-class MusicService {
+class MusicService implements MusicServiceInterface {
   final MusicKit _musicKit;
 
   MusicService(this._musicKit);

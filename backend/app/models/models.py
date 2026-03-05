@@ -1,4 +1,13 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, JSON
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    Boolean,
+    ForeignKey,
+    JSON,
+    Float,
+)
 from sqlalchemy.sql import func
 from app.core.database import Base
 
@@ -68,11 +77,9 @@ class MusicVibeCache(Base):
     cache_key = Column(String, unique=True, index=True, nullable=False)
     primary_tone = Column(String, nullable=False)
     short_description = Column(String, nullable=False)
-    valence = Column(
-        JSON, nullable=True
-    )  # Using JSON for easy float migrations or keeping as float
-    arousal = Column(JSON, nullable=True)
-    dominance = Column(JSON, nullable=True)
+    valence = Column(Float, nullable=True)
+    arousal = Column(Float, nullable=True)
+    dominance = Column(Float, nullable=True)
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

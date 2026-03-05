@@ -373,9 +373,9 @@ async def chat_endpoint(
                 mc = request_body.music_context
                 primary_tone = mc.get("primary_tone", "Unknown")
                 short_desc = mc.get("short_description", "")
-                valence = float(mc.get("valence", 0.0))
-                arousal = float(mc.get("arousal", 0.0))
-                dominance = float(mc.get("dominance", 0.0))
+                valence = float(mc.get("valence") or 0.0)
+                arousal = float(mc.get("arousal") or 0.0)
+                dominance = float(mc.get("dominance") or 0.0)
 
                 # Translate VAD numbers to human-readable mood signals
                 def _vad_label(value: float, pos: str, neg: str) -> str:
