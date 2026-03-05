@@ -95,6 +95,27 @@ class MusicService {
     debugPrint('[MusicService] Setting up onPlayerStateChanged listener');
     return _musicKit.onMusicPlayerStateChanged;
   }
+
+  /// Fetches the user-specific Music-User-Token via MusicKit's two-step flow:
+  ///   1. Get the Developer Token (signed JWT) from the native SDK.
+  ///   2. Exchange it for the per-user Music-User-Token.
+  /// Call this after authorization has been granted.
+  Future<String?> getMusicUserToken() async {
+    try {
+      final developerToken = await _musicKit.requestDeveloperToken();
+      debugPrint(
+        '[MusicService] Developer token obtained, fetching user token...',
+      );
+      final userToken = await _musicKit.requestUserToken(developerToken);
+      debugPrint(
+        '[MusicService] Music-User-Token: ${userToken.isNotEmpty ? "obtained (${userToken.length} chars)" : "empty"}',
+      );
+      return userToken.isNotEmpty ? userToken : null;
+    } catch (e) {
+      debugPrint('[MusicService] Error fetching Music-User-Token: $e');
+      return null;
+    }
+  }
 }
 
 // Global provider for the underlying MusicKit plugin instance

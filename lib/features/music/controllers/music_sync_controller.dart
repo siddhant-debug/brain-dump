@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart'; // for WidgetsBindingObserver
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../services/music_service.dart';
@@ -12,14 +13,42 @@ import '../services/music_service.dart';
 class MusicVibe {
   final String primaryTone;
   final String shortDescription;
+  final double valence;
+  final double arousal;
+  final double dominance;
 
-  MusicVibe({required this.primaryTone, required this.shortDescription});
+  MusicVibe({
+    required this.primaryTone,
+    required this.shortDescription,
+    this.valence = 0.0,
+    this.arousal = 0.0,
+    this.dominance = 0.0,
+  });
 
   factory MusicVibe.fromJson(Map<String, dynamic> json) {
     return MusicVibe(
       primaryTone: json['primary_tone'] as String? ?? 'Unknown',
       shortDescription: json['short_description'] as String? ?? '',
+      valence: (json['valence'] as num?)?.toDouble() ?? 0.0,
+      arousal: (json['arousal'] as num?)?.toDouble() ?? 0.0,
+      dominance: (json['dominance'] as num?)?.toDouble() ?? 0.0,
     );
+  }
+
+  /// Converts vibe to a payload dict to pass music_context to the RAG endpoint.
+  Map<String, dynamic> toContextMap({
+    bool isPlayingNow = false,
+    Map<String, String>? currentSong,
+  }) {
+    return {
+      'primary_tone': primaryTone,
+      'short_description': shortDescription,
+      'valence': valence,
+      'arousal': arousal,
+      'dominance': dominance,
+      'is_playing_now': isPlayingNow,
+      if (currentSong != null) 'current_song': currentSong,
+    };
   }
 }
 
@@ -66,61 +95,137 @@ class MusicContextState {
   }
 }
 
-class MusicSyncController extends StateNotifier<MusicContextState> {
+class MusicSyncController extends StateNotifier<MusicContextState>
+    with WidgetsBindingObserver {
   final MusicService _musicService;
   final FlutterSecureStorage _storage;
 
   MusicSyncController(this._musicService, this._storage)
     : super(MusicContextState()) {
+    // FIX 1: Register as lifecycle observer so the auth dot reacts
+    // immediately when the user returns from the native Apple Music popup.
+    WidgetsBinding.instance.addObserver(this);
     _init();
   }
 
-  Future<void> _init() async {
-    await _loadRecentSongs();
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
+  /// FIX 1 (Auth Dot): When the app resumes from background, re-check
+  /// authorization. This covers the case where the user grants permission
+  /// in the native Apple popup and returns to the app.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
+    if (lifecycleState == AppLifecycleState.resumed) {
+      debugPrint('[MusicSync] App resumed — re-checking auth status...');
+      _recheckAuthorization();
+    }
+  }
+
+  Future<void> _recheckAuthorization() async {
+    final authStatus = await _musicService.checkAuthorization();
+    if (authStatus != state.isAuthorized) {
+      debugPrint('[MusicSync] Auth changed → isAuthorized: $authStatus');
+      state = state.copyWith(isAuthorized: authStatus);
+      if (authStatus) {
+        _startPlayerStateListener();
+        await refreshMusicContext();
+      }
+    }
+  }
+
+  Future<void> _init() async {
     final authStatus = await _musicService.checkAuthorization();
     state = state.copyWith(isAuthorized: authStatus);
+
     if (authStatus) {
+      _startPlayerStateListener();
       await refreshMusicContext();
     } else {
       await requestPermission();
     }
-
-    if (state.isAuthorized) {
-      _musicService.onPlayerStateChanged.listen((_) {
-        refreshMusicContext();
-      });
-    }
   }
 
-  Future<void> _loadRecentSongs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = prefs.getStringList('recent_songs_history');
-    if (jsonList != null && jsonList.isNotEmpty) {
-      final songs = jsonList.map((str) {
-        final Map<String, dynamic> data = jsonDecode(str);
-        return MusicItem(title: data['title'], artistName: data['artistName']);
-      }).toList();
-      state = state.copyWith(recentSongs: songs);
-    }
-  }
-
-  Future<void> _saveRecentSongs(List<MusicItem> songs) async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = songs
-        .map((s) => jsonEncode({'title': s.title, 'artistName': s.artistName}))
-        .toList();
-    await prefs.setStringList('recent_songs_history', jsonList);
+  void _startPlayerStateListener() {
+    _musicService.onPlayerStateChanged.listen((_) {
+      refreshMusicContext();
+    });
   }
 
   Future<void> requestPermission() async {
     final granted = await _musicService.requestAuthorization();
     state = state.copyWith(isAuthorized: granted);
     if (granted) {
+      _startPlayerStateListener();
       await refreshMusicContext();
-      _musicService.onPlayerStateChanged.listen((_) {
-        refreshMusicContext();
-      });
+    }
+  }
+
+  /// FIX 2 (Recent Songs): Fetch the real last 10 tracks from Apple Music API
+  /// via the backend endpoint GET /api/music/recent/played.
+  /// Falls back to an empty list if the Music-User-Token is unavailable.
+  Future<List<MusicItem>> _fetchRecentSongsFromBackend() async {
+    try {
+      final jwt = await _storage.read(key: 'jwt');
+      if (jwt == null) {
+        debugPrint('[MusicSync] No JWT found, skipping recent songs fetch.');
+        return [];
+      }
+
+      final musicUserToken = await _musicService.getMusicUserToken();
+      if (musicUserToken == null) {
+        debugPrint(
+          '[MusicSync] No Music-User-Token, skipping recent songs fetch.',
+        );
+        return [];
+      }
+
+      final url = Uri.parse('${ApiConstants.baseUrl}/api/music/recent/played');
+      final response = await http
+          .get(
+            url,
+            headers: {
+              'Authorization': 'Bearer $jwt',
+              'Music-User-Token': musicUserToken,
+            },
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final songList = (data['recent_songs'] as List<dynamic>?) ?? [];
+        final songs = songList.map((s) {
+          final m = s as Map<String, dynamic>;
+          return MusicItem(
+            title: m['title'] as String? ?? 'Unknown',
+            artistName: m['artist'] as String? ?? 'Unknown',
+          );
+        }).toList();
+        debugPrint(
+          '[MusicSync] Fetched ${songs.length} recent songs from backend.',
+        );
+        return songs;
+      } else if (response.statusCode == 401) {
+        debugPrint('[MusicSync] Music-User-Token expired or invalid (401).');
+        state = state.copyWith(
+          error: 'Apple Music token expired. Please re-authorize.',
+        );
+        return [];
+      } else {
+        debugPrint(
+          '[MusicSync] Backend returned ${response.statusCode} for recent/played.',
+        );
+        return [];
+      }
+    } on TimeoutException {
+      debugPrint('[MusicSync] Timeout fetching recent songs.');
+      return [];
+    } catch (e) {
+      debugPrint('[MusicSync] Error fetching recent songs: $e');
+      return [];
     }
   }
 
@@ -130,39 +235,22 @@ class MusicSyncController extends StateNotifier<MusicContextState> {
     try {
       final isPlaying = await _musicService.isPlaying();
       final currentSong = await _musicService.getCurrentSong();
-
-      // Track history if the song has changed
-      List<MusicItem> currentRecent = List.from(state.recentSongs);
-      if (currentSong != null &&
-          (state.currentSong?.title != currentSong.title ||
-              state.currentSong?.artistName != currentSong.artistName)) {
-        // Only if we had a previous song, add it to history
-        if (state.currentSong != null) {
-          // Check if it's already the most recent to avoid double logging
-          if (currentRecent.isEmpty ||
-              (currentRecent.first.title != state.currentSong!.title)) {
-            currentRecent.insert(0, state.currentSong!);
-            if (currentRecent.length > 10) {
-              currentRecent = currentRecent.take(10).toList();
-            }
-            await _saveRecentSongs(currentRecent);
-          }
-        }
-      }
-
       final rawState = await _musicService.getRawPlayerState();
+
+      // FIX 2: Fetch real recent songs from Apple Music API via backend
+      final recentSongs = await _fetchRecentSongsFromBackend();
 
       state = state.copyWith(
         isPlaying: isPlaying,
         currentSong: currentSong,
-        recentSongs: currentRecent,
+        recentSongs: recentSongs,
         clearSong: currentSong == null,
-        error: rawState, // Temporarily pipe raw state for TestFlight debug
+        error: rawState, // Keep raw state for TestFlight debug
       );
 
-      // Analyze the vibe if we have a song OR we have history
-      if ((isPlaying && currentSong != null) || currentRecent.isNotEmpty) {
-        await _analyzeVibeOnBackend(currentSong, currentRecent);
+      // Analyze vibe if we have any context
+      if ((isPlaying && currentSong != null) || recentSongs.isNotEmpty) {
+        await _analyzeVibeOnBackend(currentSong, recentSongs);
       } else {
         state = state.copyWith(clearVibe: true);
       }

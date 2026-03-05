@@ -367,15 +367,52 @@ async def chat_endpoint(
 
             print(f"[DEBUG] Found relevant context. Length: {len(context_text)} chars")
 
-            # Extract music layer if present
+            # Extract music layer if present and enrich with VAD Mood Vector
             music_layer = ""
             if request_body.music_context:
                 mc = request_body.music_context
+                primary_tone = mc.get("primary_tone", "Unknown")
+                short_desc = mc.get("short_description", "")
+                valence = float(mc.get("valence", 0.0))
+                arousal = float(mc.get("arousal", 0.0))
+                dominance = float(mc.get("dominance", 0.0))
+
+                # Translate VAD numbers to human-readable mood signals
+                def _vad_label(value: float, pos: str, neg: str) -> str:
+                    if value > 0.4:
+                        return f"very {pos}"
+                    elif value > 0.1:
+                        return pos
+                    elif value < -0.4:
+                        return f"very {neg}"
+                    elif value < -0.1:
+                        return neg
+                    return "neutral"
+
+                val_label = _vad_label(
+                    valence, "positive/joyful", "negative/melancholic"
+                )
+                aro_label = _vad_label(arousal, "energized/intense", "calm/low-energy")
+                dom_label = _vad_label(
+                    dominance, "confident/in-control", "reflective/vulnerable"
+                )
+
+                vad_summary = f"Emotional state: {val_label} mood, {aro_label}, feeling {dom_label}."
+
                 if mc.get("is_playing_now") and mc.get("current_song"):
                     song_name = mc["current_song"].get("title", "")
-                    music_layer = f"MUSIC CONTEXT: They are CURRENTLY playing '{song_name}'. Tone: {mc.get('primary_tone', 'Unknown')} ({mc.get('short_description', '')})."
-                elif not mc.get("is_playing_now") and mc.get("primary_tone"):
-                    music_layer = f"MUSIC CONTEXT: Their recently played tracks have a '{mc.get('primary_tone')}' vibe ({mc.get('short_description', '')})."
+                    music_layer = (
+                        f"MUSIC CONTEXT: Currently playing '{song_name}'. "
+                        f"Tone: {primary_tone} — {short_desc}. "
+                        f"{vad_summary} "
+                        f"Adjust your tone and retrieval weighting accordingly."
+                    )
+                elif primary_tone and primary_tone != "Unknown":
+                    music_layer = (
+                        f"MUSIC CONTEXT: Recently played tracks have a '{primary_tone}' vibe — {short_desc}. "
+                        f"{vad_summary} "
+                        f"Let this color how you surface and frame their memories."
+                    )
 
             # 3. Stream AI response
             full_response = ""

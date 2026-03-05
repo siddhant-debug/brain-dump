@@ -44,6 +44,9 @@ class MusicAnalyzerService:
             return {
                 "primary_tone": cached.primary_tone,
                 "short_description": cached.short_description,
+                "valence": cached.valence if cached.valence is not None else 0.0,
+                "arousal": cached.arousal if cached.arousal is not None else 0.0,
+                "dominance": cached.dominance if cached.dominance is not None else 0.0,
             }
         return None
 
@@ -58,6 +61,9 @@ class MusicAnalyzerService:
                 short_description=tone_data.get(
                     "short_description", "No distinct vibe detected."
                 ),
+                valence=tone_data.get("valence", 0.0),
+                arousal=tone_data.get("arousal", 0.0),
+                dominance=tone_data.get("dominance", 0.0),
             )
             db.add(new_cache)
             db.commit()
@@ -138,10 +144,13 @@ class MusicAnalyzerService:
         {song_context}
         
         What is the emotional tone, nature, and likely mindset of the listener? 
+        Determine their current mood using a 3-dimensional vector (Valence, Arousal, Dominance) 
+        where each is a float between -1.0 and 1.0.
         Choose a 'primary_tone' from categories such as: Happy, Sad, Romance, Work/Focus, Gym/High-Energy, Chill/Relaxed. 
         Write a 'short_description' (1 short sentence) characterizing the vibe.
         
-        Return a valid JSON object with EXACTLY these two keys: "primary_tone" and "short_description".
+        Return a valid JSON object with EXACTLY these keys: 
+        "primary_tone" (string), "short_description" (string), "valence" (float), "arousal" (float), "dominance" (float).
         """
 
         # 3. Call Gemini
@@ -170,6 +179,9 @@ class MusicAnalyzerService:
             tone_data = {
                 "primary_tone": result.get("primary_tone", "Unknown"),
                 "short_description": result.get("short_description", "Unknown mindset"),
+                "valence": float(result.get("valence", 0.0)),
+                "arousal": float(result.get("arousal", 0.0)),
+                "dominance": float(result.get("dominance", 0.0)),
             }
 
             # 5. Save to Cache
@@ -181,4 +193,7 @@ class MusicAnalyzerService:
             return {
                 "primary_tone": "Unknown",
                 "short_description": "Failed to analyze tone due to an internal error.",
+                "valence": 0.0,
+                "arousal": 0.0,
+                "dominance": 0.0,
             }

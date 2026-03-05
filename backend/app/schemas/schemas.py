@@ -69,11 +69,15 @@ class MusicContextRequest(BaseModel):
     is_playing_now: bool
     current_song: Optional[MusicTrack] = None
     recent_songs: Optional[List[MusicTrack]] = None
+    music_user_token: Optional[str] = None  # Needed to fetch from Apple Music API
 
 
 class MusicContextResponse(BaseModel):
     primary_tone: str
     short_description: str
+    valence: float = 0.0
+    arousal: float = 0.0
+    dominance: float = 0.0
 
 
 class NoteCreate(BaseModel):

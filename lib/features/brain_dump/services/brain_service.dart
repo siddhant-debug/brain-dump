@@ -37,7 +37,7 @@ class BrainService {
         data: {
           'query': query,
           'location': location,
-          if (musicContext != null) 'music_context': musicContext,
+          'music_context': ?musicContext,
         },
         options: Options(
           headers: {
