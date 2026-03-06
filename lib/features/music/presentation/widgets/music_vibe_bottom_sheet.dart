@@ -124,13 +124,13 @@ class MusicVibeBottomSheet extends ConsumerWidget {
           ),
           const SizedBox(height: 24),
 
-          _buildContent(musicState),
+          _buildContent(musicState, ref),
         ],
       ),
     );
   }
 
-  Widget _buildContent(MusicContextState musicState) {
+  Widget _buildContent(MusicContextState musicState, WidgetRef ref) {
     if (musicState.isAnalyzing) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 32),
@@ -150,18 +150,37 @@ class MusicVibeBottomSheet extends ConsumerWidget {
     }
 
     if (!musicState.isAuthorized) {
-      return Text(
-        'Apple Music is not connected. Connect in the settings or play a song to start tracking your music vibe.',
-        style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Apple Music is not connected. Connect in the settings or tap the button below to start tracking your music vibe.',
+            style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: () => ref
+                .read(musicSyncControllerProvider.notifier)
+                .requestPermission(),
+            icon: const Icon(Icons.music_note_rounded),
+            label: const Text('Connect Apple Music'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+          ),
+        ],
       );
     }
 
     // Show "play a song" message only if there are also no recent songs to fall back on
     if (!musicState.isPlaying || musicState.currentSong == null) {
-      // If we have recent songs + a vibe from history, show that instead
-      if (musicState.recentSongs.isNotEmpty ||
-          musicState.analyzedVibe != null) {
-        // Fall through to the main content below — render vibe from recent history
+      // If we have recent songs, fall through to render them
+      if (musicState.recentSongs.isNotEmpty) {
         return _buildVibeContent(null, musicState);
       }
       return Column(
@@ -171,24 +190,6 @@ class MusicVibeBottomSheet extends ConsumerWidget {
             'Play a song on Apple Music to see your current vibe analysis.',
             style: TextStyle(color: AppColors.textSecondary, height: 1.5),
           ),
-          if (musicState.error != null) ...[
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.error.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                'DEBUG:\n${musicState.error}',
-                style: TextStyle(
-                  color: AppColors.error,
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                ),
-              ),
-            ),
-          ],
         ],
       );
     }

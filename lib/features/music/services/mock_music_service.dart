@@ -34,17 +34,26 @@ class MockMusicService implements MusicServiceInterface {
     }
   }
 
-  @override
-  Future<bool> checkAuthorization() async => true;
+  bool _isAuthorized = false;
 
   @override
-  Future<bool> requestAuthorization() async => true;
+  Future<bool> checkAuthorization() async => _isAuthorized;
 
   @override
-  Future<bool> isPlaying() async => true;
+  Future<bool> requestAuthorization() async {
+    await Future.delayed(
+      const Duration(milliseconds: 500),
+    ); // Simulate UI delay
+    _isAuthorized = true;
+    return true;
+  }
+
+  @override
+  Future<bool> isPlaying() async => _isAuthorized;
 
   @override
   Future<MusicItem?> getCurrentSong() async {
+    if (!_isAuthorized) return null;
     _maybeCycleSong();
     final song = _songs[_currentIndex];
     debugPrint(
@@ -55,11 +64,13 @@ class MockMusicService implements MusicServiceInterface {
 
   @override
   Future<String> getRawPlayerState() async {
+    if (!_isAuthorized) return 'MockStatus: unauthorized';
     _maybeCycleSong();
     final song = _songs[_currentIndex];
     return 'MockStatus: playing\nMockEntry: ${song['title']} by ${song['artist']}';
   }
 
   @override
-  Future<String?> getMusicUserToken() async => 'mock-music-user-token';
+  Future<String?> getMusicUserToken() async =>
+      _isAuthorized ? 'mock-music-user-token' : null;
 }

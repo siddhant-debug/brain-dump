@@ -1,15 +1,13 @@
 import 'dart:async';
-import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-import '../../../core/constants/api_constants.dart';
 import '../services/music_service_interface.dart';
 import '../services/music_service.dart'; // for MusicItem + musicKitProvider
 import '../providers/music_service_provider.dart';
+import '../../../core/providers/dio_provider.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Models
@@ -48,7 +46,7 @@ class MusicVibe {
     'arousal': arousal,
     'dominance': dominance,
     'is_playing_now': isPlayingNow,
-    if (currentSong != null) 'current_song': currentSong,
+    'current_song': ?currentSong,
   };
 }
 
@@ -81,6 +79,7 @@ class MusicContextState {
     String? error,
     bool clearSong = false,
     bool clearVibe = false,
+    bool clearError = false,
   }) => MusicContextState(
     isAuthorized: isAuthorized ?? this.isAuthorized,
     isPlaying: isPlaying ?? this.isPlaying,
@@ -88,7 +87,7 @@ class MusicContextState {
     recentSongs: recentSongs ?? this.recentSongs,
     analyzedVibe: clearVibe ? null : (analyzedVibe ?? this.analyzedVibe),
     isAnalyzing: isAnalyzing ?? this.isAnalyzing,
-    error: error,
+    error: clearError ? null : (error ?? this.error),
   );
 }
 
@@ -101,6 +100,7 @@ class MusicSyncController extends StateNotifier<MusicContextState>
   // Step 5: accepts MusicServiceInterface, not the concrete MusicService
   final MusicServiceInterface _musicService;
   final FlutterSecureStorage _storage;
+  final Dio _dio;
 
   /// FIX 3: Cache the Music-User-Token so we don't re-fetch on every poll.
   /// Invalidated on 401 responses so it refreshes automatically.
@@ -112,7 +112,7 @@ class MusicSyncController extends StateNotifier<MusicContextState>
   Timer? _pollTimer;
   String? _lastSeenSongTitle;
 
-  MusicSyncController(this._musicService, this._storage)
+  MusicSyncController(this._musicService, this._storage, this._dio)
     : super(MusicContextState()) {
     WidgetsBinding.instance.addObserver(this);
     _init();
@@ -154,9 +154,8 @@ class MusicSyncController extends StateNotifier<MusicContextState>
     if (authStatus) {
       _startPolling();
       await refreshMusicContext();
-    } else {
-      await requestPermission();
     }
+    // We intentionally don't call requestPermission() here to avoid eagerly flashing the auth dialog on app launch.
   }
 
   // ── Fix 3: Stream replaced by timer poll ─────────────────────────────────
@@ -187,9 +186,25 @@ class MusicSyncController extends StateNotifier<MusicContextState>
         debugPrint(
           '[MusicSync] Poll detected change: playing=$isPlaying, song=$newTitle',
         );
+
+        // --- LOCAL CACHE FOR RECENT SONGS ---
+        // If the song just changed or stopped, save the *previous* song into our local recent list
+        // so we still have a history even if the backend fetch fails later.
+        List<MusicItem> updatedRecent = List.from(state.recentSongs);
+        if (songChanged && state.currentSong != null) {
+          // Avoid duplicate back-to-back entries
+          if (updatedRecent.isEmpty ||
+              updatedRecent.first.title != state.currentSong!.title) {
+            updatedRecent.insert(0, state.currentSong!);
+            if (updatedRecent.length > 10)
+              updatedRecent = updatedRecent.sublist(0, 10);
+          }
+        }
+
         state = state.copyWith(
           isPlaying: isPlaying,
           currentSong: currentSong,
+          recentSongs: updatedRecent, // Update locally immediately
           clearSong: currentSong == null,
         );
         _lastSeenSongTitle = newTitle;
@@ -198,10 +213,16 @@ class MusicSyncController extends StateNotifier<MusicContextState>
           // FIX 4: Set guard before backend work
           _isAnalyzing = true;
           try {
-            final recentSongs = await _fetchRecentSongsFromBackend();
-            state = state.copyWith(recentSongs: recentSongs);
-            if ((isPlaying && currentSong != null) || recentSongs.isNotEmpty) {
-              await _analyzeVibeOnBackend(currentSong, recentSongs);
+            final backendRecentSongs = await _fetchRecentSongsFromBackend();
+
+            // Only overwrite if the backend successfully gave us something
+            if (backendRecentSongs.isNotEmpty) {
+              state = state.copyWith(recentSongs: backendRecentSongs);
+            }
+
+            if ((isPlaying && currentSong != null) ||
+                state.recentSongs.isNotEmpty) {
+              await _analyzeVibeOnBackend(currentSong, state.recentSongs);
             }
           } finally {
             _isAnalyzing = false;
@@ -217,6 +238,8 @@ class MusicSyncController extends StateNotifier<MusicContextState>
     final granted = await _musicService.requestAuthorization();
     state = state.copyWith(isAuthorized: granted);
     if (granted) {
+      // Add a 500ms delay to allow native Apple Music events to start propagating
+      await Future.delayed(const Duration(milliseconds: 500));
       _startPolling();
       await refreshMusicContext();
     }
@@ -225,6 +248,9 @@ class MusicSyncController extends StateNotifier<MusicContextState>
   /// Manual full refresh — also called by the ↺ button in the bottom sheet.
   Future<void> refreshMusicContext() async {
     if (!state.isAuthorized) return;
+    if (_isAnalyzing) return; // Prevent concurrent refresh with polling ticks
+
+    _isAnalyzing = true;
     try {
       final isPlaying = await _musicService.isPlaying();
       final currentSong = await _musicService.getCurrentSong();
@@ -234,25 +260,41 @@ class MusicSyncController extends StateNotifier<MusicContextState>
         '[MusicSync] refresh: isPlaying=$isPlaying, song=${currentSong?.title}',
       );
 
-      final recentSongs = await _fetchRecentSongsFromBackend();
+      final songChanged = currentSong?.title != _lastSeenSongTitle;
+      List<MusicItem> updatedRecent = List.from(state.recentSongs);
+      if (songChanged && state.currentSong != null) {
+        if (updatedRecent.isEmpty ||
+            updatedRecent.first.title != state.currentSong!.title) {
+          updatedRecent.insert(0, state.currentSong!);
+          if (updatedRecent.length > 10)
+            updatedRecent = updatedRecent.sublist(0, 10);
+        }
+      }
+
+      final backendRecentSongs = await _fetchRecentSongsFromBackend();
+      if (backendRecentSongs.isNotEmpty) {
+        updatedRecent = backendRecentSongs;
+      }
       _lastSeenSongTitle = currentSong?.title;
 
       state = state.copyWith(
         isPlaying: isPlaying,
         currentSong: currentSong,
-        recentSongs: recentSongs,
+        recentSongs: updatedRecent,
         clearSong: currentSong == null,
         error: rawState,
       );
 
-      if ((isPlaying && currentSong != null) || recentSongs.isNotEmpty) {
-        await _analyzeVibeOnBackend(currentSong, recentSongs);
+      if ((isPlaying && currentSong != null) || state.recentSongs.isNotEmpty) {
+        await _analyzeVibeOnBackend(currentSong, state.recentSongs);
       } else {
         state = state.copyWith(clearVibe: true);
       }
     } catch (e) {
       debugPrint('[MusicSync] Error refreshing context: $e');
       state = state.copyWith(error: 'Failed to refresh: $e');
+    } finally {
+      _isAnalyzing = false;
     }
   }
 
@@ -268,7 +310,7 @@ class MusicSyncController extends StateNotifier<MusicContextState>
 
   Future<List<MusicItem>> _fetchRecentSongsFromBackend() async {
     try {
-      final jwt = await _storage.read(key: 'jwt');
+      final jwt = await _storage.read(key: 'jwt_token');
       if (jwt == null) return [];
 
       // FIX 3: use cached token
@@ -278,19 +320,18 @@ class MusicSyncController extends StateNotifier<MusicContextState>
         return [];
       }
 
-      final response = await http
-          .get(
-            Uri.parse('${ApiConstants.baseUrl}/api/music/recent/played'),
+      try {
+        final response = await _dio.get(
+          '/api/music/recent/played',
+          options: Options(
             headers: {
               'Authorization': 'Bearer $jwt',
               'Music-User-Token': musicUserToken,
             },
-          )
-          // FIX 5: increased timeout from 10s to 15s
-          .timeout(const Duration(seconds: 15));
+          ),
+        );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final data = response.data as Map<String, dynamic>;
         final songList = (data['recent_songs'] as List<dynamic>?) ?? [];
         return songList.map((s) {
           final m = s as Map<String, dynamic>;
@@ -299,20 +340,19 @@ class MusicSyncController extends StateNotifier<MusicContextState>
             artistName: m['artist'] as String? ?? 'Unknown',
           );
         }).toList();
-      } else if (response.statusCode == 401) {
-        // FIX 3: Invalidate cached token on 401 so it refreshes next call
-        debugPrint(
-          '[MusicSync] 401 on recent/played — invalidating token cache.',
-        );
-        _cachedMusicUserToken = null;
-        state = state.copyWith(
-          error: 'Apple Music token expired. Will retry automatically.',
-        );
-        return [];
-      } else {
-        debugPrint(
-          '[MusicSync] Backend ${response.statusCode} for recent/played.',
-        );
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 401) {
+          // FIX 3: Invalidate cached token on 401 so it refreshes next call
+          debugPrint(
+            '[MusicSync] 401 on recent/played — invalidating token cache.',
+          );
+          _cachedMusicUserToken = null;
+          state = state.copyWith(
+            error: 'Apple Music token expired. Will retry automatically.',
+          );
+          return [];
+        }
+        debugPrint('[MusicSync] DioException for recent/played: ${e.message}');
         return [];
       }
     } on TimeoutException {
@@ -330,7 +370,7 @@ class MusicSyncController extends StateNotifier<MusicContextState>
   ) async {
     state = state.copyWith(isAnalyzing: true, error: null);
     try {
-      final token = await _storage.read(key: 'jwt');
+      final token = await _storage.read(key: 'jwt_token');
       if (token == null) {
         state = state.copyWith(isAnalyzing: false, error: 'Not authenticated');
         return;
@@ -354,24 +394,23 @@ class MusicSyncController extends StateNotifier<MusicContextState>
             .toList(),
       };
 
-      final response = await http.post(
-        Uri.parse('${ApiConstants.baseUrl}/api/music/context'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode(payload),
-      );
-
-      if (response.statusCode == 200) {
-        final vibe = MusicVibe.fromJson(
-          jsonDecode(response.body) as Map<String, dynamic>,
+      try {
+        final response = await _dio.post(
+          '/api/music/context',
+          options: Options(headers: {'Authorization': 'Bearer $token'}),
+          data: payload,
         );
-        state = state.copyWith(isAnalyzing: false, analyzedVibe: vibe);
-      } else {
+
+        final vibe = MusicVibe.fromJson(response.data as Map<String, dynamic>);
         state = state.copyWith(
           isAnalyzing: false,
-          error: 'Backend error: ${response.statusCode}',
+          analyzedVibe: vibe,
+          clearError: true,
+        );
+      } on DioException catch (e) {
+        state = state.copyWith(
+          isAnalyzing: false,
+          error: 'Backend error: ${e.response?.statusCode ?? e.message}',
         );
       }
     } catch (e) {
@@ -394,5 +433,6 @@ final musicSyncControllerProvider =
     StateNotifierProvider<MusicSyncController, MusicContextState>((ref) {
       final musicService = ref.watch(musicServiceInterfaceProvider);
       final storage = ref.watch(secureStorageProvider);
-      return MusicSyncController(musicService, storage);
+      final dio = ref.watch(dioProvider);
+      return MusicSyncController(musicService, storage, dio);
     });
