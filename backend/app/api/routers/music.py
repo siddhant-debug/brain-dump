@@ -42,7 +42,7 @@ def get_recent_played(
     try:
         response = http_requests.get(
             f"{APPLE_MUSIC_API_BASE}/me/recent/played",
-            params={"limit": 10, "types": "songs"},
+            params={"limit": 10},
             headers={
                 "Authorization": f"Bearer {developer_token}",
                 "Music-User-Token": music_user_token,
