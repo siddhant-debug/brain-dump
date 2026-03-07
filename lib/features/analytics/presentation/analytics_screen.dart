@@ -11,6 +11,8 @@ import '../widgets/pipeline_sheet.dart';
 import '../widgets/loops_bottom_sheet.dart';
 import '../../music/controllers/music_sync_controller.dart';
 import '../../music/presentation/widgets/music_vibe_bottom_sheet.dart';
+import '../../health/controllers/health_sync_controller.dart';
+import '../../health/presentation/widgets/health_dashboard_widget.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});
@@ -215,6 +217,7 @@ class _ConsistencyContent extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final loopsState = ref.watch(loopsProvider);
     final musicState = ref.watch(musicSyncControllerProvider);
+    final healthState = ref.watch(healthSyncControllerProvider);
 
     return _Card(
       title: 'Consistency',
@@ -223,6 +226,8 @@ class _ConsistencyContent extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildPipelineButton(context),
+          const SizedBox(width: 8),
+          _buildHealthButton(context, healthState),
           const SizedBox(width: 8),
           _buildMusicButton(context, musicState),
           const SizedBox(width: 8),
@@ -320,6 +325,38 @@ class _ConsistencyContent extends ConsumerWidget {
         ),
       ),
       error: (_, _) => const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildHealthButton(
+    BuildContext context,
+    HealthContextState healthState,
+  ) {
+    final isConnected =
+        healthState.isAuthorized || healthState.isPartiallyAuthorized;
+
+    return IconButton(
+      icon: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceHigh,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          Icons.health_and_safety_rounded,
+          color: isConnected ? Colors.redAccent : AppColors.textSecondary,
+          size: 20,
+        ),
+      ),
+      tooltip: 'Health & Physiology',
+      onPressed: () {
+        showModalBottomSheet(
+          context: context,
+          backgroundColor: Colors.transparent,
+          isScrollControlled: true,
+          builder: (context) => const HealthDashboardWidget(),
+        );
+      },
     );
   }
 

@@ -21,6 +21,8 @@ import MusicKit
         return
       }
     })
+    // Register the health channel
+    HealthKitService.shared.setupChannel(messenger: controller.binaryMessenger)
 
     GeneratedPluginRegistrant.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
