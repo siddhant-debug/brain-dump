@@ -11,6 +11,8 @@ class HealthKitService {
         var types: Set<HKObjectType> = []
         if let hr = HKObjectType.quantityType(forIdentifier: .heartRate) { types.insert(hr) }
         if let rhr = HKObjectType.quantityType(forIdentifier: .restingHeartRate) { types.insert(rhr) }
+        // Adding dietaryWater to force the prompt to show up again
+        if let water = HKObjectType.quantityType(forIdentifier: .dietaryWater) { types.insert(water) }
         if let hrv = HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN) { types.insert(hrv) }
         if let sleep = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) { types.insert(sleep) }
         if let steps = HKObjectType.quantityType(forIdentifier: .stepCount) { types.insert(steps) }
@@ -27,7 +29,7 @@ class HealthKitService {
         // Bump this number any time readTypes expands with new HK types.
         // When the stored version is lower, we reset the auth flag so the
         // next "Connect" tap fires a fresh HealthKit prompt with the full set.
-        let currentReadTypesVersion = 2
+        let currentReadTypesVersion = 3
         let storedVersion = UserDefaults.standard.integer(forKey: "healthkit_read_types_version")
         if storedVersion < currentReadTypesVersion {
             UserDefaults.standard.removeObject(forKey: "healthkit_auth_requested")
@@ -127,7 +129,10 @@ class HealthKitService {
         // 1. Latest
         group.enter()
         let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
-        let sampleQuery = HKSampleQuery(sampleType: heartRateType, predicate: predicate, limit: 1, sortDescriptors: [sortDescriptor]) { _, samples, _ in
+        let sampleQuery = HKSampleQuery(sampleType: heartRateType, predicate: predicate, limit: 1, sortDescriptors: [sortDescriptor]) { _, samples, error in
+            if let error = error {
+                print("[HealthKitService] getHeartRate (latest) error: \(error.localizedDescription)")
+            }
             if let sample = samples?.first as? HKQuantitySample {
                 finalResult["current"] = sample.quantity.doubleValue(for: HKUnit(from: "count/min"))
             }
@@ -270,7 +275,10 @@ class HealthKitService {
         let end = Date()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
         
-        let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, statistics, _ in
+        let query = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, statistics, error in
+            if let error = error {
+                print("[HealthKitService] getSteps error: \(error.localizedDescription)")
+            }
             DispatchQueue.main.async {
                 if let sum = statistics?.sumQuantity() {
                     let steps = Int(sum.doubleValue(for: HKUnit.count()))

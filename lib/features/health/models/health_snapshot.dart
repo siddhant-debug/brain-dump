@@ -54,28 +54,6 @@ class WorkoutSummary {
   };
 }
 
-class MindfulnessSummary {
-  final double lastSessionMinutes;
-  final double weeklyTotalMinutes;
-
-  MindfulnessSummary({
-    required this.lastSessionMinutes,
-    required this.weeklyTotalMinutes,
-  });
-
-  factory MindfulnessSummary.fromMap(Map<Object?, Object?> map) {
-    return MindfulnessSummary(
-      lastSessionMinutes: (map['last_session_minutes'] as num?)?.toDouble() ?? 0.0,
-      weeklyTotalMinutes: (map['weekly_total_minutes'] as num?)?.toDouble() ?? 0.0,
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'last_session_minutes': lastSessionMinutes,
-    'weekly_total_minutes': weeklyTotalMinutes,
-  };
-}
-
 class HealthSnapshot {
   final double? heartRateCurrent;
   final double? heartRateAvg24h;
@@ -88,7 +66,6 @@ class HealthSnapshot {
   final double? weightKg;
   final double? heightCm;
   final WorkoutSummary? lastWorkout;
-  final MindfulnessSummary? mindfulness;
   final Set<String> authorizedTypes;
   final DateTime fetchedAt;
 
@@ -104,7 +81,6 @@ class HealthSnapshot {
     this.weightKg,
     this.heightCm,
     this.lastWorkout,
-    this.mindfulness,
     required this.authorizedTypes,
     required this.fetchedAt,
   });
@@ -115,28 +91,43 @@ class HealthSnapshot {
 
     if (restingHeartRate != null) {
       factors++;
-      if (restingHeartRate! < 65) score += 2;
-      else if (restingHeartRate! < 75) score += 1;
+      if (restingHeartRate! < 65) {
+        score += 2;
+      } else if (restingHeartRate! < 75) {
+        score += 1;
+      }
     }
     if (stepsToday != null) {
       factors++;
-      if (stepsToday! >= 8000) score += 2;
-      else if (stepsToday! >= 4000) score += 1;
+      if (stepsToday! >= 8000) {
+        score += 2;
+      } else if (stepsToday! >= 4000) {
+        score += 1;
+      }
     }
     if (activeEnergyToday != null) {
       factors++;
-      if (activeEnergyToday! >= 500) score += 2;
-      else if (activeEnergyToday! >= 250) score += 1;
+      if (activeEnergyToday! >= 500) {
+        score += 2;
+      } else if (activeEnergyToday! >= 250) {
+        score += 1;
+      }
     }
     if (lastNightSleep != null) {
       factors++;
-      if (lastNightSleep!.totalHours >= 7.5) score += 2;
-      else if (lastNightSleep!.totalHours >= 6.0) score += 1;
+      if (lastNightSleep!.totalHours >= 7.5) {
+        score += 2;
+      } else if (lastNightSleep!.totalHours >= 6.0) {
+        score += 1;
+      }
     }
     if (hrvCurrent != null && hrvAvg7d != null) {
       factors++;
-      if (hrvCurrent! >= hrvAvg7d!) score += 2;
-      else if (hrvCurrent! >= hrvAvg7d! * 0.85) score += 1;
+      if (hrvCurrent! >= hrvAvg7d!) {
+        score += 2;
+      } else if (hrvCurrent! >= hrvAvg7d! * 0.85) {
+        score += 1;
+      }
     }
 
     // Need at least 2 real data points to make a meaningful judgment
@@ -149,7 +140,11 @@ class HealthSnapshot {
 
   Map<String, dynamic> toJson() => {
     'readiness': readinessLabel,
-    'heart_rate': {'current': heartRateCurrent, 'avg_24h': heartRateAvg24h, 'resting': restingHeartRate},
+    'heart_rate': {
+      'current': heartRateCurrent,
+      'avg_24h': heartRateAvg24h,
+      'resting': restingHeartRate,
+    },
     'hrv': {'current': hrvCurrent, 'avg_7d': hrvAvg7d},
     'sleep': lastNightSleep?.toJson(),
     'steps_today': stepsToday,
@@ -157,7 +152,6 @@ class HealthSnapshot {
     'weight_kg': weightKg,
     'height_cm': heightCm,
     'last_workout': lastWorkout?.toJson(),
-    'mindfulness': mindfulness?.toJson(),
     'fetched_at': fetchedAt.toIso8601String(),
   };
 }

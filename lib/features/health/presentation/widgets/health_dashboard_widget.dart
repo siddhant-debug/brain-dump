@@ -38,8 +38,11 @@ class HealthDashboardWidget extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(24, 8, 16, 0),
             child: Row(
               children: [
-                Icon(Icons.health_and_safety_rounded,
-                    color: AppColors.accent, size: 22),
+                Icon(
+                  Icons.health_and_safety_rounded,
+                  color: AppColors.accent,
+                  size: 22,
+                ),
                 const SizedBox(width: 10),
                 Text(
                   'Health Vibe',
@@ -74,10 +77,13 @@ class HealthDashboardWidget extends ConsumerWidget {
                   if (healthState.error != null)
                     _ErrorBanner(healthState.error!),
 
-                  if (healthState.isFetching && healthState.latestSnapshot == null)
+                  if (healthState.isFetching &&
+                      healthState.latestSnapshot == null)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 40),
-                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                      child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                     )
                   else if (healthState.isAuthorized) ...[
                     if (healthState.latestSnapshot != null) ...[
@@ -104,30 +110,32 @@ class HealthDashboardWidget extends ConsumerWidget {
         // ── Heart & HRV row ──────────────────────────────────
         _SectionLabel('Heart'),
         const SizedBox(height: 10),
-        Row(children: [
-          Expanded(
-            child: _MetricCard(
-              icon: Icons.favorite_rounded,
-              color: Colors.redAccent,
-              title: 'Heart Rate',
-              value: snap.heartRateCurrent?.toStringAsFixed(0) ?? '--',
-              unit: 'bpm',
-              subtitle: snap.heartRateAvg24h != null
-                  ? '24h avg: ${snap.heartRateAvg24h!.toStringAsFixed(0)} bpm'
-                  : null,
+        Row(
+          children: [
+            Expanded(
+              child: _MetricCard(
+                icon: Icons.favorite_rounded,
+                color: Colors.redAccent,
+                title: 'Heart Rate',
+                value: snap.heartRateCurrent?.toStringAsFixed(0) ?? '--',
+                unit: 'bpm',
+                subtitle: snap.heartRateAvg24h != null
+                    ? '24h avg: ${snap.heartRateAvg24h!.toStringAsFixed(0)} bpm'
+                    : null,
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _MetricCard(
-              icon: Icons.monitor_heart_outlined,
-              color: Colors.pinkAccent,
-              title: 'Resting HR',
-              value: snap.restingHeartRate?.toStringAsFixed(0) ?? '--',
-              unit: 'bpm',
+            const SizedBox(width: 12),
+            Expanded(
+              child: _MetricCard(
+                icon: Icons.monitor_heart_outlined,
+                color: Colors.pinkAccent,
+                title: 'Resting HR',
+                value: snap.restingHeartRate?.toStringAsFixed(0) ?? '--',
+                unit: 'bpm',
+              ),
             ),
-          ),
-        ]),
+          ],
+        ),
         const SizedBox(height: 12),
 
         // HRV full width — important for RAG readiness
@@ -143,68 +151,66 @@ class HealthDashboardWidget extends ConsumerWidget {
         // ── Activity row ─────────────────────────────────────
         _SectionLabel('Activity'),
         const SizedBox(height: 10),
-        Row(children: [
-          Expanded(
-            child: _MetricCard(
-              icon: Icons.directions_walk_rounded,
-              color: Colors.orangeAccent,
-              title: 'Steps Today',
-              value: snap.stepsToday?.toString() ?? '--',
-              unit: 'steps',
+        Row(
+          children: [
+            Expanded(
+              child: _MetricCard(
+                icon: Icons.directions_walk_rounded,
+                color: Colors.orangeAccent,
+                title: 'Steps Today',
+                value: snap.stepsToday?.toString() ?? '--',
+                unit: 'steps',
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _MetricCard(
-              icon: Icons.local_fire_department_rounded,
-              color: Colors.deepOrangeAccent,
-              title: 'Active Energy',
-              value: snap.activeEnergyToday?.toStringAsFixed(0) ?? '--',
-              unit: 'kcal',
+            const SizedBox(width: 12),
+            Expanded(
+              child: _MetricCard(
+                icon: Icons.local_fire_department_rounded,
+                color: Colors.deepOrangeAccent,
+                title: 'Active Energy',
+                value: snap.activeEnergyToday?.toStringAsFixed(0) ?? '--',
+                unit: 'kcal',
+              ),
             ),
-          ),
-        ]),
+          ],
+        ),
         const SizedBox(height: 20),
 
         // ── Body ─────────────────────────────────────────────
         if (snap.weightKg != null || snap.heightCm != null) ...[
           _SectionLabel('Body'),
           const SizedBox(height: 10),
-          Row(children: [
-            if (snap.weightKg != null)
-              Expanded(
-                child: _MetricCard(
-                  icon: Icons.monitor_weight_outlined,
-                  color: Colors.tealAccent,
-                  title: 'Weight',
-                  value: snap.weightKg!.toStringAsFixed(1),
-                  unit: 'kg',
+          Row(
+            children: [
+              if (snap.weightKg != null)
+                Expanded(
+                  child: _MetricCard(
+                    icon: Icons.monitor_weight_outlined,
+                    color: Colors.tealAccent,
+                    title: 'Weight',
+                    value: snap.weightKg!.toStringAsFixed(1),
+                    unit: 'kg',
+                  ),
                 ),
-              ),
-            if (snap.weightKg != null && snap.heightCm != null)
-              const SizedBox(width: 12),
-            if (snap.heightCm != null)
-              Expanded(
-                child: _MetricCard(
-                  icon: Icons.straighten_rounded,
-                  color: Colors.cyanAccent,
-                  title: 'Height',
-                  value: snap.heightCm!.toStringAsFixed(0),
-                  unit: 'cm',
+              if (snap.weightKg != null && snap.heightCm != null)
+                const SizedBox(width: 12),
+              if (snap.heightCm != null)
+                Expanded(
+                  child: _MetricCard(
+                    icon: Icons.straighten_rounded,
+                    color: Colors.cyanAccent,
+                    title: 'Height',
+                    value: snap.heightCm!.toStringAsFixed(0),
+                    unit: 'cm',
+                  ),
                 ),
-              ),
-          ]),
+            ],
+          ),
           const SizedBox(height: 20),
         ],
 
-        // ── Workout & Mindfulness ─────────────────────────────
-        _SectionLabel('Mind & Body'),
-        const SizedBox(height: 10),
-        Row(children: [
-          Expanded(child: _WorkoutCard(snap.lastWorkout)),
-          const SizedBox(width: 12),
-          Expanded(child: _MindfulnessCard(snap.mindfulness)),
-        ]),
+        // ── Activity ───────────────────────────────────────── (continued)
+        _WorkoutCard(snap.lastWorkout),
       ],
     );
   }
@@ -244,8 +250,10 @@ class _ConnectButton extends ConsumerWidget {
       ),
       onPressed: () =>
           ref.read(healthSyncControllerProvider.notifier).requestPermission(),
-      child: const Text('Connect Apple Health',
-          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+      child: const Text(
+        'Connect Apple Health',
+        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+      ),
     );
   }
 }
@@ -272,16 +280,25 @@ class _ReadinessChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
             width: 6,
             height: 6,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-        const SizedBox(width: 6),
-        Text(label,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
             style: TextStyle(
-                color: color, fontSize: 11, fontWeight: FontWeight.w700)),
-      ]),
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -300,14 +317,20 @@ class _RefreshButton extends ConsumerWidget {
               width: 16,
               height: 16,
               child: CircularProgressIndicator(
-                  strokeWidth: 2, color: AppColors.textSecondary))
-          : Icon(Icons.refresh_rounded,
-              color: AppColors.textSecondary, size: 20),
+                strokeWidth: 2,
+                color: AppColors.textSecondary,
+              ),
+            )
+          : Icon(
+              Icons.refresh_rounded,
+              color: AppColors.textSecondary,
+              size: 20,
+            ),
       onPressed: state.isFetching
           ? null
           : () => ref
-              .read(healthSyncControllerProvider.notifier)
-              .refreshHealthContext(),
+                .read(healthSyncControllerProvider.notifier)
+                .refreshHealthContext(),
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
       splashRadius: 20,
@@ -349,47 +372,72 @@ class _HRVCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.15)),
       ),
-      child: Row(children: [
-        Icon(Icons.graphic_eq_rounded, color: Colors.purpleAccent, size: 22),
-        const SizedBox(width: 14),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('HRV (Heart Rate Variability)',
-              style: TextStyle(
+      child: Row(
+        children: [
+          Icon(Icons.graphic_eq_rounded, color: Colors.purpleAccent, size: 22),
+          const SizedBox(width: 14),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'HRV (Heart Rate Variability)',
+                style: TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 12,
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          Row(crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  hasData ? current!.toStringAsFixed(1) : '--',
-                  style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    hasData ? current.toStringAsFixed(1) : '--',
+                    style: TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 28,
-                      fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(width: 4),
-                Text('ms',
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'ms',
                     style: TextStyle(
-                        color: AppColors.textSecondary, fontSize: 13)),
-              ]),
-        ]),
-        const Spacer(),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          if (avg != null)
-            Text('7d avg: ${avg.toStringAsFixed(1)} ms',
-                style: TextStyle(
-                    color: AppColors.textSecondary, fontSize: 12)),
-          const SizedBox(height: 4),
-          if (trendLabel.isNotEmpty)
-            Text(trendLabel,
-                style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const Spacer(),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (avg != null)
+                Text(
+                  '7d avg: ${avg.toStringAsFixed(1)} ms',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              const SizedBox(height: 4),
+              if (trendLabel.isNotEmpty)
+                Text(
+                  trendLabel,
+                  style: TextStyle(
                     color: trendColor,
                     fontSize: 12,
-                    fontWeight: FontWeight.w600)),
-        ]),
-      ]),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -404,7 +452,10 @@ class _SleepCard extends StatelessWidget {
   Widget build(BuildContext context) {
     if (sleep == null) {
       return _EmptyMetricCard(
-          icon: Icons.nights_stay_rounded, color: Colors.indigoAccent, title: 'Sleep');
+        icon: Icons.nights_stay_rounded,
+        color: Colors.indigoAccent,
+        title: 'Sleep',
+      );
     }
 
     return Container(
@@ -412,43 +463,64 @@ class _SleepCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surfaceHigh,
         borderRadius: BorderRadius.circular(20),
-        border:
-            Border.all(color: Colors.indigoAccent.withValues(alpha: 0.15)),
+        border: Border.all(color: Colors.indigoAccent.withValues(alpha: 0.15)),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(Icons.nights_stay_rounded,
-              color: Colors.indigoAccent, size: 18),
-          const SizedBox(width: 8),
-          Text('Sleep Last Night',
-              style: TextStyle(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.nights_stay_rounded,
+                color: Colors.indigoAccent,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Sleep Last Night',
+                style: TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 12,
-                  fontWeight: FontWeight.w600)),
-          const Spacer(),
-          Row(crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(sleep!.totalHours.toStringAsFixed(1),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    sleep!.totalHours.toStringAsFixed(1),
                     style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold)),
-                const SizedBox(width: 3),
-                Text('hrs',
+                      color: AppColors.textPrimary,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  Text(
+                    'hrs',
                     style: TextStyle(
-                        color: AppColors.textSecondary, fontSize: 12)),
-              ]),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          _SleepStage('Deep', sleep!.deepHours, Colors.indigoAccent),
-          const SizedBox(width: 12),
-          _SleepStage('REM', sleep!.remHours, Colors.purpleAccent),
-          const SizedBox(width: 12),
-          _SleepStage('Awake', sleep!.awakeHours, Colors.orangeAccent),
-        ]),
-      ]),
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _SleepStage('Deep', sleep!.deepHours, Colors.indigoAccent),
+              const SizedBox(width: 12),
+              _SleepStage('REM', sleep!.remHours, Colors.purpleAccent),
+              const SizedBox(width: 12),
+              _SleepStage('Awake', sleep!.awakeHours, Colors.orangeAccent),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -461,15 +533,20 @@ class _SleepStage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
-      Container(
+    return Row(
+      children: [
+        Container(
           width: 8,
           height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-      const SizedBox(width: 5),
-      Text('$label ${hours.toStringAsFixed(1)}h',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-    ]);
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          '$label ${hours.toStringAsFixed(1)}h',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        ),
+      ],
+    );
   }
 }
 
@@ -483,9 +560,10 @@ class _WorkoutCard extends StatelessWidget {
   Widget build(BuildContext context) {
     if (workout == null) {
       return _EmptyMetricCard(
-          icon: Icons.fitness_center_rounded,
-          color: Colors.lightGreenAccent,
-          title: 'Last Workout');
+        icon: Icons.fitness_center_rounded,
+        color: Colors.lightGreenAccent,
+        title: 'Last Workout',
+      );
     }
     return _MetricCard(
       icon: Icons.fitness_center_rounded,
@@ -496,32 +574,6 @@ class _WorkoutCard extends StatelessWidget {
       subtitle: workout!.calories != null
           ? '${workout!.type} · ${workout!.calories!.toStringAsFixed(0)} kcal'
           : workout!.type,
-    );
-  }
-}
-
-// ── Mindfulness card ──────────────────────────────────────────────────────────
-
-class _MindfulnessCard extends StatelessWidget {
-  final MindfulnessSummary? mindfulness;
-  const _MindfulnessCard(this.mindfulness);
-
-  @override
-  Widget build(BuildContext context) {
-    if (mindfulness == null) {
-      return _EmptyMetricCard(
-          icon: Icons.self_improvement_rounded,
-          color: Colors.lightBlueAccent,
-          title: 'Mindfulness');
-    }
-    return _MetricCard(
-      icon: Icons.self_improvement_rounded,
-      color: Colors.lightBlueAccent,
-      title: 'Mindfulness',
-      value: mindfulness!.lastSessionMinutes.toStringAsFixed(0),
-      unit: 'min',
-      subtitle:
-          'Weekly: ${mindfulness!.weeklyTotalMinutes.toStringAsFixed(0)} min',
     );
   }
 }
@@ -558,42 +610,52 @@ class _MetricCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(children: [
-            Icon(icon, color: color, size: 16),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(title,
+          Row(
+            children: [
+              Icon(icon, color: color, size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  title,
                   style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600),
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
-            ),
-          ]),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(value,
-                  style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold)),
+              Text(
+                value,
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(width: 3),
-              Text(unit,
-                  style: TextStyle(
-                      color: AppColors.textSecondary, fontSize: 11)),
+              Text(
+                unit,
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+              ),
             ],
           ),
           if (subtitle != null) ...[
             const SizedBox(height: 3),
-            Text(subtitle!,
-                style:
-                    TextStyle(color: AppColors.textSecondary, fontSize: 10),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
+            Text(
+              subtitle!,
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 10),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
         ],
       ),
@@ -607,8 +669,11 @@ class _EmptyMetricCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String title;
-  const _EmptyMetricCard(
-      {required this.icon, required this.color, required this.title});
+  const _EmptyMetricCard({
+    required this.icon,
+    required this.color,
+    required this.title,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -623,21 +688,29 @@ class _EmptyMetricCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(children: [
-            Icon(icon, color: color.withValues(alpha: 0.3), size: 16),
-            const SizedBox(width: 6),
-            Text(title,
+          Row(
+            children: [
+              Icon(icon, color: color.withValues(alpha: 0.3), size: 16),
+              const SizedBox(width: 6),
+              Text(
+                title,
                 style: const TextStyle(
-                    color: Colors.white38,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600)),
-          ]),
+                  color: Colors.white38,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
-          const Text('No data',
-              style: TextStyle(
-                  color: Colors.white24,
-                  fontSize: 13,
-                  fontStyle: FontStyle.italic)),
+          const Text(
+            'No data',
+            style: TextStyle(
+              color: Colors.white24,
+              fontSize: 13,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
         ],
       ),
     );
@@ -660,13 +733,18 @@ class _ErrorBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
       ),
-      child: Row(children: [
-        Icon(Icons.error_outline_rounded, color: AppColors.error, size: 18),
-        const SizedBox(width: 10),
-        Expanded(
-            child: Text(error,
-                style: TextStyle(color: AppColors.error, fontSize: 12))),
-      ]),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline_rounded, color: AppColors.error, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              error,
+              style: TextStyle(color: AppColors.error, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -679,8 +757,10 @@ class _EmptyState extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 32),
       child: Center(
-        child: Text('No health data yet — try refreshing.',
-            style: TextStyle(color: AppColors.textSecondary)),
+        child: Text(
+          'No health data yet — try refreshing.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
       ),
     );
   }
@@ -723,43 +803,58 @@ class _DebugPanelState extends State<_DebugPanel> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white10),
       ),
-      child: Column(children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () => setState(() => _expanded = !_expanded),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(children: [
-              const Icon(Icons.bug_report_outlined,
-                  size: 15, color: Colors.white38),
-              const SizedBox(width: 8),
-              const Text('RAG Context (debug)',
-                  style: TextStyle(
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.bug_report_outlined,
+                    size: 15,
+                    color: Colors.white38,
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'RAG Context (debug)',
+                    style: TextStyle(
                       color: Colors.white38,
                       fontSize: 11,
-                      fontWeight: FontWeight.bold)),
-              const Spacer(),
-              Text('Fetched ${timeago.format(widget.snap.fetchedAt)}',
-                  style:
-                      const TextStyle(color: Colors.white24, fontSize: 10)),
-              const SizedBox(width: 8),
-              Icon(_expanded ? Icons.expand_less : Icons.expand_more,
-                  color: Colors.white24, size: 16),
-            ]),
-          ),
-        ),
-        if (_expanded)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Text(
-              widget.snap.toJson().toString(),
-              style: const TextStyle(
-                  color: Colors.greenAccent,
-                  fontFamily: 'Courier',
-                  fontSize: 9),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'Fetched ${timeago.format(widget.snap.fetchedAt)}',
+                    style: const TextStyle(color: Colors.white24, fontSize: 10),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    color: Colors.white24,
+                    size: 16,
+                  ),
+                ],
+              ),
             ),
           ),
-      ]),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Text(
+                widget.snap.toJson().toString(),
+                style: const TextStyle(
+                  color: Colors.greenAccent,
+                  fontFamily: 'Courier',
+                  fontSize: 9,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

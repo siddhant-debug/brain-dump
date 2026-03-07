@@ -79,11 +79,11 @@ class HealthSyncController extends StateNotifier<HealthContextState>
   // ── Rule 5: AppLifecycleObserver ───────────────────────────────────────────
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
-    if (lifecycle == AppLifecycleState.resumed) {
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
       debugPrint('[HealthSync] Resumed — re-checking auth + health state...');
       _recheckAuthorization();
-    } else if (lifecycle == AppLifecycleState.paused) {
+    } else if (state == AppLifecycleState.paused) {
       debugPrint('[HealthSync] Paused — cancelling poll timer.');
       _pollTimer?.cancel(); // Save battery when backgrounded
     }
@@ -101,7 +101,8 @@ class HealthSyncController extends StateNotifier<HealthContextState>
 
     state = state.copyWith(
       isAuthorized: isAuthorized,
-      isPartiallyAuthorized: false, // HealthKit doesn't expose per-type read denial
+      isPartiallyAuthorized:
+          false, // HealthKit doesn't expose per-type read denial
       clearError: true,
     );
 
@@ -175,7 +176,8 @@ class HealthSyncController extends StateNotifier<HealthContextState>
       // types is empty — the prompt flag wasn't set, meaning requestAuthorization
       // threw an error before we could set it, or something went wrong on the Swift side.
       state = state.copyWith(
-        error: 'HealthKit access not granted. You can enable it in Settings > Privacy > Health.',
+        error:
+            'HealthKit access not granted. You can enable it in Settings > Privacy > Health.',
       );
     }
   }

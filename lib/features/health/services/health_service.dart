@@ -12,7 +12,9 @@ class HealthService implements HealthServiceInterface {
       final result = await _channel.invokeMethod('requestAuthorization');
       return result == true;
     } on PlatformException catch (e) {
-      debugPrint('[HealthService] PlatformException requesting auth: ${e.message}');
+      debugPrint(
+        '[HealthService] PlatformException requesting auth: ${e.message}',
+      );
       throw Exception(e.message ?? 'Unknown HealthKit Error');
     } catch (e) {
       throw Exception(e.toString());
@@ -62,46 +64,47 @@ class HealthService implements HealthServiceInterface {
     try {
       // Fetch all concurrently — includes every field the model now tracks
       final responses = await Future.wait([
-        _channel.invokeMethod('getHeartRate'),        // 0
-        _channel.invokeMethod('getHRV'),              // 1
-        _channel.invokeMethod('getSleep'),            // 2
-        _channel.invokeMethod('getSteps'),            // 3
-        _channel.invokeMethod('getActiveEnergy'),     // 4
-        _channel.invokeMethod('getWorkouts'),         // 5
-        _channel.invokeMethod('getMindfulness'),      // 6
-        _channel.invokeMethod('getRestingHeartRate'), // 7
-        _channel.invokeMethod('getWeight'),           // 8
-        _channel.invokeMethod('getHeight'),           // 9
+        _channel.invokeMethod('getHeartRate'), // 0
+        _channel.invokeMethod('getHRV'), // 1
+        _channel.invokeMethod('getSleep'), // 2
+        _channel.invokeMethod('getSteps'), // 3
+        _channel.invokeMethod('getActiveEnergy'), // 4
+        _channel.invokeMethod('getWorkouts'), // 5
+        _channel.invokeMethod('getRestingHeartRate'), // 6
+        _channel.invokeMethod('getWeight'), // 7
+        _channel.invokeMethod('getHeight'), // 8
       ]);
 
-      final heartRateData  = responses[0] as Map<Object?, Object?>?;
-      final hrvData        = responses[1] as Map<Object?, Object?>?;
-      final sleepData      = responses[2] as Map<Object?, Object?>?;
-      final stepsData      = responses[3];
-      final energyData     = responses[4];
-      final workoutData    = responses[5] as Map<Object?, Object?>?;
-      final mindfulData    = responses[6] as Map<Object?, Object?>?;
-      final restingHRData  = responses[7];
-      final weightData     = responses[8];
-      final heightData     = responses[9];
+      final heartRateData = responses[0] as Map<Object?, Object?>?;
+      final hrvData = responses[1] as Map<Object?, Object?>?;
+      final sleepData = responses[2] as Map<Object?, Object?>?;
+      final stepsData = responses[3];
+      final energyData = responses[4];
+      final workoutData = responses[5] as Map<Object?, Object?>?;
+      final restingHRData = responses[6];
+      final weightData = responses[7];
+      final heightData = responses[8];
 
       final authorizedTypes = await getAuthorizedTypes();
 
       return HealthSnapshot(
-        heartRateCurrent:  (heartRateData?['current'] as num?)?.toDouble(),
-        heartRateAvg24h:   (heartRateData?['avg_24h'] as num?)?.toDouble(),
-        restingHeartRate:  (restingHRData as num?)?.toDouble(),
-        hrvCurrent:        (hrvData?['current'] as num?)?.toDouble(),
-        hrvAvg7d:          (hrvData?['avg_7d'] as num?)?.toDouble(),
-        lastNightSleep:    sleepData != null ? SleepSummary.fromMap(sleepData) : null,
-        stepsToday:        (stepsData as num?)?.toInt(),
+        heartRateCurrent: (heartRateData?['current'] as num?)?.toDouble(),
+        heartRateAvg24h: (heartRateData?['avg_24h'] as num?)?.toDouble(),
+        restingHeartRate: (restingHRData as num?)?.toDouble(),
+        hrvCurrent: (hrvData?['current'] as num?)?.toDouble(),
+        hrvAvg7d: (hrvData?['avg_7d'] as num?)?.toDouble(),
+        lastNightSleep: sleepData != null
+            ? SleepSummary.fromMap(sleepData)
+            : null,
+        stepsToday: (stepsData as num?)?.toInt(),
         activeEnergyToday: (energyData as num?)?.toDouble(),
-        weightKg:          (weightData as num?)?.toDouble(),
-        heightCm:          (heightData as num?)?.toDouble(),
-        lastWorkout:       workoutData != null ? WorkoutSummary.fromMap(workoutData) : null,
-        mindfulness:       mindfulData != null ? MindfulnessSummary.fromMap(mindfulData) : null,
-        authorizedTypes:   authorizedTypes,
-        fetchedAt:         DateTime.now().toUtc(),
+        weightKg: (weightData as num?)?.toDouble(),
+        heightCm: (heightData as num?)?.toDouble(),
+        lastWorkout: workoutData != null
+            ? WorkoutSummary.fromMap(workoutData)
+            : null,
+        authorizedTypes: authorizedTypes,
+        fetchedAt: DateTime.now().toUtc(),
       );
     } catch (e) {
       debugPrint('[HealthService] Error getting latest snapshot: $e');

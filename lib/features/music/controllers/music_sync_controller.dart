@@ -128,11 +128,11 @@ class MusicSyncController extends StateNotifier<MusicContextState>
   // ── Fix 1: Auth Dot — AppLifecycleObserver ───────────────────────────────
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
-    if (lifecycle == AppLifecycleState.resumed) {
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
       debugPrint('[MusicSync] Resumed — re-checking auth + music state...');
       _recheckAuthorization();
-    } else if (lifecycle == AppLifecycleState.paused) {
+    } else if (state == AppLifecycleState.paused) {
       _pollTimer?.cancel(); // Save battery when backgrounded
     }
   }
@@ -196,8 +196,9 @@ class MusicSyncController extends StateNotifier<MusicContextState>
           if (updatedRecent.isEmpty ||
               updatedRecent.first.title != state.currentSong!.title) {
             updatedRecent.insert(0, state.currentSong!);
-            if (updatedRecent.length > 10)
+            if (updatedRecent.length > 10) {
               updatedRecent = updatedRecent.sublist(0, 10);
+            }
           }
         }
 
@@ -266,8 +267,9 @@ class MusicSyncController extends StateNotifier<MusicContextState>
         if (updatedRecent.isEmpty ||
             updatedRecent.first.title != state.currentSong!.title) {
           updatedRecent.insert(0, state.currentSong!);
-          if (updatedRecent.length > 10)
+          if (updatedRecent.length > 10) {
             updatedRecent = updatedRecent.sublist(0, 10);
+          }
         }
       }
 
