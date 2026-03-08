@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class SleepSummary {
   final double totalHours;
   final double deepHours;
@@ -154,4 +156,9 @@ class HealthSnapshot {
     'last_workout': lastWorkout?.toJson(),
     'fetched_at': fetchedAt.toIso8601String(),
   };
+
+  String toRagContext() {
+    final encoder = JsonEncoder.withIndent('  ');
+    return encoder.convert(toJson());
+  }
 }

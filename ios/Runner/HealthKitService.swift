@@ -89,6 +89,8 @@ class HealthKitService {
                     print(errMsg)
                     result(FlutterError(code: "AUTH_ERROR", message: errMsg, details: nil))
                 } else {
+                    // Critical: Mark that the prompt has been shown so checks pass from now on
+                    UserDefaults.standard.set(true, forKey: "healthkit_auth_requested")
                     result(success)
                 }
             }
@@ -98,16 +100,18 @@ class HealthKitService {
     private func checkAuthorizationStatus(result: @escaping FlutterResult) {
         var statuses: [String: String] = [:]
         
-        // **CRITICAL HEALTHKIT FACT**: You CANNOT check read authorization status in HealthKit for privacy reasons.
-        // HKHealthStore.authorizationStatus() ONLY returns write (share) status.
-        // It will always return .notDetermined or .sharingDenied if we only requested READ.
-        // So for this frontend, we simply say "authorized" if we successfully returned from the Apple Prompt.
+        let hasPrompted = UserDefaults.standard.bool(forKey: "healthkit_auth_requested")
+        if !hasPrompted {
+            result(statuses) // Return empty so Dart knows it's not authorized
+            return
+        }
+
         for type in readTypes {
             let typeName = type.identifier.replacingOccurrences(of: "HKQuantityTypeIdentifier", with: "")
                 .replacingOccurrences(of: "HKCategoryTypeIdentifier", with: "")
                 .replacingOccurrences(of: "HKWorkoutTypeIdentifier", with: "Workout")
             
-            // We just assume authorized since the prompt was shown, but the backend handles missing data gracefully.
+            // We just assume authorized since the prompt was shown
             statuses[typeName] = "authorized"
         }
         
@@ -116,7 +120,16 @@ class HealthKitService {
     
     // MARK: - Queries
     
+    private func isAuthorized() -> Bool {
+        return UserDefaults.standard.bool(forKey: "healthkit_auth_requested")
+    }
+    
     private func getHeartRate(result: @escaping FlutterResult) {
+        guard isAuthorized() else {
+            print("[HealthKitService] getHeartRate skipped — not authorized yet")
+            result(nil)
+            return
+        }
         guard let heartRateType = HKObjectType.quantityType(forIdentifier: .heartRate) else { return result(nil) }
         
         let end = Date()
@@ -157,6 +170,11 @@ class HealthKitService {
     }
     
     private func getHRV(result: @escaping FlutterResult) {
+        guard isAuthorized() else {
+            print("[HealthKitService] getHRV skipped — not authorized yet")
+            result(nil)
+            return
+        }
         guard let hrvType = HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN) else { return result(nil) }
         
         let end = Date()
@@ -194,6 +212,11 @@ class HealthKitService {
     }
     
     private func getSleep(result: @escaping FlutterResult) {
+        guard isAuthorized() else {
+            print("[HealthKitService] getSleep skipped — not authorized yet")
+            result(nil)
+            return
+        }
         guard let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else { return result(nil) }
         
         let calendar = Calendar.current
@@ -269,6 +292,11 @@ class HealthKitService {
     }
     
     private func getSteps(result: @escaping FlutterResult) {
+        guard isAuthorized() else {
+            print("[HealthKitService] getSteps skipped — not authorized yet")
+            result(nil)
+            return
+        }
         guard let stepType = HKObjectType.quantityType(forIdentifier: .stepCount) else { return result(nil) }
         
         let start = Calendar.current.startOfDay(for: Date())
@@ -294,6 +322,11 @@ class HealthKitService {
     }
     
     private func getActiveEnergy(result: @escaping FlutterResult) {
+        guard isAuthorized() else {
+            print("[HealthKitService] getActiveEnergy skipped — not authorized yet")
+            result(nil)
+            return
+        }
         guard let energyType = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned) else { return result(nil) }
         
         let start = Calendar.current.startOfDay(for: Date())
@@ -316,6 +349,11 @@ class HealthKitService {
     }
     
     private func getMindfulness(result: @escaping FlutterResult) {
+        guard isAuthorized() else {
+            print("[HealthKitService] getMindfulness skipped — not authorized yet")
+            result(nil)
+            return
+        }
         guard let type = HKObjectType.categoryType(forIdentifier: .mindfulSession) else { return result(nil) }
         
         let end = Date()
@@ -349,6 +387,11 @@ class HealthKitService {
     }
     
     private func getWorkouts(result: @escaping FlutterResult) {
+        guard isAuthorized() else {
+            print("[HealthKitService] getWorkouts skipped — not authorized yet")
+            result(nil)
+            return
+        }
         let type = HKObjectType.workoutType()
         
         let end = Date()
@@ -398,6 +441,11 @@ class HealthKitService {
     }
 
     private func getRestingHeartRate(result: @escaping FlutterResult) {
+        guard isAuthorized() else {
+            print("[HealthKitService] getRestingHeartRate skipped — not authorized yet")
+            result(nil)
+            return
+        }
         guard let type = HKObjectType.quantityType(forIdentifier: .restingHeartRate) else { return result(nil) }
         let end = Date()
         let start = Calendar.current.date(byAdding: .day, value: -7, to: end)!
@@ -418,6 +466,11 @@ class HealthKitService {
     }
 
     private func getWeight(result: @escaping FlutterResult) {
+        guard isAuthorized() else {
+            print("[HealthKitService] getWeight skipped — not authorized yet")
+            result(nil)
+            return
+        }
         guard let type = HKObjectType.quantityType(forIdentifier: .bodyMass) else { return result(nil) }
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
         let query = HKSampleQuery(sampleType: type, predicate: nil, limit: 1, sortDescriptors: [sort]) { _, samples, _ in
@@ -435,6 +488,11 @@ class HealthKitService {
     }
 
     private func getHeight(result: @escaping FlutterResult) {
+        guard isAuthorized() else {
+            print("[HealthKitService] getHeight skipped — not authorized yet")
+            result(nil)
+            return
+        }
         guard let type = HKObjectType.quantityType(forIdentifier: .height) else { return result(nil) }
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
         let query = HKSampleQuery(sampleType: type, predicate: nil, limit: 1, sortDescriptors: [sort]) { _, samples, _ in

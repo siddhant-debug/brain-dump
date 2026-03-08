@@ -90,7 +90,21 @@ class HealthSyncController extends StateNotifier<HealthContextState>
   }
 
   Future<void> _init() async {
-    await _recheckAuthorization();
+    // Check if user has ever granted permission
+    final types = await _healthService.getAuthorizedTypes();
+    final isAuthorized = types.isNotEmpty;
+
+    state = state.copyWith(isAuthorized: isAuthorized);
+
+    if (isAuthorized) {
+      _startPolling();
+      await _healthService.reinitAfterAuthorization();
+      await Future.delayed(const Duration(milliseconds: 500));
+      await refreshHealthContext();
+    }
+    // If not authorized — do nothing, wait for user to tap Connect
+    // Do NOT call requestPermission() automatically on init
+    // The UI shows the Connect button which calls requestPermission()
   }
 
   Future<void> _recheckAuthorization() async {
