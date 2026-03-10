@@ -5,13 +5,14 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.core.limiter import limiter
 from app.models import models
-from app.api.routers import auth, files, notes, rag, analytics
+from app.api.routers import auth, files, notes, rag, analytics, music
 from app.core import database
 from app.services import rag_engine
 
 
 # Create database tables
 from sqlalchemy import text
+
 with database.engine.begin() as conn:
     conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
 
@@ -29,8 +30,11 @@ async def startup_event():
     print("Starting up... Loading RAG models.")
     rag_engine.initialize_models()
 
+
 import logging
+
 logger = logging.getLogger("api.cors")
+
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -38,6 +42,7 @@ async def log_requests(request: Request, call_next):
     logger.info(f"Incoming request from Origin: {origin} | Path: {request.url.path}")
     response = await call_next(request)
     return response
+
 
 # Configure CORS
 # Mobile app uses Bearer tokens — credentials (cookies) not needed
@@ -56,6 +61,8 @@ app.include_router(files.router)
 app.include_router(notes.router)
 app.include_router(rag.router)
 app.include_router(analytics.router)
+app.include_router(music.router, prefix="/api/music", tags=["music"])
+
 
 @app.get("/")
 def read_root():

@@ -12,6 +12,10 @@
 *.pem
 credentials.json
 
+# Apple MusicKit Secrets
+*.p8
+backend/scripts/generate_musickit_jwt.py
+
 # User uploads and generated temp files (contain personal data)
 backend/uploads/
 backend/brain_storage/

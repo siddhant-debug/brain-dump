@@ -1,3 +1,4 @@
+import 'package:brain_dump/core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../notes/services/note_service.dart';
@@ -102,7 +103,7 @@ class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
     final notesState = ref.watch(notesProvider);
 
     return Scaffold(
-      backgroundColor:const Color(0xFF111111),
+      backgroundColor: AppColors.background,
       appBar: widget.isEmbedded
           ? null
           : AppBar(
@@ -212,15 +213,77 @@ class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
                     ),
                   );
                 },
-                title: Text(
-                  note['content'],
-                  style: const TextStyle(color: Colors.white),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
+                title: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      note['content'],
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (note['categories'] != null &&
+                        (note['categories'] as List).isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
+                        child: Wrap(
+                          spacing: 6,
+                          children: (note['categories'] as List).map((cat) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.blueAccent.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                cat.toString(),
+                                style: const TextStyle(
+                                  color: Colors.blueAccent,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                  ],
                 ),
-                subtitle: Text(
-                  'Saved on ${note['created_at'].toString().split('T')[0]}',
-                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Row(
+                    children: [
+                      // Sentiment Dot
+                      if (note['sentiment'] != null) ...[
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color:
+                                note['sentiment'].toString().toLowerCase() ==
+                                    'positive'
+                                ? Colors.green
+                                : note['sentiment'].toString().toLowerCase() ==
+                                      'negative'
+                                ? Colors.red
+                                : Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Text(
+                        'Saved on ${note['created_at'].toString().split('T')[0]}',
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,

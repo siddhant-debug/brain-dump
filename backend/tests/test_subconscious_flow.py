@@ -4,31 +4,23 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 import os
 
-# Add parent directory to path to import modules
-# calculated relative to this file: ../tests/test_subconscious_flow.py -> ../tests -> .. (backend)
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add backend directory to path
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
-# Import functions to test
-try:
-    from app.services.rag_engine import (
-        get_temporal_context,
-        analyze_emotional_tone,
-        get_tone_guidance,
-        find_associative_memories,
-        datetime as rag_datetime,  # import the one used in module if needed, or just patch string
-    )
-except ImportError as e:
-    print(f"ImportError: {e}")
-    # Fallback if running from root without package structure?
-    # But usually app.services... requires backend/ in sys.path
-    pass
+from app.services.rag_engine import (
+    get_temporal_context,
+    analyze_emotional_tone,
+    get_tone_guidance,
+    find_associative_memories,
+)
 
 
 class TestSubconsciousFlow(unittest.TestCase):
 
     def test_get_temporal_context_morning(self):
         """Test temporal context for morning hours"""
-        # Create a real datetime object for the return value
         fixed_dt = datetime(2023, 10, 11, 9, 0, 0)  # Wednesday (weekday=2)
 
         class MockDt:
@@ -36,7 +28,6 @@ class TestSubconsciousFlow(unittest.TestCase):
             def now(cls):
                 return fixed_dt
 
-        # Patch 'app.services.rag_engine.datetime'
         with patch("app.services.rag_engine.datetime", MockDt):
             context = get_temporal_context(1)
             self.assertIn("Morning thoughts hit different", context)
@@ -101,7 +92,6 @@ class TestSubconsciousFlow(unittest.TestCase):
     @patch("app.services.rag_engine.get_emb_fn")
     def test_find_associative_memories(self, mock_get_emb_fn):
         """Test associative memory logic"""
-        # Mock the embedding function and DB session
         mock_emb_model = MagicMock()
         mock_emb_result = MagicMock()
         mock_emb_result.tolist.return_value = [[0.1, 0.2, 0.3]]
@@ -119,7 +109,6 @@ class TestSubconsciousFlow(unittest.TestCase):
         mock_filter.order_by.return_value = mock_order_by
         mock_order_by.limit.return_value = mock_limit
 
-        # Setup mock return value (2 items)
         mock_result1 = MagicMock()
         mock_result1.document = "Fitness is key"
         mock_result2 = MagicMock()
@@ -135,9 +124,7 @@ class TestSubconsciousFlow(unittest.TestCase):
             query, user_id, primary_context, db=mock_db
         )
 
-        # Should find associations based on 'health' keyword
         self.assertTrue(len(associations) > 0)
-        # Should filter out duplicates if any (logic check)
 
 
 if __name__ == "__main__":

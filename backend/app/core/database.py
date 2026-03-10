@@ -32,6 +32,16 @@ engine = create_engine(
     pool_recycle=1800,
 )
 
+
+# --- H-2 FIX: Optimized for pgvector HNSW search quality ---
+@event.listens_for(engine, "connect")
+def set_hnsw_ef_search(dbapi_conn, connection_record):
+    """Sets the ef_search parameter for the current session to balance search recall and speed."""
+    cursor = dbapi_conn.cursor()
+    cursor.execute("SET hnsw.ef_search = 40")
+    cursor.close()
+
+
 logger.info(
     "SQLAlchemy engine configured: pool_size=10, max_overflow=20, "
     "pool_timeout=30s, pool_pre_ping=True, pool_recycle=1800s"

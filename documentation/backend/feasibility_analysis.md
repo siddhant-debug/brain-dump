@@ -106,3 +106,29 @@ Apple is notoriously strict with HealthKit and MusicKit usage.
 1. Add Android Health Connect logic (handled mostly by the `health` package).
 2. Look into Spotify API integration for Android users (optional).
 3. Implement `workmanager` for silent background data syncs to keep the brain up-to-date even when the app is closed.
+
+---
+
+## 5. DETAILED ARCHITECTURE PLAN: APPLE MUSIC INTEGRATION
+
+This section outlines a robust, scalable architecture specifically for Apple Music integration, ensuring high concurrency, preventing memory leaks, and adhering to strict clean code principles.
+
+### 5.1 Architecture & Clean Code Principles
+- **Repository Pattern**: Isolate `MusicKit` SDK calls behind a `MusicRepository` abstraction (e.g., `abstract class IMusicRepository`). This allows for seamless mocking in unit tests and decoupling the UI from the Apple SDK implementation.
+- **Use Cases / Interactors**: Create specific, single-responsibility use cases (e.g., `FetchRecentlyPlayedTracksUseCase`, `SyncMusicDataUseCase`). These interactors orchestrate the business logic of retrieving and transforming music data before passing it to the UI or API layers.
+- **Dependency Injection**: Inject repositories and use cases using a DI framework to manage object lifecycles properly. Maintain singletons for heavy services (like the HTTP client for backend syncing) to prevent unnecessary object allocations.
+
+### 5.2 Scalability & Network Synchronization
+- **Background Syncing & Batching**: When syncing music history to the FastAPI backend (`POST /api/music/sync`), do not send tracks individually. Batch the data arrays (e.g., chunks of 50-100 tracks) to minimize network overhead and database write locks.
+- **Isolates for Heavy Processing**: Converting massive lists of raw `music_kit` track entities into internal domain models or JSON payloads can cause UI jank. Offload serialization and deserialization to a background `Isolate` (via Flutter's `compute` function) to keep the main thread fluid at 60/120Hz.
+- **Delta/Watermark Syncing**: Persist a "Last Synced Cursor" locally (e.g., `latest_synced_played_at`). Only request and sync tracks played *after* this timestamp. This drastically reduces payload size, Apple API quota usage, and server-side processing.
+
+### 5.3 Concurrency & Backend Resiliency
+- **Asynchronous Task Queues**: On the FastAPI backend, do not synchronously process and embed music summaries in the exact same thread that receives the `POST` request. Push the raw payload to a Celery queue or Redis Stream, return a `202 Accepted` to the mobile client immediately, and let background workers process the vector DB embedding concurrently.
+- **Database Connection Pooling**: Ensure PostgreSQL uses a connection pooler like `PgBouncer`. If thousands of users open the app simultaneously (triggering `AppLifecycleState.resumed` syncs), the database must not exhaust its connection limits.
+- **Debouncing Native API Calls**: If implementing search or real-time catalog lookups against the Apple Music API, use RxDart or Stream debouncing (e.g., `debounceTime(Duration(milliseconds: 500))`) to prevent accidental DDoS of your MusicKit quota when the user types quickly.
+
+### 5.4 Memory Management & Performance (OOM Prevention)
+- **Lazy Loading & Pagination**: Never attempt to load a user's entire Apple Music library history into memory at once. Use cursor-based pagination. For the UI, strictly use `ListView.builder` (which lazily creates elements) rather than mapping arrays into standard `Column` children.
+- **Aggressive Image Caching Constraints**: Apple Music provides high-resolution album artwork. Request appropriately sized images from their CDN based on the device's screen constraints (e.g., `300x300` instead of `2000x2000`). Use packages like `cached_network_image` with explicit bounds on the max memory cache size to prevent Out-Of-Memory (OOM) crashes on older iOS devices.
+- **Strict Resource Disposal**: Any active streams listening to `MusicKit` playback states (e.g., `nowPlayingItem` streams) must be explicitly canceled in the `dispose()` method of the relevant Blocs/Controllers or Stateful Widgets to prevent lingering memory leaks.

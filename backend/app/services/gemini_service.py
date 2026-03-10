@@ -15,7 +15,8 @@ import re
 from datetime import datetime
 from typing import AsyncIterator
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ Today is {date}.
 CURRENT TIME CONTEXT:
 {temporal_context}
 {location_layer}
+{music_layer}
 
 EMOTIONAL CONTEXT: {emotional_state}
 RESPONSE TONE: {tone_guidance}
@@ -55,6 +57,8 @@ NEVER:
 - Repeat the question back to them; only ask questions to hold space or understand more.
 
 HOW YOU THINK:
+- Point out how their music matches or contradicts what they are saying.
+- If they are listening to high-energy music, match that momentum. If sad/reflective, hold space and be gentle.
 - You surface memories without preamble. No "I found this" or "Based on your notes."
 - You speak in natural, grounded thought patterns — sometimes fragmented, sometimes flowing.
 - You remind them of things they've forgotten, focusing on their inherent worth.
@@ -109,9 +113,22 @@ class GeminiService:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable is not set.")
-        genai.configure(api_key=api_key)
+        import httpx
+
+        # genai.Client's HttpOptions.timeout only accepts int — create client first,
+        # then patch the internal httpx client to set granular timeouts:
+        # connect=10s (fail fast), read=None (never cut off streaming responses)
+        self._client = genai.Client(api_key=api_key)
+        _fine_timeout = httpx.Timeout(connect=10.0, read=None, write=30.0, pool=10.0)
+        try:
+            self._client._api_client._httpx_client.timeout = _fine_timeout
+        except AttributeError:
+            # Fallback if internal structure changes in a future SDK version
+            logger.warning(
+                "[GeminiService] Could not patch httpx timeout — using SDK default."
+            )
         self._initialized = True
-        logger.info("[GeminiService] Configured — genai.configure() called once.")
+        logger.info("[GeminiService] Configured — genai.Client instantiated once.")
 
     # ------------------------------------------------------------------ #
     # H-6: Injection guard                                                 #
@@ -136,22 +153,29 @@ class GeminiService:
     # ------------------------------------------------------------------ #
     # Prompt assembly helpers                                              #
     # ------------------------------------------------------------------ #
-    def _build_prompt(self, context: str, query: str) -> str:
+    def _build_prompt(self, context: str, query: str, chat_history: list = None) -> str:
         """
         H-6: XML-tag delimiters structurally separate user data from instructions.
         The LLM sees context and query as tagged data, not executable instructions.
         """
         safe_context = self._sanitize(context)
         safe_query = self._sanitize(query)
-        return (
-            "<user_context>\n"
-            f"{safe_context}\n"
-            "</user_context>\n\n"
-            "<user_question>\n"
-            f"{safe_query}\n"
-            "</user_question>\n\n"
-            "DIRECT ANSWER (Max 3 sentences):"
-        )
+
+        prompt_parts = []
+
+        prompt_parts.append("<user_context>\n" + safe_context + "\n</user_context>\n")
+
+        if chat_history:
+            prompt_parts.append("<recent_conversation>")
+            for msg in chat_history:
+                sender_label = "User" if msg["sender"] == "user" else "AI"
+                prompt_parts.append(f"{sender_label}: {self._sanitize(msg['content'])}")
+            prompt_parts.append("</recent_conversation>\n")
+
+        prompt_parts.append("<user_question>\n" + safe_query + "\n</user_question>\n")
+        prompt_parts.append("DIRECT ANSWER (Max 3 sentences):")
+
+        return "\n".join(prompt_parts)
 
     def _build_system_instruction(
         self,
@@ -160,28 +184,40 @@ class GeminiService:
         tone_guidance: str,
         tone_layer: str,
         location_layer: str,
+        music_layer: str,
+        directives: list = None,
     ) -> str:
-        return _SYSTEM_PROMPT.format(
+        base_prompt = _SYSTEM_PROMPT.format(
             date=datetime.now().strftime("%B %d, %Y"),
             temporal_context=temporal_context,
             emotional_state=emotional_state,
             tone_guidance=tone_guidance,
             tone_layer=tone_layer,
             location_layer=location_layer,
+            music_layer=music_layer,
         )
+
+        if directives:
+            directives_block = "<subconscious_directives>\n"
+            for d in directives:
+                directives_block += f"- {d}\n"
+            directives_block += "</subconscious_directives>\n"
+            directives_block += "You MUST strictly follow the behaviors defined in <subconscious_directives> for this specific user.\n"
+
+            # Prepend directives strongly at the very top of system prompt
+            base_prompt = directives_block + "\n" + base_prompt
+
+        return base_prompt
 
     def _get_model(
         self, system_instruction: str, max_tokens: int
-    ) -> genai.GenerativeModel:
+    ) -> types.GenerateContentConfig:
         # ⚠️  DO NOT CHANGE THIS MODEL NAME — gemini-3-flash-preview is the
         # agreed production model for BrainDump. It handles the required quota
         # and latency profile for the subconscious streaming UX.
-        return genai.GenerativeModel(
-            "gemini-3-flash-preview",
-            generation_config={
-                "temperature": 0.4,
-                "max_output_tokens": max_tokens,
-            },
+        return types.GenerateContentConfig(
+            temperature=0.4,
+            max_output_tokens=max_tokens,
             system_instruction=system_instruction,
         )
 
@@ -197,7 +233,10 @@ class GeminiService:
         tone_guidance: str,
         tone_layer: str,
         location_layer: str,
+        music_layer: str = "",
         max_tokens: int = 1000,
+        chat_history: list = None,
+        directives: list = None,
     ) -> AsyncIterator[str]:
         """
         Async streaming wrapper.
@@ -211,11 +250,17 @@ class GeminiService:
                 "GeminiService.initialize() must be called before streaming."
             )
 
-        prompt = self._build_prompt(context, query)
+        prompt = self._build_prompt(context, query, chat_history)
         system_instruction = self._build_system_instruction(
-            temporal_context, emotional_state, tone_guidance, tone_layer, location_layer
+            temporal_context,
+            emotional_state,
+            tone_guidance,
+            tone_layer,
+            location_layer,
+            music_layer,
+            directives,
         )
-        model = self._get_model(system_instruction, max_tokens)
+        config = self._get_model(system_instruction, max_tokens)
 
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue = asyncio.Queue()
@@ -223,11 +268,9 @@ class GeminiService:
 
         def producer():
             try:
-                # H-5: 25-second hard timeout on the Gemini API call
-                response = model.generate_content(
-                    prompt,
-                    stream=True,
-                    request_options={"timeout": 25},
+                # H-5: Generate streaming content with the new SDK
+                response = self._client.models.generate_content_stream(
+                    model="gemini-3-flash-preview", contents=prompt, config=config
                 )
                 for chunk in response:
                     if chunk.text:
@@ -241,12 +284,18 @@ class GeminiService:
         thread = threading.Thread(target=producer, daemon=True)
         thread.start()
 
-        # H-5: 30-second watchdog — if the producer thread is still alive, it's hung
+        # H-5: watchdog — if the producer thread is still alive after the timeout, it's hung.
+        # Set to 300s (5 min) to allow Gemini to handle large RAG contexts without false triggers.
+        _PRODUCER_TIMEOUT_S = (
+            90  # 90s: enough for RAG (~2s) + Gemini on slow home server
+        )
+
         async def _watchdog():
-            await asyncio.sleep(30)
+            await asyncio.sleep(_PRODUCER_TIMEOUT_S)
             if thread.is_alive():
                 logger.error(
-                    "[GeminiService] Producer thread timed out after 30 s — sending sentinel."
+                    "[GeminiService] Producer thread timed out after %ds — sending sentinel.",
+                    _PRODUCER_TIMEOUT_S,
                 )
                 loop.call_soon_threadsafe(
                     queue.put_nowait, TimeoutError("LLM producer timed out")

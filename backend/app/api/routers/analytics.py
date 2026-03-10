@@ -349,7 +349,7 @@ def get_themes(
 # 3. RECURRING LOOPS
 # ─────────────────────────────────────────────────────────────────────────────
 
-L2_DISTANCE_CUTOFF = 0.3  # Empirical L2 distance for sentence transformers
+L2_DISTANCE_CUTOFF = 0.65  # Empirical L2 distance for sentence transformers
 MAX_NOTES_TO_SCAN = 100  # cap to avoid O(n²) — most users have far fewer
 MIN_NOTE_LENGTH = 10  # Ignore short notes (e.g. "Buy milk") to avoid garbage clusters
 LOOP_PATH_TEMPLATES = {

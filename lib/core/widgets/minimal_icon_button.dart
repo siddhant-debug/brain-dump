@@ -39,7 +39,7 @@ class MinimalIconButton extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(12.0),
             child: isLoading
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(

@@ -7,7 +7,8 @@ from langchain_text_splitters import (
     MarkdownHeaderTextSplitter,
     Language,
 )
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 from sentence_transformers import CrossEncoder, SentenceTransformer
 from sqlalchemy.orm import Session
@@ -52,32 +53,60 @@ import string
 
 
 class BM25Store:
-    """Thread-safe, LRU-capped, per-user BM25 index store."""
+    """Thread-safe, LRU-capped, per-user BM25 index store with lazy invalidation."""
 
     def __init__(self, max_users: int = 100):
-        self._lock = threading.RLock()
-        self._cache = LRUCache(maxsize=max_users)
+        self._lock_registry_mutex = threading.Lock()
+        self._user_locks: dict[int, threading.Lock] = {}
+        self._cache = (
+            {}
+        )  # Plain dict, capped manually at 100 to avoid LRUCache weirdness
+        self._index_build_time: dict[int, datetime] = {}
+        self._bm25_dirty: set[int] = set()
         self._doc_registry = {}
         self._doc_content = {}
         self._doc_metadata = {}
+        self._max_users = max_users
+
+    def _get_user_lock(self, user_id: int) -> threading.Lock:
+        with self._lock_registry_mutex:
+            if user_id not in self._user_locks:
+                self._user_locks[user_id] = threading.Lock()
+            return self._user_locks[user_id]
 
     def _tokenize(self, text: str):
         return text.lower().translate(str.maketrans("", "", string.punctuation)).split()
 
     def invalidate(self, user_id: int):
-        with self._lock:
-            self._cache.pop(user_id, None)
-            self._doc_registry.pop(user_id, None)
-            self._doc_content.pop(user_id, None)
-            self._doc_metadata.pop(user_id, None)
-            print(f"[INFO] Invalidated BM25 cache for user {user_id}")
+        user_id = int(user_id)
+        with self._get_user_lock(user_id):
+            self._bm25_dirty.add(user_id)
+            print(f"[INFO] Marked BM25 cache dirty for user {user_id}")
+
+    def get_build_time(self, user_id: int) -> datetime:
+        return self._index_build_time.get(int(user_id), datetime.min)
 
     def get_or_build(self, user_id: int, db: Session):
-        with self._lock:
-            if user_id not in self._cache:
+        user_id = int(user_id)  # FORCE INT TO AVOID TYPE MISMATCH MISSES
+        user_lock = self._get_user_lock(user_id)
+        with user_lock:
+            # DEBUG: Diagnose cache persistence
+            print(f"[DEBUG] BM25Store id: {id(self)}")
+            print(f"[DEBUG] user_id {user_id} in cache: {user_id in self._cache}")
+            print(f"[DEBUG] user_id {user_id} in dirty: {user_id in self._bm25_dirty}")
+            print(f"[DEBUG] current cache keys: {list(self._cache.keys())}")
+
+            if user_id not in self._cache or user_id in self._bm25_dirty:
+                t_start = time.time()
                 print(f"[INFO] Building BM25 index for user {user_id}...")
+
+                # OPTIMIZATION: Fetch only necessary columns, skip heavy embeddings
                 user_docs = (
-                    db.query(BrainEmbedding)
+                    db.query(
+                        BrainEmbedding.id,
+                        BrainEmbedding.document,
+                        BrainEmbedding.metadata_,
+                    )
                     .filter(BrainEmbedding.user_id == user_id)
                     .all()
                 )
@@ -94,28 +123,48 @@ class BM25Store:
                         self._doc_metadata[user_id][doc.id] = doc.metadata_
                         tokenized_corpus.append(self._tokenize(doc.document))
 
+                    # Manually cap the dict size (LRU behavior)
+                    if len(self._cache) >= self._max_users:
+                        # Pop oldest (roughly) - first key in dict works in Python 3.7+
+                        oldest_key = next(iter(self._cache))
+                        self._cache.pop(oldest_key, None)
+                        self._index_build_time.pop(oldest_key, None)
+                        self._doc_registry.pop(oldest_key, None)
+                        self._doc_content.pop(oldest_key, None)
+                        self._doc_metadata.pop(oldest_key, None)
+
+                    # BM25 build
                     self._cache[user_id] = BM25Okapi(tokenized_corpus)
+
+                    # Record build time AFTER completion for guard accuracy
+                    self._index_build_time[user_id] = datetime.now()
+                    self._bm25_dirty.discard(user_id)
+
                     print(
-                        f"[INFO] BM25 index built for user {user_id} with {len(tokenized_corpus)} documents"
+                        f"[INFO] BM25 index built for user {user_id} with {len(tokenized_corpus)} documents in {(time.time() - t_start)*1000:.2f}ms"
                     )
                 else:
                     print(
                         f"[WARN] No documents for user {user_id}, skipping BM25 build"
                     )
                     self._cache[user_id] = None
+                    self._bm25_dirty.discard(user_id)
 
             return self._cache.get(user_id)
 
     def get_content_map(self, user_id: int):
-        with self._lock:
+        user_lock = self._get_user_lock(user_id)
+        with user_lock:
             return self._doc_content.get(user_id, {})
 
     def get_metadata_map(self, user_id: int):
-        with self._lock:
+        user_lock = self._get_user_lock(user_id)
+        with user_lock:
             return self._doc_metadata.get(user_id, {})
 
     def get_registry_map(self, user_id: int):
-        with self._lock:
+        user_lock = self._get_user_lock(user_id)
+        with user_lock:
             return self._doc_registry.get(user_id, {})
 
 
@@ -431,22 +480,47 @@ def delete_document(filename: str, user_id: int, db: Session):
     return True
 
 
+def analyze_thought_insights(content: str) -> dict:
+    """
+    Analyzes a raw thought to extract sentiment and categories via Gemini JSON mode.
+    Returns a dict with 'sentiment' and 'categories'.
+    """
+    client = genai.Client(api_key=GEMINI_API_KEY)
+
+    prompt = f"""
+    Analyze the following thought. Return a JSON object with this exact structure:
+    {{
+        "sentiment": "Positive" | "Negative" | "Neutral",
+        "categories": ["tag1", "tag2"]
+    }}
+
+    Thought: "{content}"
+    """
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                response_mime_type="application/json",
+                system_instruction="You are an analytical assistant classifying a user's journal entry. Categories should be lowercase tags (e.g., work, health, personal, finance, learning, relationships, anxiety, goals, creativity). Max 3 categories. Sentiment must be EXACTLY 'Positive', 'Negative', or 'Neutral'.",
+            ),
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        print(f"[ERROR] LLM Insight Analysis failed: {e}")
+        return {"sentiment": "Neutral", "categories": []}
+
+
 def ask_gemini(context: str, query: str):
     """
     BATCH MODE: Optimized for Structure, Deep Logic, and Database Categorization.
     Use this when you need to save the thought or get a full strategic overview.
     """
     print(f"DEBUG: Entering ask_gemini with query: '{query}'")
-    genai.configure(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
-    # Using Gemini 1.5 Flash (Free Tier Friendly)
-    model = genai.GenerativeModel(
-        "gemini-3-flash-preview",
-        generation_config={
-            "temperature": 0.3,
-            "max_output_tokens": 1024,  # Allow enough space for structured analysis
-        },
-        system_instruction="""You are the user's Subconscious Mind.
+    system_instruction = """You are the user's Subconscious Mind.
         Today is {datetime.now().strftime('%B %d, %Y')}.
         
         HOW YOU THINK:
@@ -463,44 +537,57 @@ def ask_gemini(context: str, query: str):
         - Remind them of the reality they are avoiding. Use a calm, grounded tone to pull them out of the spiral.
         
         STYLE EXAMPLES:
-        "Based on your notes from January 15th, you wrote about wanting to improve fitness."
-        "Remember that morning in January when you decided fitness mattered? You wrote: 'No more excuses.'"
+        "You keep circling this idea of not being ready. You said the same thing in October. You were ready then."
+        "Notice how your chest tightened when you wrote that. You're holding onto tension that belongs to last year."
         
-        "I found 3 entries about career strategy."
-        "Your career thoughts keep circling back to autonomy. Three different nights, same theme."
-        
-        "Here is a summary of your goals:"
-        "You want: freedom, impact, health. The rest is noise."
-        """,
-    )
+        NEVER:
+        - Talk like an AI assistant.
+        - Use generic motivational quotes.
+        - Repeat the question back to them.
+        """
+
+    prompt = f"""
+    You are a deeply focused personal assistant attempting to parse a "brain dump" from the user.
+    The user is likely stressed, overloaded, or trying to offload mental burden.
+
+    ### Retrieved Context (Read this first):
+    {context}
+
+    ### User's Query:
+    {query}
+
+    ### Task:
+    Give a structured, thoughtful response.
+    1. If the user asks a question, answer it directly using the context.
+    2. If the user is just venting or dumping thoughts, categorize them and identify action items.
+    3. Be grounded, direct, and slightly stoic. Do not be overly enthusiastic or generic.
+    """
 
     try:
-        prompt = f"""
-            ### CONTEXTUAL FRAGMENTS:
-            {context}
-
-            ### USER QUESTION: 
-            {query}
-
-            ### INSTRUCTIONS:
-            - Answer the question with deep strategic insight.
-            - Assign a single word 'Category' (Feeling Folder) at the end.
-            
-            STRATEGIC RESPONSE:"""
-
-        print(f"DEBUG: Sending prompt to Gemini. Context length: {len(context)} chars.")
-        response = model.generate_content(prompt)
-        print(
-            f"DEBUG: Received response from Gemini. Length: {len(response.text)} chars."
+        response = client.models.generate_content(
+            model="gemini-3-flash-preview",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=1024,
+                system_instruction=system_instruction,
+            ),
         )
+        print(f"DEBUG: LLM Response received: {response.text[:100]}...")
         return response.text
     except Exception as e:
-        print(f"AI Error: {e}")
-        return None
+        print(f"DEBUG: Error in ask_gemini: {e}")
+        return f"Brain malfunction: {e}"
 
 
 async def ask_gemini_stream_async(
-    context: str, query: str, max_tokens: int = 1000, location_context: dict = None
+    context: str,
+    query: str,
+    max_tokens: int = 1000,
+    location_context: dict = None,
+    music_layer: str = "",
+    chat_history: list = None,
+    directives: list = None,
 ):
     """
     H-5 / H-6 / M-4 FIX:
@@ -596,7 +683,10 @@ async def ask_gemini_stream_async(
         tone_guidance=tone_guidance,
         tone_layer=tone_layer,
         location_layer=location_layer,
+        music_layer=music_layer,
         max_tokens=max_tokens,
+        chat_history=chat_history,
+        directives=directives,
     ):
         yield chunk
 
@@ -605,6 +695,8 @@ def retrieve_context(
     query: str, user_id: int, db: Session, current_location: dict = None
 ):
     """Retrieves relevant context using Hybrid Search (Vector + BM25) + RRF Fusion"""
+    user_id = int(user_id)  # FORCE INT TO AVOID TYPE MISMATCH LOOPS
+    request_start_time = datetime.now()
     t_total_start = time.time()
     print(f"DEBUG: Entering retrieve_context for user {user_id} with query: '{query}'")
 
@@ -726,7 +818,9 @@ def retrieve_context(
                 metadatas[i] = doc_map[doc_id][1]
 
         # Self-healing: If vector search found docs not in BM25 cache, our cache is stale!
-        _rag_service.bm25_store.invalidate(user_id)
+        # Guard: Only invalidate if the cache hasn't been rebuilt since this request started
+        if _rag_service.bm25_store.get_build_time(user_id) < request_start_time:
+            _rag_service.bm25_store.invalidate(user_id)
 
     # Filter out any unresolved Nones
     valid_indices = [i for i, d in enumerate(docs) if d is not None]

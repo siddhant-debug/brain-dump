@@ -10,20 +10,18 @@ from . import auth
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
+
 @router.post("/", response_model=schemas.NoteResponse)
 @limiter.limit("30/minute")
-async def create_note(
+def create_note(
     request: Request,
     note: schemas.NoteCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth.get_current_user)
+    current_user: models.User = Depends(auth.get_current_user),
 ):
     # 1. Store in SQL (The Vault)
-    db_note = models.Note(
-        content=note.content,
-        user_id=current_user.id
-    )
+    db_note = models.Note(content=note.content, user_id=current_user.id)
     db.add(db_note)
     db.commit()
     db.refresh(db_note)
@@ -40,22 +38,39 @@ async def create_note(
     # except Exception as e:
     #     print(f"[ERROR] Failed to save note to chat history: {e}")
 
-    # 2. Index in Vector DB (The Brain) - Background Task
-    # We use a unique filename convention for notes: "note_{id}"
-    def index_note_background(note_id: int, content: str, user_id: int, location_context: dict = None):
+    # 2. Index in Vector DB & Analyze (Background Task)
+    def process_note_background(
+        note_id: int, content: str, user_id: int, location_context: dict = None
+    ):
         from app.core.database import SessionLocal
+
         bg_db = SessionLocal()
         try:
+            # 2a. Run LLM Analysis for Insights
+            insights = rag_engine.analyze_thought_insights(content)
+
+            # Update the SQL note record with insights
+            note_record = (
+                bg_db.query(models.Note).filter(models.Note.id == note_id).first()
+            )
+            if note_record:
+                note_record.sentiment = insights.get("sentiment", "Neutral")
+                note_record.categories = insights.get("categories", [])
+                bg_db.commit()
+                print(f"[INFO] Analyzed note {note_id}: {insights}")
+
+            # 2b. Index in Vector DB
             rag_engine.index_text(
-                filename=f"note_{note_id}", 
-                text=content, 
+                filename=f"note_{note_id}",
+                text=content,
                 user_id=user_id,
                 db=bg_db,
-                location_context=location_context
+                location_context=location_context,
             )
             print(f"[INFO] Indexed note {note_id} for user {user_id}")
         except Exception as e:
-            print(f"[ERROR] Failed to index note {note_id}: {e}")
+            print(f"[ERROR] Failed to process note {note_id} in background: {e}")
+            bg_db.rollback()
         finally:
             bg_db.close()
 
@@ -63,27 +78,31 @@ async def create_note(
     location_dict = note.location.dict() if note.location else None
 
     background_tasks.add_task(
-        index_note_background, 
-        db_note.id, 
-        db_note.content, 
+        process_note_background,
+        db_note.id,
+        db_note.content,
         current_user.id,
-        location_dict
+        location_dict,
     )
 
     return db_note
+
 
 @router.get("/", response_model=List[schemas.NoteResponse])
 @limiter.limit("60/minute")
 def get_notes(
     request: Request,
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth.get_current_user)
+    current_user: models.User = Depends(auth.get_current_user),
 ):
-    notes = db.query(models.Note)\
-        .filter(models.Note.user_id == current_user.id)\
-        .order_by(models.Note.created_at.desc())\
+    notes = (
+        db.query(models.Note)
+        .filter(models.Note.user_id == current_user.id)
+        .order_by(models.Note.created_at.desc())
         .all()
+    )
     return notes
+
 
 @router.delete("/{note_id}", status_code=204)
 @limiter.limit("20/minute")
@@ -91,12 +110,13 @@ def delete_note(
     request: Request,
     note_id: int,
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth.get_current_user)
+    current_user: models.User = Depends(auth.get_current_user),
 ):
-    note = db.query(models.Note).filter(
-        models.Note.id == note_id,
-        models.Note.user_id == current_user.id
-    ).first()
+    note = (
+        db.query(models.Note)
+        .filter(models.Note.id == note_id, models.Note.user_id == current_user.id)
+        .first()
+    )
 
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
@@ -104,9 +124,7 @@ def delete_note(
     # 1. Delete from Vector DB (The Brain)
     try:
         rag_engine.delete_document(
-            filename=f"note_{note_id}", 
-            user_id=current_user.id,
-            db=db
+            filename=f"note_{note_id}", user_id=current_user.id, db=db
         )
     except Exception as e:
         print(f"[WARNING] Failed to delete note {note_id} from vector DB: {e}")

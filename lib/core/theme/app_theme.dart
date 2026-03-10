@@ -1,44 +1,77 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Warm Midnight — Direction 1
-/// A warm, cerebral dark theme designed for all users.
-/// Single source of truth for every color in the app.
-abstract class AppColors {
-  // ── Backgrounds ──────────────────────────────────────────
-  static const background = Color(0xFF000000); // True OLED Black
-  static const surface = Color(0xFF121212);    // Standard Dark Surface
-  static const surfaceHigh = Color(0xFF1E1E1E); // Elevated Surface
+class AppColors {
+  // ── Mode Switcher ──────────────────────────────────────────
+  static bool isDark = true;
 
-  // ── Accent ───────────────────────────────────────────────
-  static const accent = Color.fromARGB(112, 1, 141, 94);     // Neon Emerald Green
+  static void setDark() {
+    isDark = true;
+  }
+
+  static void setLight() {
+    isDark = false;
+  }
+
+  // ── Absolute ──────────────────────────────────────────
+  static const _saffron = Color(0xFFFF9933);
+  static const _indiaGreen = Color.fromARGB(255, 10, 123, 0);
+
+  // ── Accents ──────────────────────────────────────────────
+  static Color get accent => const Color.fromARGB(255, 10, 123, 0);
+  static Color get accentSecondary => _saffron; // used sparsely
   static Color get accentDim => accent.withValues(alpha: 0.20);
   static Color get accentFaint => accent.withValues(alpha: 0.12);
 
+  // ── Backgrounds ──────────────────────────────────────────
+  static Color get background =>
+      isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF);
+  static Color get surface =>
+      isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF3F4F6);
+  static Color get surfaceHigh =>
+      isDark ? const Color(0xFF262626) : const Color(0xFFE5E7EB);
+  static Color get surfaceHighlight =>
+      isDark ? const Color(0xFF333333) : const Color(0xFFD1D5DB);
+
   // ── Text ─────────────────────────────────────────────────
-  static const textPrimary = Color(0xFFFFFFFF); // Pure White
-  static const textSecondary = Color(0xFFA1A1AA); // Zinc Gray
+  static Color get textPrimary =>
+      isDark ? const Color(0xFFF3F4F6) : const Color(0xFF111827);
+  static Color get textSecondary =>
+      isDark ? const Color(0xFFA1A1AA) : const Color(0xFF4B5563);
 
   // ── Utility ──────────────────────────────────────────────
-  static const error = Color(0xFFF87171);       // Soft Red
+  static const error = Color(0xFFF87171);
+  static const success = _indiaGreen;
   static Color get divider => textSecondary.withValues(alpha: 0.15);
+
+  // ── Gradients ────────────────────────────────────────────
+  static Gradient get subtleCardGradient => LinearGradient(
+    colors: [surface.withValues(alpha: 0.8), background],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
 }
 
 abstract class AppTheme {
-  // Global layout constants
   static const double pagePadding = 24.0;
   static const double cardPadding = 16.0;
 
   static ThemeData build() {
-    final base = ThemeData.dark(useMaterial3: true);
+    final base = AppColors.isDark
+        ? ThemeData.dark(useMaterial3: true)
+        : ThemeData.light(useMaterial3: true);
     return base.copyWith(
       scaffoldBackgroundColor: AppColors.background,
-      colorScheme: const ColorScheme.dark(
-        surface: AppColors.surface,
-        primary: AppColors.accent,
-        secondary: AppColors.textSecondary,
-        error: AppColors.error,
-      ),
+      colorScheme:
+          (AppColors.isDark
+                  ? const ColorScheme.dark()
+                  : const ColorScheme.light())
+              .copyWith(
+                surface: AppColors.surface,
+                primary: AppColors.accent,
+                secondary: AppColors.textSecondary,
+                error: AppColors.error,
+              ),
       textTheme: GoogleFonts.interTextTheme(base.textTheme).apply(
         bodyColor: AppColors.textPrimary,
         displayColor: AppColors.textPrimary,
@@ -48,19 +81,25 @@ abstract class AppTheme {
         selectionColor: AppColors.accentDim,
         selectionHandleColor: AppColors.accent,
       ),
-      // Dialogs
-      dialogTheme: const DialogThemeData(
+      dialogTheme: DialogThemeData(
         backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
       ),
-      // Snackbars
-      snackBarTheme: const SnackBarThemeData(
+      snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.surface,
         contentTextStyle: TextStyle(color: AppColors.textPrimary),
       ),
-      // Progress indicators default to accent
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
+      progressIndicatorTheme: ProgressIndicatorThemeData(
         color: AppColors.accent,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        indicatorColor: Colors.transparent,
+        backgroundColor: AppColors.background,
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: AppColors.background,
+        selectedItemColor: AppColors.accent,
+        unselectedItemColor: AppColors.textSecondary,
       ),
     );
   }

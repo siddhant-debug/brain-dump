@@ -26,8 +26,18 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>BrainDump needs access to Apple Music to deeply contextualize your journal entries with your auditory environment.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>BrainDump needs access to your health data (like heart rate, sleep, and workouts) to contextualize your journal entries with your physiological state.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>BrainDump needs access to your health data to contextualize your journal entries with your physiological state.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>BrainDump needs location access to tag your notes with your current location.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app needs access to location to tag your thoughts with context (City, Home, Work).</string>
+	<string>BrainDump needs location access to tag your notes with your current location.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>BrainDump needs access to your photo library to allow you to attach images to your notes.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -47,11 +57,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSPhotoLibraryUsageDescription</key>
-<string>BrainDump needs access to your photo library to allow you to attach images to your notes.</string>
-<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-<string>BrainDump needs location access to tag your notes with your current location.</string>
-<key>NSLocationWhenInUseUsageDescription</key>
-<string>BrainDump needs location access to tag your notes with your current location.</string>
 </dict>
 </plist>

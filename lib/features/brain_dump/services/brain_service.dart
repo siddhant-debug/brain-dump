@@ -26,6 +26,7 @@ class BrainService {
   Stream<Map<String, dynamic>> askBrain(
     String query, {
     Map<String, dynamic>? location,
+    Map<String, dynamic>? musicContext,
   }) async* {
     final token = await _getToken();
     if (token == null) throw Exception('User not authenticated');
@@ -33,7 +34,11 @@ class BrainService {
     try {
       final response = await _dio.post(
         '/chat/chat',
-        data: {'query': query, 'location': ?location},
+        data: {
+          'query': query,
+          'location': location,
+          'music_context': ?musicContext,
+        },
         options: Options(
           headers: {
             'Authorization': 'Bearer $token',
