@@ -13,7 +13,7 @@ router = APIRouter(prefix="/notes", tags=["notes"])
 
 @router.post("/", response_model=schemas.NoteResponse)
 @limiter.limit("30/minute")
-async def create_note(
+def create_note(
     request: Request,
     note: schemas.NoteCreate,
     background_tasks: BackgroundTasks,

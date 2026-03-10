@@ -27,7 +27,9 @@ class StoredFile(Base):
     __tablename__ = "stored_files"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True)  # Linked to User.id
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     filename = Column(String, index=True)
     file_type = Column(String)
     file_size = Column(Integer)
@@ -40,7 +42,9 @@ class Note(Base):
     __tablename__ = "notes"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True)  # Linked to User.id
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     content = Column(String, nullable=False)
     is_favorite = Column(Boolean, default=False)
     sentiment = Column(String, nullable=True)  # "Positive", "Negative", "Neutral"
@@ -52,7 +56,9 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True)  # Linked to User.id
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     content = Column(String, nullable=False)
     sender = Column(String, nullable=False)  # 'user' or 'ai'
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
@@ -64,7 +70,9 @@ class UserDirective(Base):
     __tablename__ = "user_directives"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     directive_content = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

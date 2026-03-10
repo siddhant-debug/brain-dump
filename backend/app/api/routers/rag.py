@@ -7,6 +7,7 @@ from fastapi import (
     BackgroundTasks,
     Request,
 )
+import asyncio
 import shutil
 import os
 import uuid
@@ -148,7 +149,9 @@ async def upload_to_brain(
             raise HTTPException(status_code=400, detail="File was empty")
 
         print(f"[DEBUG] Milestone 3: Indexing text into RAG engine...")
-        num_chunks = rag_engine.index_text(safe_filename, text, current_user.id, db)
+        num_chunks = await rag_engine.async_index_text(
+            safe_filename, text, current_user.id
+        )
         print(f"[DEBUG] Milestone 3 Complete: Indexed {num_chunks} chunks")
 
         file_path = None
@@ -173,18 +176,24 @@ async def upload_to_brain(
             content_to_store = text[:5000]
 
         print(f"[DEBUG] Milestone 4: Storing file record in database...")
-        new_file = models.StoredFile(
-            user_id=current_user.id,
-            filename=safe_filename,
-            file_type=file.content_type or "unknown",
-            file_size=file.size if hasattr(file, "size") else 0,
-            content_text=content_to_store,
-            file_path=file_path,
-        )
-        db.add(new_file)
-        db.commit()
-        db.refresh(new_file)
-        print(f"[DEBUG] Milestone 4 Complete: File record saved (ID: {new_file.id})")
+        loop = asyncio.get_event_loop()
+
+        def _db_ops():
+            new_file = models.StoredFile(
+                user_id=current_user.id,
+                filename=safe_filename,
+                file_type=file.content_type or "unknown",
+                file_size=file.size if hasattr(file, "size") else 0,
+                content_text=content_to_store,
+                file_path=file_path,
+            )
+            db.add(new_file)
+            db.commit()
+            db.refresh(new_file)
+            return new_file.id
+
+        new_file_id = await loop.run_in_executor(None, _db_ops)
+        print(f"[DEBUG] Milestone 4 Complete: File record saved (ID: {new_file_id})")
 
         print(f"[DEBUG] NOTE UPLOAD COMPLETE — {num_chunks} chunks, {len(text)} chars")
 
@@ -303,7 +312,10 @@ async def chat_endpoint(
     print(f"{'='*60}\n")
 
     # 1. Save User Message to History using the _save_message helper (M-1 fix)
-    _save_message(current_user.id, request_body.query, "user")
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(
+        None, _save_message, current_user.id, request_body.query, "user"
+    )
 
     # 2. Extract facts/directives in the background
     background_tasks.add_task(
@@ -311,13 +323,28 @@ async def chat_endpoint(
     )
 
     # 3. Retrieve short-term memory (last 8-10 messages)
-    history_messages = (
-        db.query(models.ChatMessage)
-        .filter(models.ChatMessage.user_id == current_user.id)
-        .order_by(models.ChatMessage.timestamp.desc())
-        .limit(10)
-        .all()
+    def _fetch_history_and_directives():
+        _history = (
+            db.query(models.ChatMessage)
+            .filter(models.ChatMessage.user_id == current_user.id)
+            .order_by(models.ChatMessage.timestamp.desc())
+            .limit(10)
+            .all()
+        )
+        _directives = (
+            db.query(models.UserDirective)
+            .filter(
+                models.UserDirective.user_id == current_user.id,
+                models.UserDirective.is_active == True,
+            )
+            .all()
+        )
+        return _history, _directives
+
+    history_messages, active_directives = await loop.run_in_executor(
+        None, _fetch_history_and_directives
     )
+
     # Exclude the exact message we just saved so it's not duplicated
     history_messages = [m for m in history_messages if m.content != request_body.query]
     history_messages = history_messages[::-1]  # oldest to newest
@@ -325,15 +352,6 @@ async def chat_endpoint(
         {"sender": msg.sender, "content": msg.content} for msg in history_messages
     ]
 
-    # 4. Fetch Subconscious Directives
-    active_directives = (
-        db.query(models.UserDirective)
-        .filter(
-            models.UserDirective.user_id == current_user.id,
-            models.UserDirective.is_active == True,
-        )
-        .all()
-    )
     directives_list = [d.directive_content for d in active_directives]
 
     async def event_generator():
@@ -477,7 +495,7 @@ async def chat_endpoint(
 
 # --- NEW ENDPOINT: LIST FILES ---
 @router.get("/files", response_model=List[schemas.StoredFileResponse])
-async def list_files(
+def list_files(
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(database.get_db),
 ):
