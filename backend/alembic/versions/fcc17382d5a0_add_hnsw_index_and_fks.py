@@ -31,9 +31,16 @@ def upgrade() -> None:
             "WITH (m = 16, ef_construction = 64)"
         )
 
-    # 3. Add Foreign Key constraints and handle existing data
-    # Note: We use batch_op for SQLite compatibility, but for Postgres it's direct ALTER
-    # Adding ForeignKey constraints with CASCADE
+    # 3. Clean up orphaned records before adding constraints
+    # This ensures Postgres doesn't fail on existing data that violates the new FKs
+    op.execute("DELETE FROM stored_files WHERE user_id NOT IN (SELECT id FROM users)")
+    op.execute("DELETE FROM notes WHERE user_id NOT IN (SELECT id FROM users)")
+    op.execute("DELETE FROM chat_messages WHERE user_id NOT IN (SELECT id FROM users)")
+    op.execute(
+        "DELETE FROM user_directives WHERE user_id NOT IN (SELECT id FROM users)"
+    )
+
+    # 4. Add Foreign Key constraints
     op.create_foreign_key(
         "fk_stored_files_user_id",
         "stored_files",
