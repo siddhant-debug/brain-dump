@@ -58,12 +58,15 @@ class BM25Store:
     def __init__(self, max_users: int = 100):
         self._lock_registry_mutex = threading.Lock()
         self._user_locks: dict[int, threading.Lock] = {}
-        self._cache = LRUCache(maxsize=max_users)
+        self._cache = (
+            {}
+        )  # Plain dict, capped manually at 100 to avoid LRUCache weirdness
         self._index_build_time: dict[int, datetime] = {}
         self._bm25_dirty: set[int] = set()
         self._doc_registry = {}
         self._doc_content = {}
         self._doc_metadata = {}
+        self._max_users = max_users
 
     def _get_user_lock(self, user_id: int) -> threading.Lock:
         with self._lock_registry_mutex:
@@ -75,16 +78,24 @@ class BM25Store:
         return text.lower().translate(str.maketrans("", "", string.punctuation)).split()
 
     def invalidate(self, user_id: int):
+        user_id = int(user_id)
         with self._get_user_lock(user_id):
             self._bm25_dirty.add(user_id)
             print(f"[INFO] Marked BM25 cache dirty for user {user_id}")
 
     def get_build_time(self, user_id: int) -> datetime:
-        return self._index_build_time.get(user_id, datetime.min)
+        return self._index_build_time.get(int(user_id), datetime.min)
 
     def get_or_build(self, user_id: int, db: Session):
+        user_id = int(user_id)  # FORCE INT TO AVOID TYPE MISMATCH MISSES
         user_lock = self._get_user_lock(user_id)
         with user_lock:
+            # DEBUG: Diagnose cache persistence
+            print(f"[DEBUG] BM25Store id: {id(self)}")
+            print(f"[DEBUG] user_id {user_id} in cache: {user_id in self._cache}")
+            print(f"[DEBUG] user_id {user_id} in dirty: {user_id in self._bm25_dirty}")
+            print(f"[DEBUG] current cache keys: {list(self._cache.keys())}")
+
             if user_id not in self._cache or user_id in self._bm25_dirty:
                 t_start = time.time()
                 print(f"[INFO] Building BM25 index for user {user_id}...")
@@ -111,6 +122,16 @@ class BM25Store:
                         self._doc_content[user_id][doc.id] = doc.document
                         self._doc_metadata[user_id][doc.id] = doc.metadata_
                         tokenized_corpus.append(self._tokenize(doc.document))
+
+                    # Manually cap the dict size (LRU behavior)
+                    if len(self._cache) >= self._max_users:
+                        # Pop oldest (roughly) - first key in dict works in Python 3.7+
+                        oldest_key = next(iter(self._cache))
+                        self._cache.pop(oldest_key, None)
+                        self._index_build_time.pop(oldest_key, None)
+                        self._doc_registry.pop(oldest_key, None)
+                        self._doc_content.pop(oldest_key, None)
+                        self._doc_metadata.pop(oldest_key, None)
 
                     # BM25 build
                     self._cache[user_id] = BM25Okapi(tokenized_corpus)
@@ -674,6 +695,7 @@ def retrieve_context(
     query: str, user_id: int, db: Session, current_location: dict = None
 ):
     """Retrieves relevant context using Hybrid Search (Vector + BM25) + RRF Fusion"""
+    user_id = int(user_id)  # FORCE INT TO AVOID TYPE MISMATCH LOOPS
     request_start_time = datetime.now()
     t_total_start = time.time()
     print(f"DEBUG: Entering retrieve_context for user {user_id} with query: '{query}'")

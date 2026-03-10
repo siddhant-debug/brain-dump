@@ -223,7 +223,11 @@ def extract_and_save_identity(user_id: int, message_content: str):
     from google.genai import types
     from datetime import datetime
     import uuid
-    from app.services.rag_engine import get_emb_fn, _rag_service
+    from . import auth
+
+    # Use the top-level rag_engine import to ensure singleton consistency
+    get_emb_fn = rag_engine.get_emb_fn
+    _rag_service = rag_engine._rag_service
 
     db = database.SessionLocal()
     try:
