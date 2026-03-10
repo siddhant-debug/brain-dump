@@ -53,32 +53,49 @@ import string
 
 
 class BM25Store:
-    """Thread-safe, LRU-capped, per-user BM25 index store."""
+    """Thread-safe, LRU-capped, per-user BM25 index store with lazy invalidation."""
 
     def __init__(self, max_users: int = 100):
-        self._lock = threading.RLock()
+        self._lock_registry_mutex = threading.Lock()
+        self._user_locks: dict[int, threading.Lock] = {}
         self._cache = LRUCache(maxsize=max_users)
+        self._index_build_time: dict[int, datetime] = {}
+        self._bm25_dirty: set[int] = set()
         self._doc_registry = {}
         self._doc_content = {}
         self._doc_metadata = {}
+
+    def _get_user_lock(self, user_id: int) -> threading.Lock:
+        with self._lock_registry_mutex:
+            if user_id not in self._user_locks:
+                self._user_locks[user_id] = threading.Lock()
+            return self._user_locks[user_id]
 
     def _tokenize(self, text: str):
         return text.lower().translate(str.maketrans("", "", string.punctuation)).split()
 
     def invalidate(self, user_id: int):
-        with self._lock:
-            self._cache.pop(user_id, None)
-            self._doc_registry.pop(user_id, None)
-            self._doc_content.pop(user_id, None)
-            self._doc_metadata.pop(user_id, None)
-            print(f"[INFO] Invalidated BM25 cache for user {user_id}")
+        with self._get_user_lock(user_id):
+            self._bm25_dirty.add(user_id)
+            print(f"[INFO] Marked BM25 cache dirty for user {user_id}")
+
+    def get_build_time(self, user_id: int) -> datetime:
+        return self._index_build_time.get(user_id, datetime.min)
 
     def get_or_build(self, user_id: int, db: Session):
-        with self._lock:
-            if user_id not in self._cache:
+        user_lock = self._get_user_lock(user_id)
+        with user_lock:
+            if user_id not in self._cache or user_id in self._bm25_dirty:
+                t_start = time.time()
                 print(f"[INFO] Building BM25 index for user {user_id}...")
+
+                # OPTIMIZATION: Fetch only necessary columns, skip heavy embeddings
                 user_docs = (
-                    db.query(BrainEmbedding)
+                    db.query(
+                        BrainEmbedding.id,
+                        BrainEmbedding.document,
+                        BrainEmbedding.metadata_,
+                    )
                     .filter(BrainEmbedding.user_id == user_id)
                     .all()
                 )
@@ -95,28 +112,38 @@ class BM25Store:
                         self._doc_metadata[user_id][doc.id] = doc.metadata_
                         tokenized_corpus.append(self._tokenize(doc.document))
 
+                    # BM25 build
                     self._cache[user_id] = BM25Okapi(tokenized_corpus)
+
+                    # Record build time AFTER completion for guard accuracy
+                    self._index_build_time[user_id] = datetime.now()
+                    self._bm25_dirty.discard(user_id)
+
                     print(
-                        f"[INFO] BM25 index built for user {user_id} with {len(tokenized_corpus)} documents"
+                        f"[INFO] BM25 index built for user {user_id} with {len(tokenized_corpus)} documents in {(time.time() - t_start)*1000:.2f}ms"
                     )
                 else:
                     print(
                         f"[WARN] No documents for user {user_id}, skipping BM25 build"
                     )
                     self._cache[user_id] = None
+                    self._bm25_dirty.discard(user_id)
 
             return self._cache.get(user_id)
 
     def get_content_map(self, user_id: int):
-        with self._lock:
+        user_lock = self._get_user_lock(user_id)
+        with user_lock:
             return self._doc_content.get(user_id, {})
 
     def get_metadata_map(self, user_id: int):
-        with self._lock:
+        user_lock = self._get_user_lock(user_id)
+        with user_lock:
             return self._doc_metadata.get(user_id, {})
 
     def get_registry_map(self, user_id: int):
-        with self._lock:
+        user_lock = self._get_user_lock(user_id)
+        with user_lock:
             return self._doc_registry.get(user_id, {})
 
 
@@ -647,6 +674,7 @@ def retrieve_context(
     query: str, user_id: int, db: Session, current_location: dict = None
 ):
     """Retrieves relevant context using Hybrid Search (Vector + BM25) + RRF Fusion"""
+    request_start_time = datetime.now()
     t_total_start = time.time()
     print(f"DEBUG: Entering retrieve_context for user {user_id} with query: '{query}'")
 
@@ -768,7 +796,9 @@ def retrieve_context(
                 metadatas[i] = doc_map[doc_id][1]
 
         # Self-healing: If vector search found docs not in BM25 cache, our cache is stale!
-        _rag_service.bm25_store.invalidate(user_id)
+        # Guard: Only invalidate if the cache hasn't been rebuilt since this request started
+        if _rag_service.bm25_store.get_build_time(user_id) < request_start_time:
+            _rag_service.bm25_store.invalidate(user_id)
 
     # Filter out any unresolved Nones
     valid_indices = [i for i, d in enumerate(docs) if d is not None]
