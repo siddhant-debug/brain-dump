@@ -1,5 +1,38 @@
 
-# ChromaDB
+# ChromaDB / Vector DBs
 brain_storage/
 chroma_db/
-venv/
+
+# PostgreSQL data (Docker volume - NEVER commit)
+postgres_data/
+
+# Database backups (may contain sensitive user data)
+backup.sql
+*.sql
+
+# Uploads (personal user data)
+uploads/
+
+# Environment variables
+.env
+.env.local
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+.venv_rembg/
+
+# Log and error files
+*.log
+error.txt
+log.txt
+
+# macOS
+.DS_Store
+
+# Vault (secrets)
+vault/
