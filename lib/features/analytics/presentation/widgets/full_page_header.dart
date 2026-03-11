@@ -18,7 +18,7 @@ class FullPageHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Row(
+        Row( 
           children: [
             Icon(icon, color: accent, size: 22),
             const SizedBox(width: 12),

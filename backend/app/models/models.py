@@ -20,6 +20,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
     profile_pic = Column(String, nullable=True)
+    needs_loop_recalc = Column(Boolean, default=True, server_default="true")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -91,6 +92,27 @@ class MusicVibeCache(Base):
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+from sqlalchemy.dialects.postgresql import ARRAY
+
+class DetectedLoop(Base):
+    __tablename__ = "detected_loops"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
+                     index=True, nullable=False)
+    theme_guess = Column(String, nullable=False)
+    severity = Column(String)           # "high" | "low"
+    occurrences = Column(Integer)
+    path_forward = Column(String)
+    first_seen = Column(String)
+    last_seen = Column(String)
+    notes_json = Column(JSON, nullable=False) # Store the serialized notes for easy return
+    computed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+
 
 
 from pgvector.sqlalchemy import Vector
