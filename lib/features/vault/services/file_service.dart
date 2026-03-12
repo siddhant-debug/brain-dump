@@ -104,5 +104,5 @@ class FileService {
 When ref.invalidate(filesProvider) is called, it re-fetches the list from the API.
 */
 final filesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) {
-  return ref.read(fileServiceProvider).getFiles();
+  return ref.watch(fileServiceProvider).getFiles();
 });

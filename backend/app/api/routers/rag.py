@@ -200,7 +200,7 @@ async def upload_to_brain(
         return {
             "status": "completed",
             "message": f"Successfully memorized {safe_filename}",
-            "file_id": new_file.id,
+            "file_id": new_file_id,
             "type": file.content_type,
         }
 
