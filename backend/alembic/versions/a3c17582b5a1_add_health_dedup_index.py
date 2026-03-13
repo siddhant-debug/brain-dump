@@ -16,16 +16,9 @@ depends_on = None
 
 
 def upgrade():
-    # 1. Add Unique Index for deduplication safety
-    # Note: date_trunc on TIMESTAMPTZ is STABLE because it depends on session timezone.
-    # Specifying 'AT TIME ZONE 'UTC' makes it IMMUTABLE as it rounds to absolute UTC.
-    op.execute("""
-        CREATE UNIQUE INDEX idx_health_snapshot_dedup 
-        ON health_snapshots (user_id, date_trunc('minute', fetched_at AT TIME ZONE 'UTC'));
-    """)
-    
-    # 2. Cleanup existing near-duplicate data
-    # Keep only the first snapshot per 30-minute window per user
+    # 1. Cleanup existing near-duplicate data FIRST
+    # Keep only the first snapshot per 30-minute window per user.
+    # This automatically resolves any 1-minute duplicates as well.
     op.execute("""
         DELETE FROM health_snapshots
         WHERE id NOT IN (
@@ -35,6 +28,13 @@ def upgrade():
             ORDER BY user_id, date_trunc('hour', fetched_at AT TIME ZONE 'UTC'), 
                      extract(minute from fetched_at AT TIME ZONE 'UTC')::int / 30, fetched_at ASC
         );
+    """)
+
+    # 2. Add Unique Index for deduplication safety
+    # Now that duplicates are gone, this will succeed.
+    op.execute("""
+        CREATE UNIQUE INDEX idx_health_snapshot_dedup 
+        ON health_snapshots (user_id, date_trunc('minute', fetched_at AT TIME ZONE 'UTC'));
     """)
 
 
