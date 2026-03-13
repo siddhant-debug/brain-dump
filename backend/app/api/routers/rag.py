@@ -452,16 +452,16 @@ async def chat_endpoint(
                 if db_snapshot:
                     health_snapshot = {
                         "readiness": db_snapshot.readiness,
-                        "steps": db_snapshot.steps_today,
-                        "kcal": db_snapshot.active_energy_kcal,
+                        "steps_today": db_snapshot.steps_today,
+                        "active_energy_kcal": db_snapshot.active_energy_kcal,
                         "hr_resting": db_snapshot.heart_rate.get("resting") if db_snapshot.heart_rate else None,
                         "hrv_curr": db_snapshot.hrv.get("current") if db_snapshot.hrv else None,
                     }
 
             if health_snapshot:
                 readiness = health_snapshot.get("readiness", "Unknown")
-                steps = health_snapshot.get("steps", 0)
-                kcal = health_snapshot.get("kcal", 0.0)
+                steps = health_snapshot.get("steps_today", 0)
+                kcal = health_snapshot.get("active_energy_kcal", 0.0)
                 hr_resting = health_snapshot.get("hr_resting")
                 hrv = health_snapshot.get("hrv_curr")
 

@@ -411,8 +411,8 @@ def index_text(
             # Structure it like the frontend's HealthContextResponse
             health_context = {
                 "readiness": latest.readiness,
-                "steps": latest.steps_today,
-                "kcal": latest.active_energy_kcal,
+                "steps_today": latest.steps_today,
+                "active_energy_kcal": latest.active_energy_kcal,
                 "hr_resting": latest.heart_rate.get("resting") if latest.heart_rate else None,
                 "hrv_curr": latest.hrv.get("current") if latest.hrv else None,
             }
@@ -445,10 +445,10 @@ def index_text(
         if health_context:
             if health_context.get("readiness"):
                 meta["health_readiness"] = health_context["readiness"]
-            if health_context.get("steps") is not None:
-                meta["health_steps"] = health_context["steps"]
-            if health_context.get("kcal") is not None:
-                meta["health_kcal"] = health_context["kcal"]
+            if health_context.get("steps_today") is not None:
+                meta["health_steps"] = health_context["steps_today"]
+            if health_context.get("active_energy_kcal") is not None:
+                meta["health_kcal"] = health_context["active_energy_kcal"]
             if health_context.get("hr_resting") is not None:
                 meta["health_hr_resting"] = health_context["hr_resting"]
             if health_context.get("hrv_curr") is not None:
