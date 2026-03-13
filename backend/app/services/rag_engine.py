@@ -331,7 +331,12 @@ def find_associative_memories(
 
 
 def index_text(
-    filename: str, text: str, user_id: int, db: Session, location_context: dict = None
+    filename: str,
+    text: str,
+    user_id: int,
+    db: Session,
+    location_context: dict = None,
+    health_context: dict = None,
 ):
     """Memorizes a file (Chunks -> Vectors) for a specific user"""
 
@@ -393,6 +398,25 @@ def index_text(
     # Create unique IDs (filename + chunk index + user_id)
     ids = [f"{user_id}_{filename}_{i}" for i in range(len(chunks))]
 
+    # 3. ENRICH WITH CONTEXT (Location + Health)
+    # Per rule: Pull latest health snapshot if not provided explicitly
+    if health_context is None:
+        latest = (
+            db.query(models.HealthSnapshot)
+            .filter(models.HealthSnapshot.user_id == user_id)
+            .order_by(models.HealthSnapshot.fetched_at.desc())
+            .first()
+        )
+        if latest:
+            # Structure it like the frontend's HealthContextResponse
+            health_context = {
+                "readiness": latest.readiness,
+                "steps": latest.steps_today,
+                "kcal": latest.active_energy_kcal,
+                "hr_resting": latest.heart_rate.get("resting") if latest.heart_rate else None,
+                "hrv_curr": latest.hrv.get("current") if latest.hrv else None,
+            }
+
     # Metadata includes file type info AND Location info if available
     metadatas = []
     for _ in chunks:
@@ -416,6 +440,19 @@ def index_text(
                 meta["latitude"] = location_context["latitude"]
             if location_context.get("longitude"):
                 meta["longitude"] = location_context["longitude"]
+
+        # Add health context if provided or fetched
+        if health_context:
+            if health_context.get("readiness"):
+                meta["health_readiness"] = health_context["readiness"]
+            if health_context.get("steps") is not None:
+                meta["health_steps"] = health_context["steps"]
+            if health_context.get("kcal") is not None:
+                meta["health_kcal"] = health_context["kcal"]
+            if health_context.get("hr_resting") is not None:
+                meta["health_hr_resting"] = health_context["hr_resting"]
+            if health_context.get("hrv_curr") is not None:
+                meta["health_hrv"] = health_context["hrv_curr"]
 
         metadatas.append(meta)
 
@@ -586,6 +623,7 @@ async def ask_gemini_stream_async(
     max_tokens: int = 1000,
     location_context: dict = None,
     music_layer: str = "",
+    health_layer: str = "",
     chat_history: list = None,
     directives: list = None,
 ):
@@ -684,6 +722,7 @@ async def ask_gemini_stream_async(
         tone_layer=tone_layer,
         location_layer=location_layer,
         music_layer=music_layer,
+        health_layer=health_layer,
         max_tokens=max_tokens,
         chat_history=chat_history,
         directives=directives,
@@ -953,14 +992,20 @@ async def async_search_brain(query: str, user_id: int):
 
 
 async def async_index_text(
-    filename: str, text: str, user_id: int, location_context: dict = None
+    filename: str,
+    text: str,
+    user_id: int,
+    location_context: dict = None,
+    health_context: dict = None,
 ):
     """Run index_text in a separate thread"""
 
     def _run():
         db = SessionLocal()
         try:
-            return index_text(filename, text, user_id, db, location_context)
+            return index_text(
+                filename, text, user_id, db, location_context, health_context
+            )
         finally:
             db.close()
 

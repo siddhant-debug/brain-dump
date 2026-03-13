@@ -39,6 +39,7 @@ CURRENT TIME CONTEXT:
 {temporal_context}
 {location_layer}
 {music_layer}
+{health_layer}
 
 EMOTIONAL CONTEXT: {emotional_state}
 RESPONSE TONE: {tone_guidance}
@@ -185,6 +186,7 @@ class GeminiService:
         tone_layer: str,
         location_layer: str,
         music_layer: str,
+        health_layer: str,
         directives: list = None,
     ) -> str:
         base_prompt = _SYSTEM_PROMPT.format(
@@ -195,6 +197,7 @@ class GeminiService:
             tone_layer=tone_layer,
             location_layer=location_layer,
             music_layer=music_layer,
+            health_layer=health_layer,
         )
 
         if directives:
@@ -234,6 +237,7 @@ class GeminiService:
         tone_layer: str,
         location_layer: str,
         music_layer: str = "",
+        health_layer: str = "",
         max_tokens: int = 1000,
         chat_history: list = None,
         directives: list = None,
@@ -258,6 +262,7 @@ class GeminiService:
             tone_layer,
             location_layer,
             music_layer,
+            health_layer,
             directives,
         )
         config = self._get_model(system_instruction, max_tokens)

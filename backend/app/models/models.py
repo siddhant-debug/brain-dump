@@ -20,7 +20,27 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
     profile_pic = Column(String, nullable=True)
+    weight_kg = Column(Float, nullable=True)
+    height_cm = Column(Float, nullable=True)
     needs_loop_recalc = Column(Boolean, default=True, server_default="true")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class HealthSnapshot(Base):
+    __tablename__ = "health_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    readiness = Column(String, nullable=True)  # HIGH, MODERATE, LOW, SYNCING
+    heart_rate = Column(JSON, nullable=True)  # {current, avg_24h, resting}
+    hrv = Column(JSON, nullable=True)  # {current, avg_7d}
+    sleep = Column(JSON, nullable=True)  # {total_hours, deep_hours, rem_hours, awake_hours}
+    steps_today = Column(Integer, nullable=True)
+    active_energy_kcal = Column(Float, nullable=True)
+    last_workout = Column(JSON, nullable=True)  # {type, duration_minutes, calories}
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

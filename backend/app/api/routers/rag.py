@@ -436,6 +436,42 @@ async def chat_endpoint(
                         f"Let this color how you surface and frame their memories."
                     )
 
+            # 2b. Add Health Layer
+            health_layer = ""
+            health_snapshot = None
+            if request_body.health_context:
+                health_snapshot = request_body.health_context
+            else:
+                # Pull latest from DB
+                db_snapshot = (
+                    db.query(models.HealthSnapshot)
+                    .filter(models.HealthSnapshot.user_id == current_user.id)
+                    .order_by(models.HealthSnapshot.fetched_at.desc())
+                    .first()
+                )
+                if db_snapshot:
+                    health_snapshot = {
+                        "readiness": db_snapshot.readiness,
+                        "steps": db_snapshot.steps_today,
+                        "kcal": db_snapshot.active_energy_kcal,
+                        "hr_resting": db_snapshot.heart_rate.get("resting") if db_snapshot.heart_rate else None,
+                        "hrv_curr": db_snapshot.hrv.get("current") if db_snapshot.hrv else None,
+                    }
+
+            if health_snapshot:
+                readiness = health_snapshot.get("readiness", "Unknown")
+                steps = health_snapshot.get("steps", 0)
+                kcal = health_snapshot.get("kcal", 0.0)
+                hr_resting = health_snapshot.get("hr_resting")
+                hrv = health_snapshot.get("hrv_curr")
+
+                health_layer = f"HEALTH CONTEXT: User's readiness is {readiness}. Steps today: {steps}. Active energy: {kcal} kcal."
+                if hr_resting:
+                    health_layer += f" Resting HR: {hr_resting} bpm."
+                if hrv:
+                    health_layer += f" Current HRV: {hrv} ms."
+                health_layer += " Use this biometric data to ground your responses in their physical reality."
+
             # 3. Stream AI response
             full_response = ""
             async for chunk in rag_engine.ask_gemini_stream_async(
@@ -443,6 +479,7 @@ async def chat_endpoint(
                 request_body.query,
                 location_context=location_dict,
                 music_layer=music_layer,
+                health_layer=health_layer,
                 chat_history=chat_history_list,
                 directives=directives_list,
             ):

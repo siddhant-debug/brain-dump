@@ -8,6 +8,8 @@ class UserBase(BaseModel):
     full_name: Optional[str] = None
     # MED-6: must be a valid HTTPS URL, not an arbitrary string
     profile_pic: Optional[AnyHttpUrl] = None
+    weight_kg: Optional[float] = None
+    height_cm: Optional[float] = None
 
 
 class UserCreate(UserBase):
@@ -80,6 +82,30 @@ class MusicContextResponse(BaseModel):
     dominance: float = 0.0
 
 
+class HealthSnapshotBase(BaseModel):
+    readiness: Optional[str] = None
+    heart_rate: Optional[dict] = None
+    hrv: Optional[dict] = None
+    sleep: Optional[dict] = None
+    steps_today: Optional[int] = None
+    active_energy_kcal: Optional[float] = None
+    last_workout: Optional[dict] = None
+    fetched_at: datetime
+
+
+class HealthSnapshotCreate(HealthSnapshotBase):
+    pass
+
+
+class HealthSnapshotResponse(HealthSnapshotBase):
+    id: int
+    user_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class NoteCreate(BaseModel):
     # MED-8: cap at 50k characters to prevent unbounded DB / memory usage
     content: str = Field(..., min_length=1, max_length=50000)
@@ -103,6 +129,7 @@ class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     location: Optional[LocationContext] = None
     music_context: Optional[dict] = None
+    health_context: Optional[dict] = None
 
 
 class ChatResponse(BaseModel):
