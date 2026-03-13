@@ -27,6 +27,7 @@ class BrainService {
     String query, {
     Map<String, dynamic>? location,
     Map<String, dynamic>? musicContext,
+    Map<String, dynamic>? healthContext,
   }) async* {
     final token = await _getToken();
     if (token == null) throw Exception('User not authenticated');
@@ -37,7 +38,8 @@ class BrainService {
         data: {
           'query': query,
           'location': location,
-          'music_context': ?musicContext,
+          'music_context': musicContext,
+          'health_context': healthContext,
         },
         options: Options(
           headers: {

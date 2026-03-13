@@ -7,6 +7,7 @@ import '../../notes/services/note_service.dart';
 import '../models/chat_message.dart';
 import '../services/location_service.dart';
 import '../../music/controllers/music_sync_controller.dart';
+import '../../health/controllers/health_sync_controller.dart';
 import 'package:dio/dio.dart';
 
 String _formatError(dynamic e) {
@@ -190,9 +191,21 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     } catch (e) {
       debugPrint("[DEBUG] Music context fetch skipped: $e");
     }
+    
+    // [CONTEXT] Fetch Health Snapshot from Riverpod State
+    Map<String, dynamic>? healthContext;
+    try {
+      final healthState = ref.read(healthSyncControllerProvider);
+      if (healthState.isAuthorized && healthState.latestSnapshot != null) {
+        healthContext = healthState.latestSnapshot!.toJson();
+        debugPrint("[DEBUG] Injecting Health Context to Chat Payload: $healthContext");
+      }
+    } catch (e) {
+      debugPrint("[DEBUG] Health context fetch skipped: $e");
+    }
 
     try {
-      await _handleQuery(trimmed, locationContext, musicContext, aiMsgId);
+      await _handleQuery(trimmed, locationContext, musicContext, healthContext, aiMsgId);
     } catch (e) {
       // Update ONLY the specific message by ID
       state = state.copyWith(
@@ -217,6 +230,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     String text,
     Map<String, dynamic>? location,
     Map<String, dynamic>? musicContext,
+    Map<String, dynamic>? healthContext,
     String aiMsgId,
   ) async {
     // 2.5 Update placeholder with location if available
@@ -238,10 +252,12 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     List<String> sources = [];
 
     try {
-      await for (var data
-          in ref
-              .read(brainServiceProvider)
-              .askBrain(text, location: location, musicContext: musicContext)) {
+      await for (var data in ref.read(brainServiceProvider).askBrain(
+        text,
+        location: location,
+        musicContext: musicContext,
+        healthContext: healthContext,
+      )) {
         // Handle text chunk
         if (data['chunk'] != null) {
           fullAnswer += data['chunk'];
