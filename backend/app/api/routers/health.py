@@ -15,7 +15,7 @@ router = APIRouter()
 def sync_health_context(
     payload: schemas.HealthSnapshotCreate,
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth.get_current_active_user),
+    current_user: models.User = Depends(auth.get_current_user),
 ):
     """
     Receives HealthKit snapshot from the mobile app and stores it.
@@ -48,7 +48,7 @@ def sync_health_context(
 @router.get("/latest", response_model=schemas.HealthSnapshotResponse)
 def get_latest_health(
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth.get_current_active_user),
+    current_user: models.User = Depends(auth.get_current_user),
 ):
     """
     Returns the most recent health snapshot for the current user.
