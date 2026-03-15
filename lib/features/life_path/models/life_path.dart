@@ -61,3 +61,27 @@ class LifePathItem {
     );
   }
 }
+class LifePathStatus {
+  final bool hasActivePath;
+  final int? alignmentScore;
+  final String? macroGoal;
+  final DateTime? lastEvalAt;
+
+  const LifePathStatus({
+    required this.hasActivePath,
+    this.alignmentScore,
+    this.macroGoal,
+    this.lastEvalAt,
+  });
+
+  factory LifePathStatus.fromMap(Map<String, dynamic> map) {
+    return LifePathStatus(
+      hasActivePath: map['has_active_path'] as bool? ?? false,
+      alignmentScore: map['alignment_score'] as int?,
+      macroGoal: map['macro_goal'] as String?,
+      lastEvalAt: map['last_eval_at'] != null 
+          ? DateTime.parse(map['last_eval_at'] as String) 
+          : null,
+    );
+  }
+}

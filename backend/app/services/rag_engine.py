@@ -342,6 +342,7 @@ def index_text(
     db: Session,
     location_context: dict = None,
     health_context: dict = None,
+    source_type: str = "note",
 ):
     """Memorizes a file (Chunks -> Vectors) for a specific user"""
 
@@ -429,6 +430,7 @@ def index_text(
             "source": filename,
             "user_id": user_id,
             "type": "markdown" if filename.lower().endswith(".md") else "text",
+            "source_type": source_type,
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -485,6 +487,7 @@ def index_text(
                     "document": doc,
                     "embedding": emb,
                     "metadata_": meta,
+                    "source_type": source_type,
                 }
             )
 
@@ -1007,6 +1010,7 @@ async def async_index_text(
     user_id: int,
     location_context: dict = None,
     health_context: dict = None,
+    source_type: str = "note",
 ):
     """Run index_text in a separate thread"""
 
@@ -1014,7 +1018,13 @@ async def async_index_text(
         db = SessionLocal()
         try:
             return index_text(
-                filename, text, user_id, db, location_context, health_context
+                filename,
+                text,
+                user_id,
+                db,
+                location_context,
+                health_context,
+                source_type,
             )
         finally:
             db.close()

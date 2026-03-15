@@ -39,7 +39,8 @@ class LifepathEvaluator:
         macro_goal_text: str,
         note_summary: str,
         health_summary: dict,
-        music_tones: List[str]
+        music_tones: List[str],
+        knowledge_context: str = "No relevant file context found."
     ) -> dict:
         """
         Main analysis call. Maps today's context against baseline and macro goal.
@@ -57,7 +58,8 @@ class LifepathEvaluator:
             macro_goal_text=macro_goal_text,
             note_summary=note_summary,
             health_summary=health_str,
-            music_primary_tone=music_vibe
+            music_primary_tone=music_vibe,
+            knowledge_context=knowledge_context
         )
 
         try:

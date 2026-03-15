@@ -180,3 +180,11 @@ class LifePathNodeResponse(BaseModel):
 
     class Config:
         from_attributes = True
+class LifePathStatusResponse(BaseModel):
+    has_active_path: bool
+    alignment_score: Optional[int] = None
+    macro_goal: Optional[str] = None
+    last_eval_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

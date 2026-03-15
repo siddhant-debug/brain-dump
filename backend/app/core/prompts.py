@@ -74,12 +74,17 @@ TODAY'S SIGNALS:
 {music_primary_tone}
 </music_vibe>
 
+<knowledge_context>
+{knowledge_context}
+</knowledge_context>
+
 TASK:
 1. Analyze the alignment between TODAY'S SIGNALS and the MACRO GOAL.
-2. Identify specific "Blockers" (friction points or setbacks seen in the notes/health).
-3. Identify "Loops" (repetitive behavioral patterns or recurring thoughts).
-4. Identify "Progress" (actions or mindsets aligning with the goal).
-5. Generate 3 "Short-Term Goals" for tomorrow that are DIRECTLY traceable to closing the gap between the Baseline and the Macro Goal. These must be grounded in reality, not generic advice.
+2. Cross-reference TODAY'S SIGNALS with the <knowledge_context> (retrieved from user files/PDFs) to identify if today's actions are applying existing knowledge or if the user is ignoring their own resources.
+3. Identify specific "Blockers" (friction points, setbacks, or contradictions seen in notes/health).
+4. Identify "Loops" (repetitive behavioral patterns or recurring thoughts).
+5. Identify "Progress" (actions or mindsets aligning with the goal, especially concrete technical wins or physical achievements).
+6. Generate 3 "Short-Term Goals" for tomorrow that are DIRECTLY traceable to closing the gap between the Baseline and the Macro Goal. Use concrete data from today to ground these micro-actions.
 
 Output EXACTLY in the following JSON format:
 {{
@@ -100,10 +105,11 @@ RAW NOTES:
 
 TASK:
 1. Summarize the major themes, emotional tones, and key activities mentioned in the notes.
-2. STICK TO THEMES. Instead of "I ordered a pack of cigarettes at the 7-eleven on 5th ave", say "User engaged in a known harmful habit (smoking) triggered by an external location."
-3. Identify core intentions and friction points.
+2. PRESERVE CONCRETE DETAILS: Maintain specific technical achievements, project names, and numeric metrics (e.g., "Deployed hybrid search", "Ran 5k", "Finished 3 PRs"). 
+3. STRIP SENSITIVE PII ONLY: Only remove sensitive identifiers like passwords, Social Security Numbers, exact physical addresses, or financial account numbers. Do NOT strip the context of the activity.
+4. Identify core intentions and friction points.
 
-OUTPUT: A concise, bulleted thematic summary of the user's current mental state and actions.
+OUTPUT: A concise, bulleted thematic summary that prioritizes concrete progress and specific mental/physical state changes.
 """
 
 # --- MUSIC PROMPTS ---

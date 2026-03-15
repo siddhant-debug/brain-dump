@@ -15,6 +15,7 @@ class LifePathWidget extends ConsumerWidget {
     final colors = theme.colors;
     final lifePathAsync = ref.watch(lifePathProvider);
     final userAsync = ref.watch(userProvider);
+    final statusAsync = ref.watch(lifePathStatusProvider);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
@@ -30,13 +31,18 @@ class LifePathWidget extends ConsumerWidget {
                   letterSpacing: 1.2,
                 ),
               ),
-              lifePathAsync.when(
-                data: (items) => Text(
-                  "${_calculateAlignment(items)}% ALIGNED",
-                  style: AppTextStyles.label(colors.accent).copyWith(
-                    fontSize: 10,
-                  ),
-                ),
+              statusAsync.when(
+                data: (status) {
+                  if (!status.hasActivePath || status.alignmentScore == null) {
+                    return const SizedBox.shrink();
+                  }
+                  return Text(
+                    "${status.alignmentScore}% ALIGNED",
+                    style: AppTextStyles.label(colors.accent).copyWith(
+                      fontSize: 10,
+                    ),
+                  );
+                },
                 loading: () => const _SkeletonText(width: 60),
                 error: (e, _) => const SizedBox.shrink(),
               ),
@@ -88,11 +94,6 @@ class LifePathWidget extends ConsumerWidget {
     );
   }
 
-  int _calculateAlignment(List<LifePathItem> items) {
-    if (items.isEmpty) return 0;
-    final positive = items.where((i) => !i.isNegative).length;
-    return ((positive / items.length) * 100).toInt();
-  }
 
   Widget _buildEmpty(CircadianColors colors) {
     return Center(

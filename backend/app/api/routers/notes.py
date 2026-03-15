@@ -26,11 +26,13 @@ def create_note(
     # Actually, we should probably pull the latest music/health context for the user.
     
     latest_health = db.query(models.HealthSnapshot).filter(models.HealthSnapshot.user_id == current_user.id).order_by(models.HealthSnapshot.fetched_at.desc()).first()
+    latest_music = db.query(models.MusicHistory).filter(models.MusicHistory.user_id == current_user.id).order_by(models.MusicHistory.timestamp.desc()).first()
     
     db_note = models.Note(
         content=note.content, 
         user_id=current_user.id,
         location_name=note.location.city if note.location else None,
+        music_track=latest_music.track_name if latest_music else None,
         health_readiness=latest_health.readiness if latest_health else None
     )
     db.add(db_note)
@@ -77,6 +79,7 @@ def create_note(
                 user_id=user_id,
                 db=bg_db,
                 location_context=location_context,
+                source_type="note",
             )
             print(f"[INFO] Indexed note {note_id} for user {user_id}")
         except Exception as e:

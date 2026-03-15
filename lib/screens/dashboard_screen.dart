@@ -236,6 +236,9 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
     if (note.focusMode?.isNotEmpty == true) {
       tags.add(_MetaTag(icon: "🎯", label: note.focusMode!, colors: colors));
     }
+    if (note.healthReadiness?.isNotEmpty == true) {
+      tags.add(_MetaTag(icon: "⚡", label: note.healthReadiness!, colors: colors));
+    }
     // Time always last
     tags.add(_MetaTag(icon: "🕒", label: _formatTime(note.createdAt), colors: colors));
 
@@ -462,42 +465,51 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
                     ),
                   );
                 }
-                return Column(
-                  children: notes.take(3).map((note) {
-                    return Padding(
-                      padding: const EdgeInsets.only(
-                        left: AppSpacing.xl,
-                        right: AppSpacing.xl,
-                        bottom: 20,
-                      ),
-                      child: Container(
-                        key: ValueKey(note.id),
-                        padding: const EdgeInsets.only(left: 14),
-                        decoration: BoxDecoration(
-                          border: Border(
-                            left: BorderSide(
-                              color: colors.spine.withValues(alpha: 0.15),
-                              width: 1.5,
-                            ),
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+                  child: IntrinsicHeight(
+                    child: Stack(
+                      children: [
+                        // Vertical Spine
+                        Positioned(
+                          left: 7, // Center of the 1.5 width line relative to the 14 padding
+                          top: 0,
+                          bottom: 0,
+                          child: Container(
+                            width: 1.5,
+                            color: colors.spine.withValues(alpha: 0.15),
                           ),
                         ),
-                        child: Column(
+                        Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              note.content,
-                              style: AppTextStyles.bodyMed(
-                                colors.text,
-                              ).copyWith(height: 1.5, fontSize: 14),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            _buildNoteMetadata(note, colors),
-                          ],
+                          children: notes.take(3).map((note) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 24),
+                              child: Container(
+                                key: ValueKey(note.id),
+                                padding: const EdgeInsets.only(left: 24), // Space from spine
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      note.content,
+                                      style: AppTextStyles.bodyMed(colors.text).copyWith(
+                                        height: 1.5,
+                                        fontSize: 14,
+                                      ),
+                                      maxLines: 3,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    _buildNoteMetadata(note, colors),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
                         ),
-                      ),
-                    );
-                  }).toList(),
+                      ],
+                    ),
+                  ),
                 );
               },
               loading: () => const Padding(

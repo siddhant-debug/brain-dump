@@ -68,7 +68,8 @@ class LifepathService:
             macro_goal_text=user.macro_goal or "No macro goal set.",
             note_summary=note_summary,
             health_summary=health_context,
-            music_tones=music_tones
+            music_tones=music_tones,
+            knowledge_context="\n".join(files) if files else "No relevant file context found."
         )
 
         # 4. Persistence & Embedding

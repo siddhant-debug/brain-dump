@@ -60,3 +60,28 @@ final lifePathProvider = FutureProvider<List<LifePathItem>>((ref) async {
   
   return [];
 });
+
+final lifePathStatusProvider = FutureProvider<LifePathStatus>((ref) async {
+  final dio = ref.watch(dioProvider);
+  final auth = ref.watch(authControllerProvider.notifier);
+  final token = await auth.getToken();
+
+  if (token == null) {
+    return const LifePathStatus(hasActivePath: false);
+  }
+
+  try {
+    final response = await dio.get(
+      '/api/lifepath/status',
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+    );
+
+    if (response.statusCode == 200) {
+      return LifePathStatus.fromMap(response.data as Map<String, dynamic>);
+    }
+  } catch (e) {
+    debugPrint("Error fetching life path status: $e");
+  }
+
+  return const LifePathStatus(hasActivePath: false);
+});

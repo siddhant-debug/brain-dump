@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.api.routers.auth import get_current_user
-from app.schemas.schemas import LifePathBaselineRequest, LifePathNodeResponse, UserResponse
+from app.schemas.schemas import LifePathBaselineRequest, LifePathNodeResponse, UserResponse, LifePathStatusResponse
 from app.services.lifepath_service import lifepath_service
 from app.models import models
 
@@ -79,3 +79,44 @@ def get_history(
         .all()
     )
     return nodes
+@router.get("/status", response_model=LifePathStatusResponse)
+def get_status(
+    current_user: UserResponse = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Returns the current high-level status of the user's Life Path."""
+    user = db.query(models.User).filter(models.User.id == current_user.id).first()
+    
+    # If no macro goal, they don't have an active path
+    if not user.macro_goal:
+        return LifePathStatusResponse(
+            has_active_path=False,
+            alignment_score=None,
+            macro_goal=None,
+            last_eval_at=user.last_lifepath_eval
+        )
+
+    # Fetch most recent node for alignment calculation
+    latest_node = (
+        db.query(models.LifePathNode)
+        .filter(models.LifePathNode.user_id == current_user.id)
+        .order_by(models.LifePathNode.computed_at.desc())
+        .first()
+    )
+
+    alignment_score = None
+    if latest_node:
+        # Simple heuristic: count positive/negative items in trajectory
+        traj = latest_node.trajectory or {}
+        progress = traj.get("progress", [])
+        blockers = traj.get("blockers", [])
+        total = len(progress) + len(blockers)
+        if total > 0:
+            alignment_score = int((len(progress) / total) * 100)
+
+    return LifePathStatusResponse(
+        has_active_path=True,
+        alignment_score=alignment_score,
+        macro_goal=user.macro_goal,
+        last_eval_at=user.last_lifepath_eval
+    )

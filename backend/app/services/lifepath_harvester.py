@@ -39,7 +39,7 @@ class LifepathHarvester:
     @staticmethod
     def harvest_music_context(user_id: int, db: Session, limit: int = 10) -> List[str]:
         """
-        Fetch the primary tones of the last N music tracks.
+        Fetch the primary tones of the last N music tracks using a batch query.
         """
         history = (
             db.query(models.MusicHistory)
@@ -49,15 +49,31 @@ class LifepathHarvester:
             .all()
         )
 
-        tones = []
+        if not history:
+            return []
+
+        # 1. Accumulate cache keys
+        cache_keys = []
+        key_to_track = {}
         for song in history:
-            # Match against MusicVibeCache using MD5 hashing (matching MusicAnalyzerService)
             raw_string = f"Single:{song.title}{song.artist}"
-            cache_key = hashlib.md5(raw_string.encode("utf-8")).hexdigest()
-            
-            vibe = db.query(models.MusicVibeCache).filter(models.MusicVibeCache.cache_key == cache_key).first()
-            if vibe:
-                tones.append(vibe.primary_tone)
+            ck = hashlib.md5(raw_string.encode("utf-8")).hexdigest()
+            cache_keys.append(ck)
+            key_to_track[ck] = song
+
+        # 2. Batch query MusicVibeCache
+        vibes = (
+            db.query(models.MusicVibeCache)
+            .filter(models.MusicVibeCache.cache_key.in_(cache_keys))
+            .all()
+        )
+
+        # 3. Maintain order of original history
+        vibe_map = {v.cache_key: v.primary_tone for v in vibes}
+        tones = []
+        for ck in cache_keys:
+            if ck in vibe_map:
+                tones.append(vibe_map[ck])
         
         return tones
 
@@ -76,28 +92,20 @@ class LifepathHarvester:
 
     @staticmethod
     def harvest_files_context(user_id: int, db: Session, hours: int = 24) -> List[str]:
-        """Fetch content from files indexed in the last N hours."""
+        """Fetch content from files indexed in the last N hours using DB-level filtering."""
         cutoff = datetime.utcnow() - timedelta(hours=hours)
-        # Query BrainEmbedding for non-note, non-lifepath sources
+        cutoff_iso = cutoff.isoformat()
+
+        # Query BrainEmbedding with JSONB operation for timestamp filtering
+        # source_type must be "file"
         embeddings = (
             db.query(models.BrainEmbedding)
             .filter(
                 models.BrainEmbedding.user_id == user_id,
-                models.BrainEmbedding.source_type != "note",
-                models.BrainEmbedding.source_type != "lifepath_daily_node"
+                models.BrainEmbedding.source_type == "file",
+                models.BrainEmbedding.metadata_["timestamp"].astext >= cutoff_iso
             )
             .all()
         )
         
-        recent_texts = []
-        for emb in embeddings:
-            ts_str = emb.metadata_.get("timestamp")
-            if ts_str:
-                try:
-                    ts = datetime.fromisoformat(ts_str)
-                    if ts >= cutoff:
-                        recent_texts.append(emb.document)
-                except (ValueError, TypeError):
-                    continue
-        
-        return recent_texts
+        return [emb.document for emb in embeddings]

@@ -150,7 +150,7 @@ async def upload_to_brain(
 
         print(f"[DEBUG] Milestone 3: Indexing text into RAG engine...")
         num_chunks = await rag_engine.async_index_text(
-            safe_filename, text, current_user.id
+            safe_filename, text, current_user.id, source_type="file"
         )
         print(f"[DEBUG] Milestone 3 Complete: Indexed {num_chunks} chunks")
 

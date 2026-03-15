@@ -5,6 +5,7 @@ class Note {
   final String? locationName;
   final String? musicTrack;
   final String? focusMode;
+  final String? healthReadiness;
   final String? sentiment;
   final bool isFavorite;
   final List<String> categories;
@@ -17,6 +18,7 @@ class Note {
     this.locationName,
     this.musicTrack,
     this.focusMode,
+    this.healthReadiness,
     this.sentiment,
     this.isFavorite = false,
     this.categories = const [],
@@ -31,6 +33,7 @@ class Note {
       locationName: json['location_name'] as String?,
       musicTrack: json['music_track'] as String?,
       focusMode: json['focus_mode'] as String?,
+      healthReadiness: json['health_readiness'] as String?,
       sentiment: json['sentiment'] as String?,
       isFavorite: json['is_favorite'] as bool? ?? false,
       categories: (json['categories'] as List?)?.map((e) => e.toString()).toList() ?? [],
