@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     JSON,
     Float,
+    Index,
 )
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -25,6 +26,7 @@ class User(Base):
     needs_loop_recalc = Column(Boolean, default=True, server_default="true")
     life_path_baseline = Column(JSON, nullable=True)  # {current: str, archive: List[str]}
     macro_goal = Column(String, nullable=True)
+    last_lifepath_eval = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     @property
@@ -48,6 +50,10 @@ class HealthSnapshot(Base):
     last_workout = Column(JSON, nullable=True)  # {type, duration_minutes, calories}
     fetched_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_health_snapshot_dedup", "user_id", "fetched_at"),
+    )
 
 
 class StoredFile(Base):
