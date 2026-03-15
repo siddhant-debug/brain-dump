@@ -49,7 +49,7 @@ class NoteService {
     try {
       final response = await _dio.post(
         '/notes/',
-        data: {'content': content, 'location': ?location},
+        data: {'content': content, 'location': location},
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return response.data;
@@ -71,7 +71,7 @@ class NoteService {
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       final List<dynamic> data = response.data;
-      return data.map((json) => Note.fromMap(json)).toList();
+      return data.map((json) => Note.fromJson(json)).toList();
     } catch (e) {
       throw Exception('Failed to fetch notes: $e');
     }

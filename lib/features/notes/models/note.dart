@@ -23,18 +23,18 @@ class Note {
     required this.createdAt,
   });
 
-  factory Note.fromMap(Map<String, dynamic> map) {
+  factory Note.fromJson(Map<String, dynamic> json) {
     return Note(
-      id: map['id'] as int,
-      content: map['content'] as String,
-      title: map['title'] as String?,
-      locationName: map['location_name'] as String?,
-      musicTrack: map['music_track'] as String?,
-      focusMode: map['focus_mode'] as String?,
-      sentiment: map['sentiment'] as String?,
-      isFavorite: map['is_favorite'] as bool? ?? false,
-      categories: (map['categories'] as List?)?.map((e) => e.toString()).toList() ?? [],
-      createdAt: DateTime.parse(map['created_at'] as String),
+      id: json['id'] as int,
+      content: json['content'] as String,
+      title: json['title'] as String?,
+      locationName: json['location_name'] as String?,
+      musicTrack: json['music_track'] as String?,
+      focusMode: json['focus_mode'] as String?,
+      sentiment: json['sentiment'] as String?,
+      isFavorite: json['is_favorite'] as bool? ?? false,
+      categories: (json['categories'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
 }

@@ -118,6 +118,11 @@ class NoteCreate(BaseModel):
 class NoteResponse(BaseModel):
     id: int
     content: str
+    title: Optional[str] = None
+    location_name: Optional[str] = None
+    music_track: Optional[str] = None
+    focus_mode: Optional[str] = None
+    health_readiness: Optional[str] = None
     is_favorite: bool
     sentiment: Optional[str] = None
     categories: Optional[List[str]] = None

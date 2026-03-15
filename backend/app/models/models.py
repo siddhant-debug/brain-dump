@@ -73,6 +73,11 @@ class Note(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
     content = Column(String, nullable=False)
+    title = Column(String, nullable=True)
+    location_name = Column(String, nullable=True)
+    music_track = Column(String, nullable=True)
+    focus_mode = Column(String, nullable=True)
+    health_readiness = Column(String, nullable=True)
     is_favorite = Column(Boolean, default=False)
     sentiment = Column(String, nullable=True)  # "Positive", "Negative", "Neutral"
     categories = Column(JSON, nullable=True)  # Array of strings

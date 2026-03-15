@@ -21,7 +21,18 @@ def create_note(
     current_user: models.User = Depends(auth.get_current_user),
 ):
     # 1. Store in SQL (The Vault)
-    db_note = models.Note(content=note.content, user_id=current_user.id)
+    # We try to extract context from headers or other available sources if possible, 
+    # but for now we expect them to be sent or inferred.
+    # Actually, we should probably pull the latest music/health context for the user.
+    
+    latest_health = db.query(models.HealthSnapshot).filter(models.HealthSnapshot.user_id == current_user.id).order_by(models.HealthSnapshot.fetched_at.desc()).first()
+    
+    db_note = models.Note(
+        content=note.content, 
+        user_id=current_user.id,
+        location_name=note.location.city if note.location else None,
+        health_readiness=latest_health.readiness if latest_health else None
+    )
     db.add(db_note)
     db.commit()
     db.refresh(db_note)

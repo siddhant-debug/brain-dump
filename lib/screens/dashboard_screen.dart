@@ -227,17 +227,22 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
       tags.add(_MetaTag(icon: "📍", label: note.locationName!, colors: colors));
     }
     if (note.musicTrack?.isNotEmpty == true) {
-      tags.add(_MetaTag(icon: "🎵", label: note.musicTrack!, colors: colors));
+      // Truncate long track names so the row doesn't overflow
+      final track = note.musicTrack!.length > 22
+          ? '${note.musicTrack!.substring(0, 22)}…'
+          : note.musicTrack!;
+      tags.add(_MetaTag(icon: "🎵", label: track, colors: colors));
     }
     if (note.focusMode?.isNotEmpty == true) {
       tags.add(_MetaTag(icon: "🎯", label: note.focusMode!, colors: colors));
     }
+    // Time always last
     tags.add(_MetaTag(icon: "🕒", label: _formatTime(note.createdAt), colors: colors));
 
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: 6),
       child: Wrap(
-        spacing: 8,
+        spacing: 6,
         runSpacing: 4,
         children: tags,
       ),
@@ -435,6 +440,7 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
             const _MinimalDivider(),
 
             // 7. Recent Notes (HTML .dump-wrap style)
+            // 7. Recent Notes
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
               child: Text(
@@ -444,54 +450,64 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
                 ).copyWith(letterSpacing: 1.2),
               ),
             ),
-            const SizedBox(height: 24),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-              child: notesAsync.when(
-                data: (notes) {
-                  if (notes.isEmpty) {
-                    return Text(
+            const SizedBox(height: 16),
+            notesAsync.when(
+              data: (notes) {
+                if (notes.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+                    child: Text(
                       "No notes yet.",
                       style: AppTextStyles.body(colors.textFaint),
-                    );
-                  }
-                   return Column(
-                    children: notes.take(3).map((note) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 24),
-                        child: Container(
-                          key: ValueKey(note.id),
-                          padding: const EdgeInsets.only(left: 20),
-                          decoration: BoxDecoration(
-                            border: Border(
-                              left: BorderSide(
-                                color: colors.spine.withValues(alpha: 0.15),
-                                width: 1.5,
-                              ),
+                    ),
+                  );
+                }
+                return Column(
+                  children: notes.take(3).map((note) {
+                    return Padding(
+                      padding: const EdgeInsets.only(
+                        left: AppSpacing.xl,
+                        right: AppSpacing.xl,
+                        bottom: 20,
+                      ),
+                      child: Container(
+                        key: ValueKey(note.id),
+                        padding: const EdgeInsets.only(left: 14),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            left: BorderSide(
+                              color: colors.spine.withValues(alpha: 0.15),
+                              width: 1.5,
                             ),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                note.content,
-                                style: AppTextStyles.bodyMed(
-                                  colors.text,
-                                ).copyWith(height: 1.5, fontSize: 14),
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              _buildNoteMetadata(note, colors),
-                            ],
-                          ),
                         ),
-                      );
-                    }).toList(),
-                  );
-                },
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Text(
-                  "Error loading notes: $e",
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              note.content,
+                              style: AppTextStyles.bodyMed(
+                                colors.text,
+                              ).copyWith(height: 1.5, fontSize: 14),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            _buildNoteMetadata(note, colors),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (e, _) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+                child: Text(
+                  "Error loading notes.",
                   style: AppTextStyles.micro(colors.red),
                 ),
               ),
