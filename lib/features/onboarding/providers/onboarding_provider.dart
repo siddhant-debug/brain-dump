@@ -1,86 +1,103 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
+import '../../../core/providers/dio_provider.dart';
+import '../../auth/controllers/auth_controller.dart';
 
 class OnboardingState {
-  final String rawDump;
-  final String energyLevel;
-  final String flowMusic;
-  final String narrativeArchetype;
-  final String primaryGoal;
+  final String baselineQ1;
+  final String baselineQ2;
+  final String baselineQ3;
+  final String innerMonologue;
+  final String macroGoal;
 
   const OnboardingState({
-    this.rawDump = '',
-    this.energyLevel = '',
-    this.flowMusic = '',
-    this.narrativeArchetype = '',
-    this.primaryGoal = '',
+    this.baselineQ1 = '',
+    this.baselineQ2 = '',
+    this.baselineQ3 = '',
+    this.innerMonologue = '',
+    this.macroGoal = '',
   });
 
   OnboardingState copyWith({
-    String? rawDump,
-    String? energyLevel,
-    String? flowMusic,
-    String? narrativeArchetype,
-    String? primaryGoal,
+    String? baselineQ1,
+    String? baselineQ2,
+    String? baselineQ3,
+    String? innerMonologue,
+    String? macroGoal,
   }) {
     return OnboardingState(
-      rawDump: rawDump ?? this.rawDump,
-      energyLevel: energyLevel ?? this.energyLevel,
-      flowMusic: flowMusic ?? this.flowMusic,
-      narrativeArchetype: narrativeArchetype ?? this.narrativeArchetype,
-      primaryGoal: primaryGoal ?? this.primaryGoal,
+      baselineQ1: baselineQ1 ?? this.baselineQ1,
+      baselineQ2: baselineQ2 ?? this.baselineQ2,
+      baselineQ3: baselineQ3 ?? this.baselineQ3,
+      innerMonologue: innerMonologue ?? this.innerMonologue,
+      macroGoal: macroGoal ?? this.macroGoal,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'rawDump': rawDump,
-      'energyLevel': energyLevel,
-      'flowMusic': flowMusic,
-      'narrativeArchetype': narrativeArchetype,
-      'primaryGoal': primaryGoal,
+      'baselineQ1': baselineQ1,
+      'baselineQ2': baselineQ2,
+      'baselineQ3': baselineQ3,
+      'innerMonologue': innerMonologue,
+      'macroGoal': macroGoal,
     };
   }
 }
 
-/*
-1 : OnboardingNotifier collects user profile data during the first launch.
-It holds a local state that is eventually 'Initialized' into the system.
-*/
 class OnboardingNotifier extends StateNotifier<OnboardingState> {
-  OnboardingNotifier() : super(const OnboardingState());
+  final Ref ref;
+  OnboardingNotifier(this.ref) : super(const OnboardingState());
 
-  void updateRawDump(String dump) {
-    state = state.copyWith(rawDump: dump);
-  }
-
-  void updateEnergyLevel(String level) {
-    state = state.copyWith(energyLevel: level);
-  }
-
-  void updateFlowMusic(String music) {
-    state = state.copyWith(flowMusic: music);
-  }
-
-  void updateNarrativeArchetype(String archetype) {
-    state = state.copyWith(narrativeArchetype: archetype);
-  }
-
-  void updatePrimaryGoal(String goal) {
-    state = state.copyWith(primaryGoal: goal);
-  }
+  void updateBaselineQ1(String value) => state = state.copyWith(baselineQ1: value);
+  void updateBaselineQ2(String value) => state = state.copyWith(baselineQ2: value);
+  void updateBaselineQ3(String value) => state = state.copyWith(baselineQ3: value);
+  void updateInnerMonologue(String value) => state = state.copyWith(innerMonologue: value);
+  void updateMacroGoal(String value) => state = state.copyWith(macroGoal: value);
 
   /*
   2 : completeOnboarding: Serializes the collected 'Vibe' data for persistence.
   */
-  Map<String, dynamic> completeOnboarding() {
-    final data = state.toJson();
-    debugPrint('[Onboarding] Syncing to Neural Core: $data');
-    return data;
+  Future<bool> submitLifePathBaseline() async {
+    final dio = ref.read(dioProvider);
+    final authController = ref.read(authControllerProvider.notifier);
+    final token = await authController.getToken();
+
+    if (token == null) return false;
+
+    // Package Step 1 & 2 answers as the baseline text
+    final baselineText = """
+Friction: ${state.baselineQ3}
+Current Mindset: ${state.baselineQ2}
+Core Intent: ${state.baselineQ1}
+Monologue: ${state.innerMonologue}
+""".trim();
+
+    try {
+      final response = await dio.post(
+        '/api/lifepath/baseline',
+        data: {
+          'baseline_text': baselineText,
+          'macro_goal': state.macroGoal,
+        },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+
+      if (response.statusCode == 200) {
+        // Refresh the user state so main.dart knows we're done
+        ref.invalidate(userProvider);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('[Onboarding] Submission failed: $e');
+      return false;
+    }
   }
 }
 
 final onboardingProvider =
     StateNotifierProvider<OnboardingNotifier, OnboardingState>((ref) {
-      return OnboardingNotifier();
-    });
+  return OnboardingNotifier(ref);
+});

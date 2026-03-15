@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../music/controllers/music_sync_controller.dart';
 import '../../../music/services/music_service.dart';
@@ -11,6 +12,7 @@ class MusicPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(themeProvider).colors;
     final musicState = ref.watch(musicSyncControllerProvider);
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 160),
@@ -23,13 +25,13 @@ class MusicPage extends ConsumerWidget {
             trailing: MusicStatusChip(state: musicState),
           ),
           const SizedBox(height: 16),
-          _buildMusicContent(musicState, ref),
+          _buildMusicContent(musicState, ref, colors),
         ],
       ),
     );
   }
 
-  Widget _buildMusicContent(MusicContextState musicState, WidgetRef ref) {
+  Widget _buildMusicContent(MusicContextState musicState, WidgetRef ref, CircadianColors colors) {
     if (musicState.isAnalyzing) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 32),
@@ -40,7 +42,7 @@ class MusicPage extends ConsumerWidget {
               const SizedBox(height: 16),
               Text(
                 'Analyzing your current vibe...',
-                style: TextStyle(color: AppColors.textSecondary),
+                style: TextStyle(color: colors.textDim),
               ),
             ],
           ),
@@ -54,7 +56,7 @@ class MusicPage extends ConsumerWidget {
         children: [
           Text(
             'Apple Music is not connected. Connect in the settings to start tracking your music vibe.',
-            style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+            style: TextStyle(color: colors.textDim, height: 1.5),
           ),
           const SizedBox(height: 16),
           ElevatedButton.icon(
@@ -64,7 +66,7 @@ class MusicPage extends ConsumerWidget {
             icon: const Icon(Icons.music_note_rounded),
             label: const Text('Connect Apple Music'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accent,
+              backgroundColor: colors.accent,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -78,46 +80,42 @@ class MusicPage extends ConsumerWidget {
 
     if (!musicState.isPlaying || musicState.currentSong == null) {
       if (musicState.recentSongs.isNotEmpty) {
-        return _buildVibeContent(null, musicState);
+        return _buildVibeContent(null, musicState, colors);
       }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Play a song on Apple Music to see your current vibe analysis.',
-            style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+            style: TextStyle(color: colors.textDim, height: 1.5),
           ),
         ],
       );
     }
 
-    return _buildVibeContent(musicState.currentSong, musicState);
+    return _buildVibeContent(musicState.currentSong, musicState, colors);
   }
 
-  Widget _buildVibeContent(MusicItem? song, MusicContextState musicState) {
+  Widget _buildVibeContent(MusicItem? song, MusicContextState musicState, CircadianColors colors) {
     final vibe = musicState.analyzedVibe;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (song != null) ...[
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceHigh,
-              borderRadius: BorderRadius.circular(16),
-            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
             child: Row(
               children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.album_rounded,
-                    color: AppColors.textSecondary,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.input),
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    color: colors.surface,
+                    child: Icon(
+                      Icons.album_rounded,
+                      color: colors.textDim,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -126,38 +124,30 @@ class MusicPage extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Now Playing',
-                        style: TextStyle(
-                          color: AppColors.accent,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5,
+                        'NOW PLAYING',
+                        style: AppTextStyles.label(colors.accent).copyWith(
+                          letterSpacing: 1.2,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         song.title ?? 'Unknown Song',
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: AppTextStyles.bodyMed(colors.text).copyWith(
                           fontSize: 16,
-                          fontWeight: FontWeight.w600,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
                         song.artistName ?? 'Unknown Artist',
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 14,
-                        ),
+                        style: AppTextStyles.caption(colors.textDim),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                Icon(Icons.graphic_eq_rounded, color: AppColors.accent),
+                Icon(Icons.graphic_eq_rounded, color: colors.accent, size: 20),
               ],
             ),
           ),
@@ -166,7 +156,7 @@ class MusicPage extends ConsumerWidget {
           Text(
             'Based on your recent listening',
             style: TextStyle(
-              color: AppColors.textSecondary,
+              color: colors.textDim,
               fontSize: 13,
               fontStyle: FontStyle.italic,
             ),
@@ -175,104 +165,92 @@ class MusicPage extends ConsumerWidget {
         ],
         if (vibe != null) ...[
           Text(
-            'Current Mood',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+            'CURRENT MOOD',
+            style: AppTextStyles.label(colors.textDim).copyWith(
+              letterSpacing: 1.2,
             ),
           ),
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(
+              vertical: AppSpacing.md,
+              horizontal: AppSpacing.md,
+            ),
             decoration: BoxDecoration(
-              gradient: AppColors.subtleCardGradient,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(AppRadius.card),
+              border: Border.all(color: colors.accent.withValues(alpha: 0.1)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.auto_awesome_rounded,
-                      color: Color(0xFFA5B4FC),
-                      size: 18,
+                      color: colors.accent,
+                      size: 16,
                     ),
                     const SizedBox(width: 8),
                     Text(
                       vibe.primaryTone,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: AppTextStyles.bodyMed(colors.text),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 Text(
                   vibe.shortDescription,
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    height: 1.5,
-                    fontSize: 14,
+                  style: AppTextStyles.serifBody(colors.textDim).copyWith(
+                    fontSize: 16,
+                    height: 1.4,
                   ),
                 ),
               ],
             ),
           ),
           if (musicState.recentSongs.isNotEmpty) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: 32),
             Text(
-              'Recent Context',
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+              'RECENT CONTEXT',
+              style: AppTextStyles.label(colors.textDim).copyWith(
+                letterSpacing: 1.2,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             ...musicState.recentSongs.take(5).map((recentSong) {
               return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: 16),
                 child: Row(
                   children: [
                     Container(
-                      width: 32,
-                      height: 32,
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(6),
+                        color: colors.surface,
+                        borderRadius: BorderRadius.circular(AppRadius.icon),
                       ),
                       child: Icon(
                         Icons.history_rounded,
-                        color: AppColors.textSecondary,
+                        color: colors.textDim,
                         size: 16,
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             recentSong.title ?? 'Unknown Song',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                            ),
+                            style: AppTextStyles.bodyMed(colors.text),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
                             recentSong.artistName ?? 'Unknown Artist',
-                            style: TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 12,
-                            ),
+                            style: AppTextStyles.caption(colors.textDim),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -288,22 +266,22 @@ class MusicPage extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.error.withValues(alpha: 0.1),
+              color: colors.red.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.error_outline_rounded,
-                  color: AppColors.error,
+                  color: colors.red,
                   size: 20,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     musicState.error!,
-                    style: const TextStyle(
-                      color: AppColors.error,
+                    style: TextStyle(
+                      color: colors.red,
                       fontSize: 13,
                     ),
                   ),

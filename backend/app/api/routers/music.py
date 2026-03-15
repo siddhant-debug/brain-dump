@@ -121,7 +121,7 @@ def analyze_music_context(
                 dominance=0.0,
             )
 
-        tone_data = MusicAnalyzerService.analyze_tone(request_data, db)
+        tone_data = MusicAnalyzerService.analyze_tone(request_data, db, current_user.id)
 
         return MusicContextResponse(
             primary_tone=tone_data.get("primary_tone", "Unknown"),

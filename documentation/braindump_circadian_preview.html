@@ -1,0 +1,440 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; }
+
+  .phone-wrap {
+    display: flex;
+    gap: 24px;
+    padding: 1.5rem 0;
+    overflow-x: auto;
+    align-items: flex-start;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .phone-col { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .phase-label { font-size: 11px; font-weight: 500; color: var(--color-text-secondary); letter-spacing: 0.04em; text-transform: uppercase; }
+
+  .phone {
+    width: 200px;
+    height: 400px;
+    border-radius: 28px;
+    overflow: hidden;
+    border: 0.5px solid var(--color-border-secondary);
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px 6px;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .nav-bar {
+    padding: 8px 14px 10px;
+    border-bottom: 0.5px solid;
+  }
+  .nav-title { font-size: 15px; font-weight: 600; }
+  .nav-sub { font-size: 10px; margin-top: 1px; opacity: 0.6; }
+
+  .screen-body {
+    flex: 1;
+    overflow: hidden;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .health-strip {
+    display: flex;
+    gap: 6px;
+  }
+
+  .health-chip {
+    flex: 1;
+    border-radius: 10px;
+    padding: 6px 8px;
+    font-size: 9px;
+    font-weight: 500;
+  }
+  .chip-val { font-size: 13px; font-weight: 700; display: block; }
+
+  .section-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    margin-top: 2px;
+  }
+
+  .timeline { display: flex; flex-direction: column; gap: 0; position: relative; padding-left: 20px; flex: 1; }
+
+  .tl-line {
+    position: absolute;
+    left: 7px;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    border-radius: 1px;
+    opacity: 0.25;
+  }
+
+  .tl-item { display: flex; align-items: flex-start; gap: 8px; position: relative; margin-bottom: 6px; }
+
+  .tl-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 4px;
+    position: absolute;
+    left: -16px;
+  }
+  .tl-dot.goal { width: 14px; height: 14px; margin-top: 2px; left: -18px; }
+
+  .tl-card {
+    flex: 1;
+    border-radius: 10px;
+    padding: 7px 9px;
+    border-left: 2px solid;
+    font-size: 9.5px;
+    line-height: 1.4;
+  }
+  .tl-card-title { font-size: 10px; font-weight: 600; margin-bottom: 2px; }
+  .tl-meta { font-size: 8px; opacity: 0.55; margin-top: 3px; display: flex; gap: 5px; flex-wrap: wrap; }
+  .ctx-chip { padding: 1px 5px; border-radius: 8px; font-size: 7.5px; font-weight: 500; }
+
+  .dump-bar {
+    margin: 4px 0 0;
+    border-radius: 12px;
+    padding: 8px 10px;
+    font-size: 9px;
+    opacity: 0.7;
+    border: 0.5px solid;
+  }
+
+  .tab-bar {
+    display: flex;
+    padding: 6px 8px 8px;
+    gap: 4px;
+    border-top: 0.5px solid;
+  }
+  .tab { flex: 1; text-align: center; font-size: 8px; padding: 4px 2px; border-radius: 8px; opacity: 0.5; }
+  .tab.active { opacity: 1; font-weight: 600; }
+  .tab-icon { font-size: 14px; display: block; }
+
+  /* ── Theme definitions ── */
+  .dawn { background: #F5F0E8; }
+  .dawn .status-bar { color: #1A1A2E; }
+  .dawn .nav-bar { background: #F5F0E8; border-color: rgba(26,26,46,0.1); }
+  .dawn .nav-title { color: #1A1A2E; }
+  .dawn .health-chip { background: #EDE7D5; color: #1A1A2E; }
+  .dawn .tl-line { background: #E8A838; }
+  .dawn .tl-card { background: #FDFAF4; color: #1A1A2E; }
+  .dawn .tl-card.green { border-left-color: #4A7C59; }
+  .dawn .tl-card.red { border-left-color: #C0392B; }
+  .dawn .tl-dot { background: #1A1A2E; }
+  .dawn .tl-dot.goal { background: #E8A838; }
+  .dawn .section-label { color: #1A1A2E; }
+  .dawn .tl-card-title { color: #1A1A2E; }
+  .dawn .tl-card p { color: #4A4A5E; }
+  .dawn .dump-bar { background: #FDFAF4; border-color: rgba(232,168,56,0.4); color: #9A9AAE; }
+  .dawn .tab-bar { background: #F5F0E8; border-color: rgba(26,26,46,0.1); }
+  .dawn .tab { color: #1A1A2E; }
+  .dawn .tab.active { background: rgba(232,168,56,0.15); color: #B8821A; }
+
+  .day { background: #FFFFFF; }
+  .day .status-bar { color: #111111; }
+  .day .nav-bar { background: #FFFFFF; border-color: rgba(17,17,17,0.1); }
+  .day .nav-title { color: #111111; }
+  .day .health-chip { background: #F0F0EE; color: #111111; }
+  .day .tl-line { background: #2D6A4F; }
+  .day .tl-card { background: #F7F7F5; color: #111111; }
+  .day .tl-card.green { border-left-color: #52B788; }
+  .day .tl-card.red { border-left-color: #E63946; }
+  .day .tl-dot { background: #111111; }
+  .day .tl-dot.goal { background: #2D6A4F; }
+  .day .section-label { color: #111111; }
+  .day .tl-card-title { color: #111111; }
+  .day .tl-card p { color: #444444; }
+  .day .dump-bar { background: #F7F7F5; border-color: rgba(45,106,79,0.3); color: #999; }
+  .day .tab-bar { background: #FFFFFF; border-color: rgba(17,17,17,0.1); }
+  .day .tab { color: #111111; }
+  .day .tab.active { background: rgba(45,106,79,0.1); color: #2D6A4F; }
+
+  .dusk { background: #1E1B2E; }
+  .dusk .status-bar { color: #E8E0F0; }
+  .dusk .nav-bar { background: #1E1B2E; border-color: rgba(232,224,240,0.1); }
+  .dusk .nav-title { color: #E8E0F0; }
+  .dusk .health-chip { background: #2A2640; color: #E8E0F0; }
+  .dusk .tl-line { background: #FF6B6B; }
+  .dusk .tl-card { background: #2A2640; color: #E8E0F0; }
+  .dusk .tl-card.green { border-left-color: #6BCB77; }
+  .dusk .tl-card.red { border-left-color: #FF4757; }
+  .dusk .tl-dot { background: #E8E0F0; }
+  .dusk .tl-dot.goal { background: #FF6B6B; }
+  .dusk .section-label { color: #E8E0F0; }
+  .dusk .tl-card-title { color: #E8E0F0; }
+  .dusk .tl-card p { color: #B0A8C0; }
+  .dusk .dump-bar { background: #2A2640; border-color: rgba(255,107,107,0.3); color: #887898; }
+  .dusk .tab-bar { background: #1E1B2E; border-color: rgba(232,224,240,0.1); }
+  .dusk .tab { color: #E8E0F0; }
+  .dusk .tab.active { background: rgba(255,107,107,0.15); color: #FF6B6B; }
+
+  .night { background: #0D0D0F; }
+  .night .status-bar { color: #C8C8D0; }
+  .night .nav-bar { background: #0D0D0F; border-color: rgba(200,200,208,0.08); }
+  .night .nav-title { color: #C8C8D0; }
+  .night .health-chip { background: #141418; color: #C8C8D0; }
+  .night .tl-line { background: #7B68EE; }
+  .night .tl-card { background: #141418; color: #C8C8D0; }
+  .night .tl-card.green { border-left-color: #4ECDC4; }
+  .night .tl-card.red { border-left-color: #FF6B6B; }
+  .night .tl-dot { background: #C8C8D0; }
+  .night .tl-dot.goal { background: #7B68EE; }
+  .night .section-label { color: #C8C8D0; }
+  .night .tl-card-title { color: #C8C8D0; }
+  .night .tl-card p { color: #888890; }
+  .night .dump-bar { background: #141418; border-color: rgba(123,104,238,0.3); color: #555560; }
+  .night .tab-bar { background: #0D0D0F; border-color: rgba(200,200,208,0.08); }
+  .night .tab { color: #C8C8D0; }
+  .night .tab.active { background: rgba(123,104,238,0.15); color: #7B68EE; }
+</style>
+
+<div class="phone-wrap">
+
+  <!-- DAWN -->
+  <div class="phone-col">
+    <div class="phone dawn">
+      <div class="status-bar"><span>9:14</span><span>●●● 100%</span></div>
+      <div class="nav-bar">
+        <div class="nav-title">Good morning, Sid</div>
+        <div class="nav-sub">Dawn · Readiness HIGH · 62 bpm</div>
+      </div>
+      <div class="screen-body">
+        <div class="health-strip">
+          <div class="health-chip"><span class="chip-val">8,241</span>steps</div>
+          <div class="health-chip"><span class="chip-val">HIGH</span>readiness</div>
+          <div class="health-chip"><span class="chip-val">62ms</span>HRV</div>
+        </div>
+        <div class="section-label">Life path</div>
+        <div class="timeline">
+          <div class="tl-line"></div>
+          <div class="tl-item">
+            <div class="tl-dot goal"></div>
+            <div class="tl-card green">
+              <div class="tl-card-title">Ship BrainDump v1</div>
+              <p>Work goal · 68% aligned</p>
+              <div class="tl-meta"><span class="ctx-chip" style="background:#E8F4EC;color:#2D6A4F">on track</span></div>
+            </div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-card green">
+              <div class="tl-card-title">Morning brain dump</div>
+              <p>Thinking about the RAG pipeline refactor...</p>
+              <div class="tl-meta">
+                <span class="ctx-chip" style="background:#E8F0F8;color:#185FA5">Koramangala</span>
+                <span class="ctx-chip" style="background:#F0EAF8;color:#534AB7">Daft Punk</span>
+              </div>
+            </div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-card red">
+              <div class="tl-card-title">Skipped gym again</div>
+              <p>Need to fix this habit loop...</p>
+              <div class="tl-meta"><span class="ctx-chip" style="background:#FDEAEA;color:#993C1D">off goal</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="dump-bar">What's on your mind right now...</div>
+      </div>
+      <div class="tab-bar">
+        <div class="tab"><span class="tab-icon">⌂</span>home</div>
+        <div class="tab active"><span class="tab-icon">◎</span>path</div>
+        <div class="tab"><span class="tab-icon">✦</span>ask</div>
+        <div class="tab"><span class="tab-icon">◈</span>brain</div>
+      </div>
+    </div>
+    <div class="phase-label">Dawn · 5–10am</div>
+  </div>
+
+  <!-- DAY -->
+  <div class="phone-col">
+    <div class="phone day">
+      <div class="status-bar"><span>2:31</span><span>●●● 84%</span></div>
+      <div class="nav-bar">
+        <div class="nav-title">Afternoon, Sid</div>
+        <div class="nav-sub">Day · Readiness HIGH · 67 bpm</div>
+      </div>
+      <div class="screen-body">
+        <div class="health-strip">
+          <div class="health-chip"><span class="chip-val">12,540</span>steps</div>
+          <div class="health-chip"><span class="chip-val">HIGH</span>readiness</div>
+          <div class="health-chip"><span class="chip-val">58ms</span>HRV</div>
+        </div>
+        <div class="section-label">Life path</div>
+        <div class="timeline">
+          <div class="tl-line"></div>
+          <div class="tl-item">
+            <div class="tl-dot goal"></div>
+            <div class="tl-card green">
+              <div class="tl-card-title">Save ₹5L this year</div>
+              <p>Financial goal · 45% aligned</p>
+              <div class="tl-meta"><span class="ctx-chip" style="background:#EAF5EE;color:#0F6E56">improving</span></div>
+            </div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-card green">
+              <div class="tl-card-title">Postgres scaling notes</div>
+              <p>PgBouncer implementation plan drafted</p>
+              <div class="tl-meta">
+                <span class="ctx-chip" style="background:#E8F0F8;color:#185FA5">HSR Layout</span>
+              </div>
+            </div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-card red">
+              <div class="tl-card-title">Stress about finances</div>
+              <p>Keep looping on this — need to make a plan</p>
+              <div class="tl-meta"><span class="ctx-chip" style="background:#FDEAEA;color:#993C1D">recurring loop</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="dump-bar">Drop a thought...</div>
+      </div>
+      <div class="tab-bar">
+        <div class="tab"><span class="tab-icon">⌂</span>home</div>
+        <div class="tab active"><span class="tab-icon">◎</span>path</div>
+        <div class="tab"><span class="tab-icon">✦</span>ask</div>
+        <div class="tab"><span class="tab-icon">◈</span>brain</div>
+      </div>
+    </div>
+    <div class="phase-label">Day · 10am–5pm</div>
+  </div>
+
+  <!-- DUSK -->
+  <div class="phone-col">
+    <div class="phone dusk">
+      <div class="status-bar"><span>7:48</span><span>●●● 71%</span></div>
+      <div class="nav-bar">
+        <div class="nav-title">Evening, Sid</div>
+        <div class="nav-sub">Dusk · Readiness MED · 72 bpm</div>
+      </div>
+      <div class="screen-body">
+        <div class="health-strip">
+          <div class="health-chip"><span class="chip-val">15,200</span>steps</div>
+          <div class="health-chip"><span class="chip-val">MED</span>readiness</div>
+          <div class="health-chip"><span class="chip-val">44ms</span>HRV</div>
+        </div>
+        <div class="section-label">Life path</div>
+        <div class="timeline">
+          <div class="tl-line"></div>
+          <div class="tl-item">
+            <div class="tl-dot goal"></div>
+            <div class="tl-card green">
+              <div class="tl-card-title">Personal wellbeing</div>
+              <p>Health goal · 72% aligned</p>
+              <div class="tl-meta"><span class="ctx-chip" style="background:rgba(107,203,119,0.15);color:#6BCB77">strong week</span></div>
+            </div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-card green">
+              <div class="tl-card-title">Gym done — felt strong</div>
+              <p>Breaking the skip loop finally</p>
+              <div class="tl-meta">
+                <span class="ctx-chip" style="background:rgba(155,89,182,0.2);color:#C39BD3">Weeknd playing</span>
+              </div>
+            </div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-card red">
+              <div class="tl-card-title">Still vaping today</div>
+              <p>Want to quit but keep circling back</p>
+              <div class="tl-meta"><span class="ctx-chip" style="background:rgba(255,71,87,0.15);color:#FF6B6B">habit loop</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="dump-bar">Reflect on your day...</div>
+      </div>
+      <div class="tab-bar">
+        <div class="tab"><span class="tab-icon">⌂</span>home</div>
+        <div class="tab active"><span class="tab-icon">◎</span>path</div>
+        <div class="tab"><span class="tab-icon">✦</span>ask</div>
+        <div class="tab"><span class="tab-icon">◈</span>brain</div>
+      </div>
+    </div>
+    <div class="phase-label">Dusk · 5–9pm</div>
+  </div>
+
+  <!-- NIGHT -->
+  <div class="phone-col">
+    <div class="phone night">
+      <div class="status-bar"><span>11:22</span><span>●●● 55%</span></div>
+      <div class="nav-bar">
+        <div class="nav-title">Late night, Sid</div>
+        <div class="nav-sub">Night · Readiness LOW · 58 bpm</div>
+      </div>
+      <div class="screen-body">
+        <div class="health-strip">
+          <div class="health-chip"><span class="chip-val">15,800</span>steps</div>
+          <div class="health-chip"><span class="chip-val">LOW</span>readiness</div>
+          <div class="health-chip"><span class="chip-val">38ms</span>HRV</div>
+        </div>
+        <div class="section-label">Life path</div>
+        <div class="timeline">
+          <div class="tl-line"></div>
+          <div class="tl-item">
+            <div class="tl-dot goal"></div>
+            <div class="tl-card green">
+              <div class="tl-card-title">Become a better builder</div>
+              <p>Work goal · 81% aligned</p>
+              <div class="tl-meta"><span class="ctx-chip" style="background:rgba(78,205,196,0.12);color:#4ECDC4">best week yet</span></div>
+            </div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-card green">
+              <div class="tl-card-title">Late night clarity</div>
+              <p>The life path idea — this could be real</p>
+              <div class="tl-meta">
+                <span class="ctx-chip" style="background:rgba(123,104,238,0.15);color:#9B8FEE">Home · quiet</span>
+              </div>
+            </div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-dot"></div>
+            <div class="tl-card red">
+              <div class="tl-card-title">Sleep is off again</div>
+              <p>3rd late night this week</p>
+              <div class="tl-meta"><span class="ctx-chip" style="background:rgba(255,107,107,0.12);color:#FF6B6B">health risk</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="dump-bar">Whatever's in your head...</div>
+      </div>
+      <div class="tab-bar">
+        <div class="tab"><span class="tab-icon">⌂</span>home</div>
+        <div class="tab active"><span class="tab-icon">◎</span>path</div>
+        <div class="tab"><span class="tab-icon">✦</span>ask</div>
+        <div class="tab"><span class="tab-icon">◈</span>brain</div>
+      </div>
+    </div>
+    <div class="phase-label">Night · 9pm–5am</div>
+  </div>
+
+</div>

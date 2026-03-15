@@ -6,9 +6,10 @@ from sqlalchemy.orm import Session
 from google import genai
 from google.genai import types
 
-from app.models.models import MusicVibeCache
+from app.models.models import MusicVibeCache, MusicHistory
 from app.schemas.schemas import MusicContextRequest
 from app.services.gemini_service import gemini_service
+from app.core.prompts import MUSIC_ANALYSIS_PROMPT, MUSIC_ANALYSIS_SYSTEM_INSTRUCTION
 
 logger = logging.getLogger(__name__)
 
@@ -72,12 +73,12 @@ class MusicAnalyzerService:
             logger.error(f"[MusicAnalyzer] Failed to save to cache: {e}")
 
     @staticmethod
-    def analyze_tone(request: MusicContextRequest, db: Session) -> dict:
+    def analyze_tone(request: MusicContextRequest, db: Session, user_id: int) -> dict:
         """
         Main entry point. Generates key, checks cache, and falls back to LLM.
         """
         logger.info(
-            f"[MusicAnalyzer] Incoming request - is_playing: {request.is_playing_now}, current: {request.current_song}, recent count: {len(request.recent_songs) if request.recent_songs else 0}"
+            f"[MusicAnalyzer] Incoming request - user: {user_id}, is_playing: {request.is_playing_now}, current: {request.current_song}, recent count: {len(request.recent_songs) if request.recent_songs else 0}"
         )
 
         # Validate input
@@ -107,6 +108,8 @@ class MusicAnalyzerService:
         cached_vibe = MusicAnalyzerService._get_cached_vibe(cache_key, db)
         if cached_vibe:
             logger.info(f"[MusicAnalyzer] Cache HIT for key {cache_key}: {cached_vibe}")
+            # Still persist history even on cache hit if needed, but router handles on-demand
+            MusicAnalyzerService._persist_history(user_id, request, db)
             return cached_vibe
 
         logger.info(
@@ -139,19 +142,10 @@ class MusicAnalyzerService:
             f"[MusicAnalyzer] Constructed Song Context for Gemini:\n{song_context}"
         )
 
-        prompt = f"""
-        Analyze the following song(s): 
-        {song_context}
-        
-        What is the emotional tone, nature, and likely mindset of the listener? 
-        Determine their current mood using a 3-dimensional vector (Valence, Arousal, Dominance) 
-        where each is a float between -1.0 and 1.0.
-        Choose a 'primary_tone' from categories such as: Happy, Sad, Romance, Work/Focus, Gym/High-Energy, Chill/Relaxed. 
-        Write a 'short_description' (1 short sentence) characterizing the vibe.
-        
-        Return a valid JSON object with EXACTLY these keys: 
-        "primary_tone" (string), "short_description" (string), "valence" (float), "arousal" (float), "dominance" (float).
-        """
+        # H-8: Persist music history for Life Path Engine
+        MusicAnalyzerService._persist_history(user_id, request, db)
+
+        prompt = MUSIC_ANALYSIS_PROMPT.format(song_context=song_context)
 
         # 3. Call Gemini
         try:
@@ -166,7 +160,7 @@ class MusicAnalyzerService:
                 config=types.GenerateContentConfig(
                     temperature=0.2,  # Low temp for categorization consistency
                     response_mime_type="application/json",
-                    system_instruction="You are a music analysis engine classifying emotional tone and listener mindset based purely on song titles and artists.",
+                    system_instruction=MUSIC_ANALYSIS_SYSTEM_INSTRUCTION,
                 ),
             )
 
@@ -197,3 +191,37 @@ class MusicAnalyzerService:
                 "arousal": 0.0,
                 "dominance": 0.0,
             }
+
+    @staticmethod
+    def _persist_history(user_id: int, request: MusicContextRequest, db: Session):
+        """Saves tracks to music_history table for the current user."""
+        try:
+            songs_to_save = []
+            if request.is_playing_now and request.current_song:
+                songs_to_save.append(request.current_song)
+            if request.recent_songs:
+                songs_to_save.extend(request.recent_songs)
+            
+            for s in songs_to_save:
+                # Check if already exists in last 10 entries to avoid spamming
+                exists = db.query(MusicHistory).filter(
+                    MusicHistory.user_id == user_id,
+                    MusicHistory.title == s.title,
+                    MusicHistory.artist == s.artist
+                ).order_by(MusicHistory.played_at.desc()).first()
+                
+                # If seen in last hour, skip to avoid duplicates from frequent polling
+                if exists and (datetime.utcnow() - exists.played_at.replace(tzinfo=None)).total_seconds() < 3600:
+                    continue
+
+                new_entry = MusicHistory(
+                    user_id=user_id,
+                    title=s.title,
+                    artist=s.artist
+                )
+                db.add(new_entry)
+            
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"[MusicAnalyzer] Failed to persist music history: {e}")

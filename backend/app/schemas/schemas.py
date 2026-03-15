@@ -32,6 +32,7 @@ class UserLogin(BaseModel):
 
 class UserResponse(UserBase):
     id: int
+    has_completed_life_path: bool
     created_at: datetime
 
     class Config:
@@ -152,6 +153,23 @@ class ChatMessageResponse(BaseModel):
     sender: str
     timestamp: datetime
     context_sources: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LifePathBaselineRequest(BaseModel):
+    baseline_text: str
+    macro_goal: str
+
+
+class LifePathNodeResponse(BaseModel):
+    id: int
+    user_id: int
+    computed_at: datetime
+    trajectory: dict
+    context_snapshot: dict
+    embedding_id: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -82,6 +82,6 @@ Widget errorCard(String title, String msg) => CardShell(
   title: title,
   child: Text(
     msg,
-    style: const TextStyle(color: AppColors.error, fontSize: 13),
+    style: TextStyle(color: AppColors.error, fontSize: 13),
   ),
 );

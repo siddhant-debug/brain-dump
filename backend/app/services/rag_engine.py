@@ -107,7 +107,12 @@ class BM25Store:
                         BrainEmbedding.document,
                         BrainEmbedding.metadata_,
                     )
-                    .filter(BrainEmbedding.user_id == user_id)
+                    .filter(
+                        and_(
+                            BrainEmbedding.user_id == user_id,
+                            BrainEmbedding.source_type == "note",
+                        )
+                    )
                     .all()
                 )
 
@@ -748,7 +753,12 @@ def retrieve_context(
 
     vector_results = (
         db.query(BrainEmbedding)
-        .filter(BrainEmbedding.user_id == user_id)
+        .filter(
+            and_(
+                BrainEmbedding.user_id == user_id,
+                BrainEmbedding.source_type == "note",
+            )
+        )
         .order_by(BrainEmbedding.embedding.l2_distance(query_embedding))
         .limit(n_results)
         .all()

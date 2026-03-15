@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../core/providers/dio_provider.dart';
+import '../models/note.dart';
 
 // [Architect] PROVIDER DEFINITION
 // This is the entry point for the UI to access the NoteService.
@@ -13,7 +14,7 @@ final noteServiceProvider = Provider<NoteService>((ref) {
 // [Architect] FUTURE PROVIDER (DATA FETCHING)
 // This provider automatically calls getNotes() when watched.
 // It handles the AsyncValue state (loading/data/error) for the UI.
-final notesProvider = FutureProvider<List<dynamic>>((ref) async {
+final notesProvider = FutureProvider<List<Note>>((ref) async {
   return ref.watch(noteServiceProvider).getNotes();
 });
 
@@ -60,7 +61,7 @@ class NoteService {
   /*
   5 : getNotes retrieves all previously saved thoughts from the vault.
   */
-  Future<List<dynamic>> getNotes() async {
+  Future<List<Note>> getNotes() async {
     final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
@@ -69,7 +70,8 @@ class NoteService {
         '/notes/',
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
-      return response.data;
+      final List<dynamic> data = response.data;
+      return data.map((json) => Note.fromMap(json)).toList();
     } catch (e) {
       throw Exception('Failed to fetch notes: $e');
     }
