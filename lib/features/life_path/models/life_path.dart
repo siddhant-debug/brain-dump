@@ -36,17 +36,28 @@ class LifePathItem {
   });
 
   factory LifePathItem.fromMap(Map<String, dynamic> map) {
+    final trajectory = map['trajectory'] as Map<String, dynamic>? ?? {};
+    final progress = trajectory['progress'] as List? ?? [];
+    
+    // Use the first progress point as title, or a default string
+    String title = progress.isNotEmpty ? progress.first.toString() : "Daily Insight";
+    String subtitle = "";
+    
+    if (trajectory['short_term_goals'] != null && (trajectory['short_term_goals'] as List).isNotEmpty) {
+      subtitle = "Next: ${(trajectory['short_term_goals'] as List).first}";
+    }
+
     return LifePathItem(
-      id: map['id'] as String,
-      title: map['title'] as String,
-      subtitle: map['subtitle'] as String,
+      id: map['id'].toString(),
+      title: title,
+      subtitle: subtitle,
       tags: (map['tags'] as List? ?? [])
           .map((t) => LifePathTag.fromMap(t as Map<String, dynamic>))
           .toList(),
       isGoal: map['is_goal'] as bool? ?? false,
       isDimmed: map['is_dimmed'] as bool? ?? false,
-      isNegative: map['is_negative'] as bool? ?? false,
-      createdAt: DateTime.parse(map['created_at'] as String),
+      isNegative: (trajectory['blockers'] as List? ?? []).isNotEmpty,
+      createdAt: DateTime.parse(map['computed_at'] as String),
     );
   }
 }

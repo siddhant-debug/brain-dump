@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timedelta
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -50,8 +51,10 @@ class LifepathHarvester:
 
         tones = []
         for song in history:
-            # Match against MusicVibeCache
-            cache_key = f"{song.title.lower()}|{song.artist.lower()}"
+            # Match against MusicVibeCache using MD5 hashing (matching MusicAnalyzerService)
+            raw_string = f"Single:{song.title}{song.artist}"
+            cache_key = hashlib.md5(raw_string.encode("utf-8")).hexdigest()
+            
             vibe = db.query(models.MusicVibeCache).filter(models.MusicVibeCache.cache_key == cache_key).first()
             if vibe:
                 tones.append(vibe.primary_tone)
@@ -70,3 +73,31 @@ class LifepathHarvester:
             )
             .all()
         )
+
+    @staticmethod
+    def harvest_files_context(user_id: int, db: Session, hours: int = 24) -> List[str]:
+        """Fetch content from files indexed in the last N hours."""
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        # Query BrainEmbedding for non-note, non-lifepath sources
+        embeddings = (
+            db.query(models.BrainEmbedding)
+            .filter(
+                models.BrainEmbedding.user_id == user_id,
+                models.BrainEmbedding.source_type != "note",
+                models.BrainEmbedding.source_type != "lifepath_daily_node"
+            )
+            .all()
+        )
+        
+        recent_texts = []
+        for emb in embeddings:
+            ts_str = emb.metadata_.get("timestamp")
+            if ts_str:
+                try:
+                    ts = datetime.fromisoformat(ts_str)
+                    if ts >= cutoff:
+                        recent_texts.append(emb.document)
+                except (ValueError, TypeError):
+                    continue
+        
+        return recent_texts

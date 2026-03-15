@@ -33,6 +33,8 @@ class UserLogin(BaseModel):
 class UserResponse(UserBase):
     id: int
     has_completed_life_path: bool
+    macro_goal: Optional[str] = None
+    last_lifepath_eval: Optional[datetime] = None
     created_at: datetime
 
     class Config:

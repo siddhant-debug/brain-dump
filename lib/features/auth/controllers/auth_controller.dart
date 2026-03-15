@@ -78,6 +78,7 @@ class UserModel {
   final String? fullName;
   final String? profilePic;
   final bool hasCompletedLifePath;
+  final String? macroGoal;
 
   UserModel({
     required this.id,
@@ -85,6 +86,7 @@ class UserModel {
     this.fullName,
     this.profilePic,
     required this.hasCompletedLifePath,
+    this.macroGoal,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -94,6 +96,7 @@ class UserModel {
       fullName: json['full_name'],
       profilePic: json['profile_pic'] != null ? json['profile_pic'].toString() : null,
       hasCompletedLifePath: json['has_completed_life_path'] ?? false,
+      macroGoal: json['macro_goal'],
     );
   }
 }

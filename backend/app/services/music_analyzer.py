@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import os
+from datetime import datetime
 from sqlalchemy.orm import Session
 from google import genai
 from google.genai import types

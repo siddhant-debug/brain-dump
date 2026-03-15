@@ -54,9 +54,13 @@ class LifepathService:
         health_context = self.harvester.harvest_health_context(user_id, db)
         music_tones = self.harvester.harvest_music_context(user_id, db)
         notes = self.harvester.harvest_notes_context(user_id, db)
+        files = self.harvester.harvest_files_context(user_id, db)
         
         # 3. Evaluation
         note_summary = await self.evaluator.summarize_notes(notes)
+        if files:
+            # Append some file context to the summary if available
+            note_summary += f"\n\nRecent Reference Documents:\n" + "\n".join(files[:3]) # Limit to first few chunks
         baseline_text = user.life_path_baseline.get("current", "No baseline set.") if user.life_path_baseline else "No baseline set."
         
         trajectory = await self.evaluator.evaluate_trajectory(
@@ -75,12 +79,19 @@ class LifepathService:
             "note_ids": [n.id for n in notes]
         }
 
+        # Helper to ensure trajectory fields are strings for embedding
+        def get_traj_str(key):
+            val = trajectory.get(key, [])
+            if isinstance(val, list):
+                 return ", ".join(val)
+            return str(val)
+
         # Generate embedding for the daily node (grounded in summary + goals)
         node_text = (
             f"Daily Life Path Node ({datetime.utcnow().strftime('%Y-%m-%d')})\n"
             f"Themes: {note_summary}\n"
-            f"Progress: {', '.join(trajectory.get('progress', []))}\n"
-            f"Short Term Goals: {', '.join(trajectory.get('short_term_goals', []))}"
+            f"Progress: {get_traj_str('progress')}\n"
+            f"Short Term Goals: {get_traj_str('short_term_goals')}"
         )
         embedding_id = f"lifepath_{node_uuid}"
         

@@ -4,6 +4,7 @@ import '../core/theme/theme_provider.dart';
 import '../core/theme/app_theme.dart';
 import '../features/life_path/models/life_path.dart';
 import '../features/life_path/providers/life_path_provider.dart';
+import '../features/auth/controllers/auth_controller.dart';
 
 class LifePathWidget extends ConsumerWidget {
   const LifePathWidget({super.key});
@@ -13,6 +14,7 @@ class LifePathWidget extends ConsumerWidget {
     final theme = ref.watch(themeProvider);
     final colors = theme.colors;
     final lifePathAsync = ref.watch(lifePathProvider);
+    final userAsync = ref.watch(userProvider);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
@@ -40,7 +42,23 @@ class LifePathWidget extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
+          userAsync.when(
+            data: (user) => (user?.macroGoal != null) 
+              ? Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: Text(
+                    user!.macroGoal!.toUpperCase(),
+                    style: AppTextStyles.h3(colors.text).copyWith(
+                      letterSpacing: 0.5,
+                      height: 1.4,
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+            loading: () => const _SkeletonText(width: 200),
+            error: (_, __) => const SizedBox.shrink(),
+          ),
           lifePathAsync.when(
             data: (items) {
               if (items.isEmpty) return _buildEmpty(colors);
