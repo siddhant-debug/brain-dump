@@ -19,7 +19,7 @@ from typing import List
 from app.models import models
 from app.schemas import schemas
 from app.core import database
-from app.services import rag_engine
+from app.services import rag_engine, reflection_engine
 from app.core.limiter import limiter
 from . import auth
 
@@ -605,3 +605,24 @@ def delete_file(
     db.commit()
 
     return None
+
+
+@router.post("/end-session")
+async def end_chat_session(
+    background_tasks: BackgroundTasks,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(database.get_db),
+):
+    """
+    Called when a user leaves the chat screen or manually ends a session.
+    Triggers the Reflection Engine to synthesize episodic memory.
+    """
+    logger.info(f"End session signal received for user {current_user.id}")
+    
+    async def _run_reflection():
+        engine = reflection_engine.ReflectionEngine(db)
+        await engine.reflect_on_session(current_user.id)
+
+    background_tasks.add_task(_run_reflection)
+    
+    return {"status": "accepted", "message": "Reflection triggered"}

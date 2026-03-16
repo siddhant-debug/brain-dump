@@ -180,4 +180,19 @@ class BrainService {
       return [];
     }
   }
+
+  /// END SESSION: POST /chat/end-session
+  Future<void> endSession() async {
+    final token = await _getToken();
+    if (token == null) return;
+
+    try {
+      await _dio.post(
+        '/chat/end-session',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+    } catch (e) {
+      debugPrint('End session signal failed: $e');
+    }
+  }
 }

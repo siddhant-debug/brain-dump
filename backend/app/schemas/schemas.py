@@ -180,6 +180,21 @@ class LifePathNodeResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class EpisodicMemoryBase(BaseModel):
+    summary_json: dict
+    created_at: datetime
+
+
+class EpisodicMemoryResponse(EpisodicMemoryBase):
+    id: int
+    user_id: int
+
+    class Config:
+        from_attributes = True
+
+
 class LifePathStatusResponse(BaseModel):
     has_active_path: bool
     alignment_score: Optional[int] = None

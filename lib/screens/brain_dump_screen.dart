@@ -298,33 +298,40 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
         const ContextBar(),
         const SizedBox(height: 12),
         Expanded(
-          child: ListView.builder(
-            reverse:
-                true, // Forces layout from bottom, so it naturally anchors to bottom
-            controller: _scrollController,
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 0,
-              bottom: 24, // Space around messages
-            ),
-            itemCount: state.messages.length,
-            itemBuilder: (context, index) {
-              // Because reverse is true, index 0 is at the bottom. We want index 0 to be the NEWEST message.
-              // state.messages[last] is newest. So reversed access:
-              final msgIndex = state.messages.length - 1 - index;
-              final msg = state.messages[msgIndex];
-              // To maintain normal spacing (last item has 0 bottom padding), check if it's the newest
-              final isLast = msgIndex == state.messages.length - 1;
-
-              return Padding(
-                padding: EdgeInsets.only(
-                  bottom: isLast ? 0 : 40,
-                ), // 40px spacing between Q&A pairs
-                child: _MinimalMessageRow(msg: msg, colors: colors),
-              );
+          child: RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(brainDumpProvider);
+              await Future.delayed(const Duration(milliseconds: 500));
             },
+            child: ListView.builder(
+              reverse:
+                  true, // Forces layout from bottom, so it naturally anchors to bottom
+              controller: _scrollController,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 0,
+                bottom: 24, // Space around messages
+              ),
+              itemCount: state.messages.length,
+              itemBuilder: (context, index) {
+                // Because reverse is true, index 0 is at the bottom. We want index 0 to be the NEWEST message.
+                // state.messages[last] is newest. So reversed access:
+                final msgIndex = state.messages.length - 1 - index;
+                final msg = state.messages[msgIndex];
+                // To maintain normal spacing (last item has 0 bottom padding), check if it's the newest
+                final isLast = msgIndex == state.messages.length - 1;
+  
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: isLast ? 0 : 40,
+                  ), // 40px spacing between Q&A pairs
+                  child: _MinimalMessageRow(msg: msg, colors: colors),
+                );
+              },
+            ),
           ),
         ),
         OmniBar(
@@ -346,57 +353,64 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
         _buildHeader(false, colors),
         // Input area at top — full remaining space
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Stack(
-              children: [
-                // Ghost text — floats up and fades after save
-                if (_showGhost)
-                  SlideTransition(
-                    position: _ghostSlide,
-                    child: FadeTransition(
-                      opacity: _ghostOpacity,
-                      child: Text(
-                        _ghostText,
-                        style: TextStyle(
-                          color: colors.textDim,
-                          fontSize: 18,
-                          height: 1.5,
+          child: RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(brainDumpProvider);
+              await Future.delayed(const Duration(milliseconds: 500));
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Stack(
+                children: [
+                  // Ghost text — floats up and fades after save
+                  if (_showGhost)
+                    SlideTransition(
+                      position: _ghostSlide,
+                      child: FadeTransition(
+                        opacity: _ghostOpacity,
+                        child: Text(
+                          _ghostText,
+                          style: TextStyle(
+                            color: colors.textDim,
+                            fontSize: 18,
+                            height: 1.5,
+                          ),
                         ),
                       ),
                     ),
+                  // Animated hint at input position
+                  ValueListenableBuilder(
+                    valueListenable: _controller,
+                    builder: (context, value, child) {
+                      return value.text.isEmpty
+                          ? _AnimatedHintText(text: 'dump your thoughts...', colors: colors)
+                          : const SizedBox.shrink();
+                    },
                   ),
-                // Animated hint at input position
-                ValueListenableBuilder(
-                  valueListenable: _controller,
-                  builder: (context, value, child) {
-                    return value.text.isEmpty
-                        ? _AnimatedHintText(text: 'dump your thoughts...', colors: colors)
-                        : const SizedBox.shrink();
-                  },
-                ),
-                // Actual input — green text
-                TextField(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  maxLines: null,
-                  minLines: 1,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _onSubmitted(),
-                  style: TextStyle(
-                    color: colors.text,
-                    fontSize: 16,
-                    height: 1.5,
+                  // Actual input — green text
+                  TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    maxLines: null,
+                    minLines: 10, // Added minLines to make touch area larger for refresh
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _onSubmitted(),
+                    style: TextStyle(
+                      color: colors.text,
+                      fontSize: 16,
+                      height: 1.5,
+                    ),
+                    cursorColor: colors.accent,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      hintText: null,
+                    ),
                   ),
-                  cursorColor: colors.accent,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    hintText: null,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

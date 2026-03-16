@@ -34,12 +34,14 @@ class BrainDumpState {
   final bool isProcessing;
   final String? error;
   final bool isChatMode;
+  final bool isReflecting;
 
   BrainDumpState({
     this.messages = const [],
     this.isProcessing = false,
     this.error,
     this.isChatMode = false, // Default: Journal mode
+    this.isReflecting = false,
   });
 
   BrainDumpState copyWith({
@@ -48,12 +50,14 @@ class BrainDumpState {
     String? error,
     bool clearError = false,
     bool? isChatMode,
+    bool? isReflecting,
   }) {
     return BrainDumpState(
       messages: messages ?? this.messages,
       isProcessing: isProcessing ?? this.isProcessing,
       error: clearError ? null : (error ?? this.error),
       isChatMode: isChatMode ?? this.isChatMode,
+      isReflecting: isReflecting ?? this.isReflecting,
     );
   }
 }
@@ -360,9 +364,28 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     }
   }
 
-  /// Clear message history from local state (doesn't affect backend)
+  /// Clear message history from local state and signal backend to reflect
   void clearLocalHistory() {
     state = state.copyWith(messages: []);
+    endSession(); // Trigger reflection in background
+  }
+
+  /// Signal the backend that a session has ended (manual trigger)
+  Future<void> endSession() async {
+    state = state.copyWith(isReflecting: true);
+    try {
+      await ref.read(brainServiceProvider).endSession();
+      debugPrint("[DEBUG] End session signal sent to backend");
+      
+      // Keep reflecting state for a few seconds for visual feedback
+      await Future.delayed(const Duration(seconds: 3));
+    } catch (e) {
+      debugPrint("[DEBUG] End session signal failed: $e");
+    } finally {
+      if (mounted) {
+        state = state.copyWith(isReflecting: false);
+      }
+    }
   }
 
   /// Toggle between Chat and Journal mode

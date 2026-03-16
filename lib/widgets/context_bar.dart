@@ -6,6 +6,7 @@ import '../core/theme/theme_provider.dart';
 import '../features/health/controllers/health_sync_controller.dart';
 import '../features/music/controllers/music_sync_controller.dart';
 import '../features/vault/services/file_service.dart';
+import '../features/brain_dump/providers/brain_dump_provider.dart';
 
 class ContextBar extends ConsumerWidget {
   const ContextBar({super.key});
@@ -17,11 +18,13 @@ class ContextBar extends ConsumerWidget {
     final healthState = ref.watch(healthSyncControllerProvider);
     final musicState = ref.watch(musicSyncControllerProvider);
     final filesAsync = ref.watch(filesProvider);
+    final brainDumpState = ref.watch(brainDumpProvider);
 
     final readiness = healthState.latestSnapshot;
     final isMusicPlaying =
         musicState.isPlaying && musicState.currentSong != null;
     final memoryCount = filesAsync.value?.length ?? 0;
+    final isReflecting = brainDumpState.isReflecting;
     
     String timeAgo(DateTime? dt) {
       if (dt == null) return "never";
@@ -89,6 +92,14 @@ class ContextBar extends ConsumerWidget {
                   _ContextItem(
                     label: "$memoryCount memories",
                     dotColor: const Color(0xFF6EE7B7),
+                    colors: colors,
+                  ),
+                ],
+                if (isReflecting) ...[
+                  _divider(colors),
+                  _ContextItem(
+                    label: "reflecting",
+                    dotColor: colors.accent,
                     colors: colors,
                   ),
                 ],

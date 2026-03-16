@@ -272,263 +272,273 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
         musicStatus == MusicPlaybackState.paused;
 
     return SafeArea(
-      child: CustomScrollView(
-        slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-            // 1. Header (HTML .nav style)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        RichText(
-                          text: TextSpan(
-                            style: AppTextStyles.greeting(colors.text),
+      child: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(notesProvider);
+          ref.invalidate(userProvider);
+          ref.invalidate(healthSyncControllerProvider);
+          ref.invalidate(musicSyncControllerProvider);
+          ref.invalidate(brainDumpProvider);
+          // Wait a bit to show the indicator
+          await Future.delayed(const Duration(milliseconds: 500));
+        },
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+              // 1. Header (HTML .nav style)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          RichText(
+                            text: TextSpan(
+                              style: AppTextStyles.greeting(colors.text),
+                              children: [
+                                TextSpan(text: greetText),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
                             children: [
-                              TextSpan(text: greetText),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Container(
-                              width: 5,
-                              height: 5,
-                              decoration: BoxDecoration(
-                                color: colors.rHigh,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              themeState.phase.name.toUpperCase(),
-                              style: AppTextStyles.micro(colors.textFaint),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: colors.accentBg,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                "READYNESS",
-                                style: AppTextStyles.micro(colors.accent)
-                                    .copyWith(
-                                      fontWeight: FontWeight.w500,
-                                      letterSpacing: 0.5,
-                                    ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              "${healthState.latestSnapshot?.heartRateCurrent?.toInt() ?? '--'} BPM",
-                              style: AppTextStyles.micro(colors.textFaint),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      themeState.isDark
-                          ? Icons.light_mode_outlined
-                          : Icons.dark_mode_outlined,
-                      color: colors.textDim,
-                      size: 20,
-                    ),
-                    onPressed: () =>
-                        ref.read(themeProvider.notifier).toggleTheme(),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // 5. Gita Quote
-            const GitaQuoteWidget(),
-            const SizedBox(height: 14),
-           // const _MinimalDivider(),
-
-            // 2. OmniBar (Dump your thoughts) — Softened edges
-            OmniBar(
-              controller: _controller,
-              focusNode: _focusNode,
-              onSubmitted: _onSubmitted,
-              hintText: "What's the focus for today?",
-              showMic: true,
-              isProcessing: ref.watch(brainDumpProvider).isProcessing,
-            ),
-
- const _MinimalDivider(),
-            // 3. Live Context (Pills like HTML .live-strip)
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.xl,
-                vertical: 8,
-              ),
-              child: Text("NOW", style: AppTextStyles.label(colors.textFaint)),
-            ),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              clipBehavior: Clip.none,
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-              child: Row(
-                children: [
-                  _buildContextPill(
-                    icon: "👟",
-                    value: (healthState.latestSnapshot?.stepsToday ?? 0) > 0
-                        ? _formatSteps(healthState.latestSnapshot!.stepsToday!)
-                        : null,
-                    colors: colors,
-                  ),
-                  _buildContextPill(
-                    icon: "❤️",
-                    value: (healthState.latestSnapshot?.heartRateCurrent ?? 0) >
-                            0
-                        ? "${healthState.latestSnapshot!.heartRateCurrent!.toInt()}"
-                        : null,
-                    colors: colors,
-                  ),
-                  _buildContextPill(
-                    icon: "🔥",
-                    value: (healthState.latestSnapshot?.activeEnergyToday ?? 0) >
-                            0
-                        ? "${healthState.latestSnapshot!.activeEnergyToday!.toInt()} kcal"
-                        : null,
-                    colors: colors,
-                  ),
-                  if (isMusicVisible)
-                    _MusicPill(
-                      trackName: musicState.currentSong?.title ?? "Unknown",
-                      state: musicStatus,
-                      colors: colors,
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // 4. Readiness Section
-            ReadinessRow(snapshot: healthState.latestSnapshot),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.xl,
-                vertical: 12,
-              ),
-              child: Text(
-                "Body recovered. Push with intention.",
-                style: AppTextStyles.serifBody(colors.textDim),
-              ),
-            ),
-
-            const _MinimalDivider(),
-            
-            // 6. Life Path
-            const LifePathWidget(),
-
-            const _MinimalDivider(),
-
-            // 7. Recent Notes (HTML .dump-wrap style)
-            // 7. Recent Notes
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-              child: Text(
-                "RECENT",
-                style: AppTextStyles.label(
-                  colors.textDim.withValues(alpha: 0.5),
-                ).copyWith(letterSpacing: 1.2),
-              ),
-            ),
-            const SizedBox(height: 16),
-            notesAsync.when(
-              data: (notes) {
-                if (notes.isEmpty) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-                    child: Text(
-                      "No notes yet.",
-                      style: AppTextStyles.body(colors.textFaint),
-                    ),
-                  );
-                }
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-                  child: IntrinsicHeight(
-                    child: Stack(
-                      children: [
-                        // Vertical Spine
-                        Positioned(
-                          left: 7, // Center of the 1.5 width line relative to the 14 padding
-                          top: 0,
-                          bottom: 0,
-                          child: Container(
-                            width: 1.5,
-                            color: colors.spine.withValues(alpha: 0.15),
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: notes.take(3).map((note) {
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 24),
-                              child: Container(
-                                key: ValueKey(note.id),
-                                padding: const EdgeInsets.only(left: 24), // Space from spine
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      note.content,
-                                      style: AppTextStyles.bodyMed(colors.text).copyWith(
-                                        height: 1.5,
-                                        fontSize: 14,
-                                      ),
-                                      maxLines: 3,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    _buildNoteMetadata(note, colors),
-                                  ],
+                              Container(
+                                width: 5,
+                                height: 5,
+                                decoration: BoxDecoration(
+                                  color: colors.rHigh,
+                                  shape: BoxShape.circle,
                                 ),
                               ),
-                            );
-                          }).toList(),
-                        ),
-                      ],
+                              const SizedBox(width: 8),
+                              Text(
+                                themeState.phase.name.toUpperCase(),
+                                style: AppTextStyles.micro(colors.textFaint),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: colors.accentBg,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  "READYNESS",
+                                  style: AppTextStyles.micro(colors.accent)
+                                      .copyWith(
+                                        fontWeight: FontWeight.w500,
+                                        letterSpacing: 0.5,
+                                      ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "${healthState.latestSnapshot?.heartRateCurrent?.toInt() ?? '--'} BPM",
+                                style: AppTextStyles.micro(colors.textFaint),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
-              loading: () => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-              error: (e, _) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-                child: Text(
-                  "Error loading notes.",
-                  style: AppTextStyles.micro(colors.red),
+                    IconButton(
+                      icon: Icon(
+                        themeState.isDark
+                            ? Icons.light_mode_outlined
+                            : Icons.dark_mode_outlined,
+                        color: colors.textDim,
+                        size: 20,
+                      ),
+                      onPressed: () =>
+                          ref.read(themeProvider.notifier).toggleTheme(),
+                    ),
+                  ],
                 ),
               ),
+              const SizedBox(height: 24),
+  
+              // 5. Gita Quote
+              const GitaQuoteWidget(),
+              const SizedBox(height: 14),
+             // const _MinimalDivider(),
+  
+              // 2. OmniBar (Dump your thoughts) — Softened edges
+              OmniBar(
+                controller: _controller,
+                focusNode: _focusNode,
+                onSubmitted: _onSubmitted,
+                hintText: "What's the focus for today?",
+                showMic: true,
+                isProcessing: ref.watch(brainDumpProvider).isProcessing,
+              ),
+  
+   const _MinimalDivider(),
+              // 3. Live Context (Pills like HTML .live-strip)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.xl,
+                  vertical: 8,
+                ),
+                child: Text("NOW", style: AppTextStyles.label(colors.textFaint)),
+              ),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                clipBehavior: Clip.none,
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+                child: Row(
+                  children: [
+                    _buildContextPill(
+                      icon: "👟",
+                      value: (healthState.latestSnapshot?.stepsToday ?? 0) > 0
+                          ? _formatSteps(healthState.latestSnapshot!.stepsToday!)
+                          : null,
+                      colors: colors,
+                    ),
+                    _buildContextPill(
+                      icon: "❤️",
+                      value: (healthState.latestSnapshot?.heartRateCurrent ?? 0) >
+                              0
+                          ? "${healthState.latestSnapshot!.heartRateCurrent!.toInt()}"
+                          : null,
+                      colors: colors,
+                    ),
+                    _buildContextPill(
+                      icon: "🔥",
+                      value: (healthState.latestSnapshot?.activeEnergyToday ?? 0) >
+                              0
+                          ? "${healthState.latestSnapshot!.activeEnergyToday!.toInt()} kcal"
+                          : null,
+                      colors: colors,
+                    ),
+                    if (isMusicVisible)
+                      _MusicPill(
+                        trackName: musicState.currentSong?.title ?? "Unknown",
+                        state: musicStatus,
+                        colors: colors,
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+  
+              // 4. Readiness Section
+              ReadinessRow(snapshot: healthState.latestSnapshot),
+  
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.xl,
+                  vertical: 12,
+                ),
+                child: Text(
+                  "Body recovered. Push with intention.",
+                  style: AppTextStyles.serifBody(colors.textDim),
+                ),
+              ),
+  
+              const _MinimalDivider(),
+              
+              // 6. Life Path
+              const LifePathWidget(),
+  
+              const _MinimalDivider(),
+  
+              // 7. Recent Notes (HTML .dump-wrap style)
+              // 7. Recent Notes
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+                child: Text(
+                  "RECENT",
+                  style: AppTextStyles.label(
+                    colors.textDim.withValues(alpha: 0.5),
+                  ).copyWith(letterSpacing: 1.2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              notesAsync.when(
+                data: (notes) {
+                  if (notes.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+                      child: Text(
+                        "No notes yet.",
+                        style: AppTextStyles.body(colors.textFaint),
+                      ),
+                    );
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+                    child: IntrinsicHeight(
+                      child: Stack(
+                        children: [
+                          // Vertical Spine
+                          Positioned(
+                            left: 7, // Center of the 1.5 width line relative to the 14 padding
+                            top: 0,
+                            bottom: 0,
+                            child: Container(
+                              width: 1.5,
+                              color: colors.spine.withValues(alpha: 0.15),
+                            ),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: notes.take(3).map((note) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 24),
+                                child: Container(
+                                  key: ValueKey(note.id),
+                                  padding: const EdgeInsets.only(left: 24), // Space from spine
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        note.content,
+                                        style: AppTextStyles.bodyMed(colors.text).copyWith(
+                                          height: 1.5,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      _buildNoteMetadata(note, colors),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (e, _) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+                  child: Text(
+                    "Error loading notes.",
+                    style: AppTextStyles.micro(colors.red),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 40),
+                ]),
+              ),
             ),
-            const SizedBox(height: 40),
-              ]),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

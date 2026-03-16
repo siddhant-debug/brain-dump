@@ -146,6 +146,7 @@ class GeminiService:
         music_layer: str,
         health_layer: str,
         directives: list = None,
+        episodic_recall: list = None,
     ) -> str:
         base_prompt = SUBCONSCIOUS_SYSTEM_PROMPT.format(
             date=datetime.now().strftime("%B %d, %Y"),
@@ -158,14 +159,27 @@ class GeminiService:
             health_layer=health_layer,
         )
 
+        if episodic_recall:
+            episodic_block = "<episodic_recall>\n"
+            for mem in episodic_recall:
+                s_json = mem.summary_json if hasattr(mem, "summary_json") else {}
+                summary = s_json.get("summary", "")
+                worked = s_json.get("what_worked", "")
+                avoid = s_json.get("what_to_avoid", "")
+                
+                episodic_block += f"- PAST LEARNING: {summary}\n"
+                if worked: episodic_block += f"  - Effective style: {worked}\n"
+                if avoid: episodic_block += f"  - Avoid: {avoid}\n"
+            episodic_block += "</episodic_recall>\n"
+            episodic_block += "Use the <episodic_recall> to ground your persona's behavior based on what specifically worked or failed in the past.\n"
+            base_prompt = episodic_block + "\n" + base_prompt
+
         if directives:
             directives_block = "<subconscious_directives>\n"
             for d in directives:
                 directives_block += f"- {d}\n"
             directives_block += "</subconscious_directives>\n"
             directives_block += "You MUST strictly follow the behaviors defined in <subconscious_directives> for this specific user.\n"
-
-            # Prepend directives strongly at the very top of system prompt
             base_prompt = directives_block + "\n" + base_prompt
 
         return base_prompt
@@ -199,6 +213,7 @@ class GeminiService:
         max_tokens: int = 1000,
         chat_history: list = None,
         directives: list = None,
+        episodic_recall: list = None,
     ) -> AsyncIterator[str]:
         """
         Async streaming wrapper.
@@ -222,6 +237,7 @@ class GeminiService:
             music_layer,
             health_layer,
             directives,
+            episodic_recall,
         )
         config = self._get_model(system_instruction, max_tokens)
 

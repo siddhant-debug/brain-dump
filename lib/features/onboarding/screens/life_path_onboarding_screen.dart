@@ -170,72 +170,77 @@ class _LifePathOnboardingScreenState extends ConsumerState<LifePathOnboardingScr
   }
 
   Widget _buildMonologueStep(OnboardingState state, OnboardingNotifier notifier) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 40.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            "Your inner monologue.",
-            style: AppTextStyles.h2(Colors.white).copyWith(fontSize: 24),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "What's the one thing you can't stop thinking about?",
-            textAlign: TextAlign.center,
-            style: AppTextStyles.body(Colors.white).copyWith(color: Colors.white54),
-          ),
-          const SizedBox(height: 48),
-          TextField(
-            controller: _monologueController,
-            onChanged: notifier.updateInnerMonologue,
-            maxLines: 5,
-            autofocus: true,
-            cursorColor: Colors.white24,
-            style: AppTextStyles.bodyMed(Colors.white).copyWith(fontSize: 18),
-            decoration: InputDecoration(
-              hintText: "Type freely...",
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.1)),
-              border: InputBorder.none,
-            ),
-          ),
-        ],
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 40.0),
+        child: Column(
+          children: [
+            const SizedBox(height: 40),
+            Text(
+              "Your inner monologue.",
+              style: AppTextStyles.h2(Colors.white).copyWith(fontSize: 24),
+            ).animate().fadeIn(),
+            const SizedBox(height: 8),
+            Text(
+              "What's the one thing you can't stop thinking about?",
+              textAlign: TextAlign.center,
+              style: AppTextStyles.body(Colors.white).copyWith(color: Colors.white54),
+            ).animate().fadeIn(delay: 200.ms),
+            const SizedBox(height: 48),
+            TextField(
+              controller: _monologueController,
+              onChanged: notifier.updateInnerMonologue,
+              maxLines: null,
+              minLines: 3,
+              autofocus: true,
+              cursorColor: Colors.white24,
+              style: AppTextStyles.bodyMed(Colors.white).copyWith(fontSize: 18),
+              decoration: InputDecoration(
+                hintText: "Type freely...",
+                hintStyle: TextStyle(color: Colors.white.withOpacity(0.1)),
+                border: InputBorder.none,
+              ),
+            ).animate().fadeIn(delay: 400.ms),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildMacroGoalStep(OnboardingState state, OnboardingNotifier notifier) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 40.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.blur_on, color: Colors.white24, size: 60),
-          const SizedBox(height: 24),
-          Text(
-            "Define your macro node.",
-            style: AppTextStyles.h2(Colors.white).copyWith(fontSize: 24),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "This is the star everything else orbits.",
-            style: AppTextStyles.body(Colors.white).copyWith(color: Colors.white54),
-          ),
-          const SizedBox(height: 48),
-          TextField(
-            controller: _goalController,
-            onChanged: notifier.updateMacroGoal,
-            textAlign: TextAlign.center,
-            autofocus: true,
-            cursorColor: Colors.white24,
-            style: AppTextStyles.h2(Colors.white).copyWith(fontSize: 22),
-            decoration: InputDecoration(
-              hintText: "e.g. Building a legacy",
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.05)),
-              border: InputBorder.none,
-            ),
-          ),
-        ],
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 40.0),
+        child: Column(
+          children: [
+            const SizedBox(height: 40),
+            const Icon(Icons.blur_on, color: Colors.white24, size: 60).animate().scale(),
+            const SizedBox(height: 24),
+            Text(
+              "Define your macro node.",
+              style: AppTextStyles.h2(Colors.white).copyWith(fontSize: 24),
+            ).animate().fadeIn(),
+            const SizedBox(height: 8),
+            Text(
+              "This is the star everything else orbits.",
+              style: AppTextStyles.body(Colors.white).copyWith(color: Colors.white54),
+            ).animate().fadeIn(delay: 200.ms),
+            const SizedBox(height: 48),
+            TextField(
+              controller: _goalController,
+              onChanged: notifier.updateMacroGoal,
+              textAlign: TextAlign.center,
+              autofocus: true,
+              cursorColor: Colors.white24,
+              style: AppTextStyles.h2(Colors.white).copyWith(fontSize: 22),
+              decoration: InputDecoration(
+                hintText: "e.g. Building a legacy",
+                hintStyle: TextStyle(color: Colors.white.withOpacity(0.05)),
+                border: InputBorder.none,
+              ),
+            ).animate().fadeIn(delay: 400.ms),
+          ],
+        ),
       ),
     );
   }

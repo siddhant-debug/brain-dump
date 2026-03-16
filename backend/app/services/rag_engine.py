@@ -14,7 +14,7 @@ from sentence_transformers import CrossEncoder, SentenceTransformer
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import and_
-from app.models.models import BrainEmbedding
+from app.models.models import BrainEmbedding, EpisodicMemory
 from app.core.database import SessionLocal
 import json
 import numpy as np
@@ -720,6 +720,15 @@ async def ask_gemini_stream_async(
         elif loc_type == "cafe":
             location_layer += " (Creative, social/work blend)."
 
+    # [Layer 6] Episodic Memory Recall (The Subconscious Learning)
+    episodic_recall = []
+    try:
+        episodic_recall = await async_retrieve_episodic_recall(query, user_id)
+        if episodic_recall:
+            print(f"DEBUG: [Episodic] Retreived {len(episodic_recall)} past reflections.")
+    except Exception as e:
+        logger.error(f"[Episodic] Recall failed: {e}")
+
     # Delegate to GeminiService — all timeout/injection/delimiter logic lives there
     async for chunk in gemini_service.async_stream(
         context=context,
@@ -734,8 +743,30 @@ async def ask_gemini_stream_async(
         max_tokens=max_tokens,
         chat_history=chat_history,
         directives=directives,
+        episodic_recall=episodic_recall,
     ):
         yield chunk
+
+
+def retrieve_episodic_recall(query: str, user_id: int, db: Session, limit: int = 2) -> List[EpisodicMemory]:
+    """
+    Performs vector similarity search over the EpisodicMemory table.
+    Retrieves the most relevant past AI-User interaction reflections.
+    """
+    try:
+        emb_model = get_emb_fn()
+        query_embedding = emb_model.encode([query]).tolist()[0]
+        
+        memories = db.query(EpisodicMemory)\
+            .filter(EpisodicMemory.user_id == user_id)\
+            .order_by(EpisodicMemory.embedding.l2_distance(query_embedding))\
+            .limit(limit)\
+            .all()
+            
+        return memories
+    except Exception as e:
+        logger.error(f"Error in retrieve_episodic_recall: {e}")
+        return []
 
 
 def retrieve_context(
@@ -1026,6 +1057,20 @@ async def async_index_text(
                 health_context,
                 source_type,
             )
+        finally:
+            db.close()
+
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_executor, _run)
+
+
+async def async_retrieve_episodic_recall(query: str, user_id: int, limit: int = 2):
+    """Run retrieve_episodic_recall in a separate thread"""
+
+    def _run():
+        db = SessionLocal()
+        try:
+            return retrieve_episodic_recall(query, user_id, db, limit)
         finally:
             db.close()
 

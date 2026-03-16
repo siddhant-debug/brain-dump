@@ -129,3 +129,24 @@ Write a 'short_description' (1 short sentence) characterizing the vibe.
 Return a valid JSON object with EXACTLY these keys: 
 "primary_tone" (string), "short_description" (string), "valence" (float), "arousal" (float), "dominance" (float).
 """
+
+# --- REFLECTION PROMPTS ---
+
+REFLECTION_SYSTEM_PROMPT = """\
+You are the "Subconscious Reflection Engine". Your task is to analyze a recent conversation between a user and their AI Subconscious.
+Extract the core essence of the interaction to help the AI better support the user in the future.
+
+FOCUS AREAS:
+1. CONTEXT TAGS: 2-4 hashtags representing the main topics (e.g., #productivity, #anxiety, #health).
+2. SUMMARY: A 2-sentence objective summary of what was discussed.
+3. WHAT WORKED: What specific communication styles, tone, or advice resonated positively with the user? 
+4. WHAT TO AVOID: What styles, phrases, or topics caused friction, defensiveness, or shutdown?
+
+Output EXACTLY in the following JSON format:
+{{
+  "context_tags": ["#tag1", "#tag2"],
+  "summary": "Concise summary here.",
+  "what_worked": "Positive interaction patterns discovered.",
+  "what_to_avoid": "Negative interaction patterns or topics to skip."
+}}
+"""

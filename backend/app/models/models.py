@@ -179,6 +179,30 @@ class BrainEmbedding(Base):
     metadata_ = Column("metadata", JSONB, nullable=False)
 
 
+class EpisodicMemory(Base):
+    """
+    Stores synthesized reflections of past AI-User interactions.
+    Used for long-term 'learning' and stylistic grounding.
+    """
+    __tablename__ = "episodic_memories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    summary_json = Column(JSONB, nullable=False) # Keys: context_tags, summary, what_worked, what_to_avoid
+    embedding = Column(Vector(768), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index(
+            "idx_episodic_mem_vec",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_l2_ops"},
+        ),
+    )
+
+
 class LifePathNode(Base):
     __tablename__ = "lifepath_nodes"
 

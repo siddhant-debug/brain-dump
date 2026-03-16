@@ -16,32 +16,39 @@ class HealthPage extends ConsumerWidget {
     final colors = ref.watch(themeProvider).colors;
     final healthState = ref.watch(healthSyncControllerProvider);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 160),
-      child: Column(
-        children: [
-          FullPageHeader(
-            icon: Icons.health_and_safety_rounded,
-            title: 'Health',
-            accent: const Color(0xFF4ade80),
-            trailing: HealthStatusChip(state: healthState),
-          ),
-          const SizedBox(height: 20),
-          if (healthState.isFetching && healthState.latestSnapshot == null)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 40),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (healthState.isAuthorized) ...[
-            if (healthState.latestSnapshot != null) ...[
-              _buildAllMetrics(healthState.latestSnapshot!, colors),
-              const SizedBox(height: 20),
-              DebugPanel(snap: healthState.latestSnapshot!),
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(healthSyncControllerProvider);
+        await Future.delayed(const Duration(milliseconds: 500));
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 160),
+        child: Column(
+          children: [
+            FullPageHeader(
+              icon: Icons.health_and_safety_rounded,
+              title: 'Health',
+              accent: const Color(0xFF4ade80),
+              trailing: HealthStatusChip(state: healthState),
+            ),
+            const SizedBox(height: 20),
+            if (healthState.isFetching && healthState.latestSnapshot == null)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (healthState.isAuthorized) ...[
+              if (healthState.latestSnapshot != null) ...[
+                _buildAllMetrics(healthState.latestSnapshot!, colors),
+                const SizedBox(height: 20),
+                DebugPanel(snap: healthState.latestSnapshot!),
+              ] else
+                const EmptyState()
             ] else
-              const EmptyState()
-          ] else
-            const NotConnectedHint(),
-        ],
+              const NotConnectedHint(),
+          ],
+        ),
       ),
     );
   }

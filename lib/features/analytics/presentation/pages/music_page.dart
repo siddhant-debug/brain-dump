@@ -14,19 +14,26 @@ class MusicPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = ref.watch(themeProvider).colors;
     final musicState = ref.watch(musicSyncControllerProvider);
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 160),
-      child: Column(
-        children: [
-          FullPageHeader(
-            icon: Icons.music_note_rounded,
-            title: 'Music Vibe',
-            accent: const Color(0xFFf472b6),
-            trailing: MusicStatusChip(state: musicState),
-          ),
-          const SizedBox(height: 16),
-          _buildMusicContent(musicState, ref, colors),
-        ],
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(musicSyncControllerProvider);
+        await Future.delayed(const Duration(milliseconds: 500));
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 160),
+        child: Column(
+          children: [
+            FullPageHeader(
+              icon: Icons.music_note_rounded,
+              title: 'Music Vibe',
+              accent: const Color(0xFFf472b6),
+              trailing: MusicStatusChip(state: musicState),
+            ),
+            const SizedBox(height: 16),
+            _buildMusicContent(musicState, ref, colors),
+          ],
+        ),
       ),
     );
   }
