@@ -134,17 +134,23 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
       error: null,
     );
 
-    // [PERSISTENCE] Save to Notes DB immediately
-    // We don't await this to avoid blocking the AI chat, but we catch errors.
-    unawaited(() async {
-      try {
-        await ref.read(noteServiceProvider).saveNote(trimmed);
-        ref.invalidate(notesProvider); // Refresh "Recent Notes" and Thoughts list
-        debugPrint("[DEBUG] Note saved successfully from OmniBar");
-      } catch (e) {
-        debugPrint("[DEBUG] Note persistence failed: $e");
-      }
-    }());
+    // [PERSISTENCE] Save to Notes DB if NOT in Chat Mode
+    // This prevents redundant entries for queries (e.g. "what is success?")
+    if (!state.isChatMode) {
+      unawaited(() async {
+        try {
+          await ref.read(noteServiceProvider).saveNote(trimmed);
+          ref.invalidate(
+            notesProvider,
+          ); // Refresh "Recent Notes" and Thoughts list
+          debugPrint("[DEBUG] Note saved successfully from OmniBar");
+        } catch (e) {
+          debugPrint("[DEBUG] Note persistence failed: $e");
+        }
+      }());
+    } else {
+      debugPrint("[DEBUG] Chat Mode: Skipping persistent note save.");
+    }
 
     // 2. Add "Thinking..." placeholder IMMEDIATELY
     final aiMsgId = _uuid.v4();

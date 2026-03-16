@@ -56,6 +56,7 @@ def create_note(
         note_id: int, content: str, user_id: int, location_context: dict = None
     ):
         from app.core.database import SessionLocal
+        from app.models import models
 
         bg_db = SessionLocal()
         try:

@@ -262,15 +262,15 @@ def extract_and_save_identity(user_id: int, message_content: str):
                 "type": "user_identity",
                 "timestamp": datetime.now().isoformat(),
             }
-            db.execute(
-                models.BrainEmbedding.__table__.insert().values(
-                    id=fact_id,
-                    user_id=user_id,
-                    document=content,
-                    embedding=embedding,
-                    metadata_=meta,
-                )
+            new_fact = models.BrainEmbedding(
+                id=fact_id,
+                user_id=user_id,
+                document=content,
+                embedding=embedding,
+                metadata_=meta,
+                source_type="user_identity",
             )
+            db.add(new_fact)
             db.commit()
 
             # Invalidate BM25 cache
@@ -454,8 +454,14 @@ async def chat_endpoint(
                         "readiness": db_snapshot.readiness,
                         "steps_today": db_snapshot.steps_today,
                         "active_energy_kcal": db_snapshot.active_energy_kcal,
-                        "hr_resting": db_snapshot.heart_rate.get("resting") if db_snapshot.heart_rate else None,
-                        "hrv_curr": db_snapshot.hrv.get("current") if db_snapshot.hrv else None,
+                        "hr_resting": (
+                            db_snapshot.heart_rate.get("resting")
+                            if db_snapshot.heart_rate
+                            else None
+                        ),
+                        "hrv_curr": (
+                            db_snapshot.hrv.get("current") if db_snapshot.hrv else None
+                        ),
                     }
 
             if health_snapshot:
@@ -619,9 +625,10 @@ async def end_chat_session(
     Triggers the Reflection Engine to synthesize episodic memory.
     """
     logger.info(f"End session signal received for user {current_user.id}")
-    
+
     async def _run_reflection():
         from app.core.database import SessionLocal
+
         bg_db = SessionLocal()
         try:
             engine = reflection_engine.ReflectionEngine(bg_db)
@@ -630,5 +637,5 @@ async def end_chat_session(
             bg_db.close()
 
     background_tasks.add_task(_run_reflection)
-    
+
     return {"status": "accepted", "message": "Reflection triggered"}
