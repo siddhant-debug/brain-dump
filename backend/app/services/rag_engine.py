@@ -633,6 +633,7 @@ def ask_gemini(context: str, query: str):
 async def ask_gemini_stream_async(
     context: str,
     query: str,
+    user_id: int,
     max_tokens: int = 1000,
     location_context: dict = None,
     music_layer: str = "",

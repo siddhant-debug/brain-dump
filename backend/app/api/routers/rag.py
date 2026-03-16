@@ -477,6 +477,7 @@ async def chat_endpoint(
             async for chunk in rag_engine.ask_gemini_stream_async(
                 context_text,
                 request_body.query,
+                current_user.id,
                 location_context=location_dict,
                 music_layer=music_layer,
                 health_layer=health_layer,
@@ -620,8 +621,13 @@ async def end_chat_session(
     logger.info(f"End session signal received for user {current_user.id}")
     
     async def _run_reflection():
-        engine = reflection_engine.ReflectionEngine(db)
-        await engine.reflect_on_session(current_user.id)
+        from app.core.database import SessionLocal
+        bg_db = SessionLocal()
+        try:
+            engine = reflection_engine.ReflectionEngine(bg_db)
+            await engine.reflect_on_session(current_user.id)
+        finally:
+            bg_db.close()
 
     background_tasks.add_task(_run_reflection)
     

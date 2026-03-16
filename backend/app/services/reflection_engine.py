@@ -28,19 +28,17 @@ class ReflectionEngine:
         Analyzes recent chat messages and generates an EpisodicMemory reflection.
         """
         try:
-            logger.info(f"Starting reflection check for user {user_id} (force={force})")
+            logger.info(f"Refinement triggered for user {user_id} (force={force})")
             
-            # 1. Fetch un-reflected messages
-            # We look for messages that haven't been summarized yet. 
-            # For simplicity, we'll look at the last "session" (batch of messages within a time window).
+            # 1. Fetch un-reflected messages (The "Short-term Loop")
             recent_messages = self.db.query(ChatMessage)\
                 .filter(ChatMessage.user_id == user_id)\
                 .order_by(desc(ChatMessage.timestamp))\
-                .limit(50)\
+                .limit(REFLECTION_MIN_MESSAGES * 3)\
                 .all()
             
             if not recent_messages:
-                logger.info(f"No messages found for user {user_id}. Skipping reflection.")
+                logger.info(f"[Reflection] User {user_id} has no message history. Skipping.")
                 return None
 
             recent_messages.reverse() # Sort chronologically
