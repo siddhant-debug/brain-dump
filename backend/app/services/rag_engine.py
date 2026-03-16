@@ -2,6 +2,8 @@ import os
 import asyncio
 import time
 import concurrent.futures
+import logging
+from typing import List
 from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
     MarkdownHeaderTextSplitter,
@@ -24,6 +26,9 @@ from app.schemas import (
     schemas,
 )  # Import schemas for LocationContext type hinting if needed (or just use dict)
 from app.services.gemini_service import gemini_service
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
