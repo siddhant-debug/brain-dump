@@ -570,7 +570,7 @@ def ask_gemini(context: str, query: str):
     print(f"DEBUG: Entering ask_gemini with query: '{query}'")
     client = genai.Client(api_key=GEMINI_API_KEY)
 
-    system_instruction = """You are the user's Subconscious Mind.
+    system_instruction = f"""You are the user's Subconscious Mind.
         Today is {datetime.now().strftime('%B %d, %Y')}.
         
         HOW YOU THINK:

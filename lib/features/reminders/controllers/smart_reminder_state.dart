@@ -4,6 +4,7 @@ enum SmartReminderStatus {
   idle,
   parsing,
   prompting,
+  needsPermission,
   executing,
   success,
   permissionDenied,

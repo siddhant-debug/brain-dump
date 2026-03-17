@@ -105,7 +105,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     }
 
     // [Architect] Smart Reminder Routing Check
-    final reminderKeywords = ['remind me', 'alarm', 'set a reminder', 'wake me up'];
+    final reminderKeywords = ['remind', 'reminder', 'alarm', 'wake me up'];
     final lowerText = text.toLowerCase();
     final isReminderIntent = reminderKeywords.any((k) => lowerText.contains(k));
 

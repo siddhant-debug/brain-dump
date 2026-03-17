@@ -60,7 +60,7 @@ class SmartReminderController extends StateNotifier<SmartReminderState> with Wid
       final currentTime = DateTime.now().toIso8601String();
 
       final response = await _dio.post(
-        '/nlp/parse-reminder',
+        '/api/nlp/parse-reminder',
         data: {
           'text': text,
           'timezone': timezone,
@@ -70,10 +70,25 @@ class SmartReminderController extends StateNotifier<SmartReminderState> with Wid
       );
 
       final result = ReminderParseResult.fromJson(response.data);
-      state = state.copyWith(
-        status: SmartReminderStatus.prompting,
-        parseResult: result,
-      );
+      
+      // Explicitly check permissions here
+      final permission = await _reminderService.checkPermissions();
+      if (permission == 'notDetermined') {
+        state = state.copyWith(
+          status: SmartReminderStatus.needsPermission,
+          parseResult: result,
+        );
+      } else if (permission == 'denied') {
+        state = state.copyWith(
+          status: SmartReminderStatus.permissionDenied,
+          parseResult: result,
+        );
+      } else {
+        state = state.copyWith(
+          status: SmartReminderStatus.prompting,
+          parseResult: result,
+        );
+      }
     } catch (e) {
       state = state.copyWith(
         status: SmartReminderStatus.error,
@@ -136,6 +151,29 @@ class SmartReminderController extends StateNotifier<SmartReminderState> with Wid
 
   void reset() {
     state = SmartReminderState();
+  }
+
+  Future<void> requestPermission() async {
+    if (_isFetching) return;
+    _isFetching = true;
+    
+    try {
+      final granted = await _reminderService.requestPermissions();
+      if (granted) {
+        // [Staff-Rule] await delay after auth
+        await Future.delayed(const Duration(milliseconds: 500));
+        state = state.copyWith(status: SmartReminderStatus.prompting);
+      } else {
+        state = state.copyWith(status: SmartReminderStatus.permissionDenied);
+      }
+    } catch (e) {
+      state = state.copyWith(
+        status: SmartReminderStatus.error,
+        errorMessage: e.toString(),
+      );
+    } finally {
+      _isFetching = false;
+    }
   }
 
   Future<void> openSettings() async {

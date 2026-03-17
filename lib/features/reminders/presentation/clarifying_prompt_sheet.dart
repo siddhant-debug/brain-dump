@@ -45,6 +45,8 @@ class ClarifyingPromptSheet extends ConsumerWidget {
           
           if (state.status == SmartReminderStatus.permissionDenied) ...[
             _buildPermissionWarning(context, colors, controller),
+          ] else if (state.status == SmartReminderStatus.needsPermission) ...[
+            _buildPermissionRequest(context, colors, controller),
           ] else if (state.status == SmartReminderStatus.error) ...[
             _buildErrorState(colors, state.errorMessage),
           ] else if (state.status == SmartReminderStatus.success) ...[
@@ -122,8 +124,50 @@ class ClarifyingPromptSheet extends ConsumerWidget {
           const SizedBox(height: AppSpacing.md),
           ElevatedButton(
             onPressed: () => controller.openSettings(),
-            style: ElevatedButton.styleFrom(backgroundColor: colors.accent),
-            child: Text('Open Settings', style: AppTextStyles.label(Colors.white)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: colors.accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
+            ),
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPermissionRequest(BuildContext context, CircadianColors colors, SmartReminderController controller) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: colors.accent.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.lock_open_rounded, color: colors.accent, size: 32),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            'Reminder Access Needed',
+            style: AppTextStyles.bodyMed(colors.text),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'I need permission to add this to your iOS Reminders app.',
+            style: AppTextStyles.caption(colors.textDim),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          ElevatedButton(
+            onPressed: () => controller.requestPermission(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: colors.accent,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 44),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
+            ),
+            child: const Text('Allow Access'),
           ),
         ],
       ),

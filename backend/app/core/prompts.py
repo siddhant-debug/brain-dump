@@ -143,12 +143,12 @@ FOCUS AREAS:
 4. WHAT TO AVOID: What styles, phrases, or topics caused friction, defensiveness, or shutdown?
 
 Output EXACTLY in the following JSON format:
-{{
+{
   "context_tags": ["#tag1", "#tag2"],
   "summary": "Concise summary here.",
   "what_worked": "Positive interaction patterns discovered.",
   "what_to_avoid": "Negative interaction patterns or topics to skip."
-}}
+}
 """
 # --- REMINDER PROMPTS ---
 
@@ -175,14 +175,14 @@ TASK:
 - Always prioritize the provided timezone and current_time for relative calculations.
 
 Output EXACTLY in the following JSON format:
-{
+{{
   "action": "string",
   "trigger_time": "ISO8601",
-  "recurrence": {
+  "recurrence": {{
     "frequency": "string|null",
     "interval": int,
     "days_of_week": [int]|null,
     "end_date": "ISO8601|null"
-  }
-}
+  }}
+}}
 """
