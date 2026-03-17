@@ -56,8 +56,16 @@ class SmartReminderController extends StateNotifier<SmartReminderState> with Wid
 
     try {
       final token = await _storage.read(key: 'jwt_token');
-      final timezone = DateTime.now().timeZoneName;
-      final currentTime = DateTime.now().toIso8601String();
+      final now = DateTime.now();
+      final timezone = now.timeZoneName;
+      final offset = now.timeZoneOffset;
+      final hours = offset.inHours.abs().toString().padLeft(2, '0');
+      final minutes = (offset.inMinutes.abs() % 60).toString().padLeft(2, '0');
+      final sign = offset.isNegative ? '-' : '+';
+      final offsetString = '$sign$hours:$minutes';
+      
+      // Send local time with offset so Gemini has full context
+      final currentTime = '${now.toIso8601String()}$offsetString';
 
       final response = await _dio.post(
         '/api/nlp/parse-reminder',

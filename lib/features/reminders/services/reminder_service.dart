@@ -33,7 +33,7 @@ class ReminderService implements ReminderServiceInterface {
     try {
       final result = await _channel.invokeMethod('createReminder', {
         'title': title,
-        'trigger_time': triggerTime.toIso8601String(),
+        'trigger_time': triggerTime.toUtc().toIso8601String(), // Forces 'Z' for Swift
         'recurrence': recurrence,
       });
       return result == true;

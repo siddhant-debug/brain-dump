@@ -83,13 +83,30 @@ class SmartReminderService {
             
             // Parse date
             let dateFormatter = ISO8601DateFormatter()
-            if let timeStr = triggerTimeStr, let date = dateFormatter.date(from: timeStr) {
+            dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            
+            var parsedDate: Date? = nil
+            if let timeStr = triggerTimeStr {
+                print("[SmartReminderService] Incoming trigger_time: \(timeStr)")
+                parsedDate = dateFormatter.date(from: timeStr)
+                
+                // Fallback for strings without fractional seconds if needed
+                if parsedDate == nil {
+                    let fallbackFormatter = ISO8601DateFormatter()
+                    fallbackFormatter.formatOptions = [.withInternetDateTime]
+                    parsedDate = fallbackFormatter.date(from: timeStr)
+                }
+            }
+
+            if let date = parsedDate {
                 let dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: date)
                 reminder.dueDateComponents = dueDateComponents
                 
                 // Add alarm
                 let alarm = EKAlarm(absoluteDate: date)
                 reminder.addAlarm(alarm)
+            } else {
+                print("[SmartReminderService] ERROR: Failed to parse date string: \(triggerTimeStr ?? "nil")")
             }
             
             // Handle recurrence
