@@ -38,6 +38,8 @@
 	<string>BrainDump needs location access to tag your notes with your current location.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>BrainDump needs access to your photo library to allow you to attach images to your notes.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>BrainDump needs access to your reminders to create smart notifications based on your intent.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

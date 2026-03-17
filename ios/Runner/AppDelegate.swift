@@ -23,6 +23,8 @@ import MusicKit
     })
     // Register the health channel
     HealthKitService.shared.setupChannel(messenger: controller.binaryMessenger)
+    // Register the reminder channel
+    SmartReminderService.shared.setupChannel(messenger: controller.binaryMessenger)
 
     GeneratedPluginRegistrant.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)

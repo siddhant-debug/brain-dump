@@ -14,6 +14,8 @@ import '../widgets/context_bar.dart';
 import '../widgets/memory_sparks.dart';
 import '../widgets/omni_bar.dart';
 import '../core/theme/theme_provider.dart';
+import '../features/reminders/controllers/smart_reminder_controller.dart';
+import '../features/reminders/presentation/clarifying_prompt_sheet.dart';
 
 /// Black Canvas - Minimalist Digital Notebook
 /// Design: Pure black background, invisible list, hand-drawn spacing
@@ -100,6 +102,26 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
         _ghostText = text;
         _showGhost = true;
       });
+    }
+
+    // [Architect] Smart Reminder Routing Check
+    final reminderKeywords = ['remind me', 'alarm', 'set a reminder', 'wake me up'];
+    final lowerText = text.toLowerCase();
+    final isReminderIntent = reminderKeywords.any((k) => lowerText.contains(k));
+
+    if (isReminderIntent) {
+      // Trigger Smart Reminder Flow
+      await ref.read(smartReminderControllerProvider.notifier).parseInput(text);
+      if (mounted) {
+        showModalBottomSheet(
+          context: context,
+          backgroundColor: Colors.transparent,
+          isScrollControlled: true,
+          builder: (context) => const ClarifyingPromptSheet(),
+        );
+      }
+      _controller.clear();
+      return;
     }
 
     // [Architect] UX FIX: CLEAN INPUT EARLY

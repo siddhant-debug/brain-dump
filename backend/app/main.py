@@ -6,6 +6,7 @@ from slowapi.errors import RateLimitExceeded
 from app.core.limiter import limiter
 from app.models import models
 from app.api.routers import auth, files, notes, rag, analytics, music, health, lifepath
+from app.api.endpoints import nlp_router
 from app.core import database
 from app.services import rag_engine
 
@@ -64,6 +65,7 @@ app.include_router(analytics.router)
 app.include_router(music.router, prefix="/api/music", tags=["music"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(lifepath.router)
+app.include_router(nlp_router.router)
 
 
 @app.get("/")

@@ -150,3 +150,39 @@ Output EXACTLY in the following JSON format:
   "what_to_avoid": "Negative interaction patterns or topics to skip."
 }}
 """
+# --- REMINDER PROMPTS ---
+
+SMART_REMINDER_PARSER_PROMPT = """\
+You are an expert NLP parser specializing in iOS EventKit and Alarms.
+Your task is to convert natural language reminder requests into structured JSON.
+
+CURRENT TIME: {current_time}
+USER TIMEZONE: {timezone}
+
+Input Text: "{input_text}"
+
+TASK:
+1. Extract the "action" (what the user wants to be reminded of).
+2. Extract the "trigger_time" in ISO8601 format WITH TIMEZONE OFFSET (e.g., 2024-03-24T09:00:00+05:30), considering the user's timezone and current time.
+3. Identify the "recurrence" structure.
+   - frequency: "daily", "weekly", "monthly", or null.
+   - interval: integer (e.g., 2 for "every other day").
+   - days_of_week: list of integers (1=Monday, 7=Sunday) if applicable.
+   - end_date: ISO8601 or null.
+
+### Edge Case Handling:
+- If the input text is gibberish, clearly not a reminder, or maliciously long, set "action" to "INVALID" and "trigger_time" to the provided "current_time".
+- Always prioritize the provided timezone and current_time for relative calculations.
+
+Output EXACTLY in the following JSON format:
+{
+  "action": "string",
+  "trigger_time": "ISO8601",
+  "recurrence": {
+    "frequency": "string|null",
+    "interval": int,
+    "days_of_week": [int]|null,
+    "end_date": "ISO8601|null"
+  }
+}
+"""
