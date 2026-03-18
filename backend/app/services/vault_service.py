@@ -27,10 +27,14 @@ def get_secure_document(doc_id: int, user_id: int, db: Session) -> str:
             status_code=400, detail="Document is not a file stored on disk"
         )
 
-    if not os.path.exists(stored_file.file_path):
+    resolved_path = stored_file.file_path
+    if resolved_path.startswith("backend/uploads/"):
+        resolved_path = resolved_path.replace("backend/uploads/", "uploads/", 1)
+
+    if not os.path.exists(resolved_path):
         logger.warning(
-            f"File record {doc_id} points to missing path: {stored_file.file_path}"
+            f"File record {doc_id} points to missing path: {resolved_path}"
         )
         raise HTTPException(status_code=404, detail="File no longer available on disk")
 
-    return stored_file.file_path
+    return resolved_path

@@ -54,17 +54,21 @@ def get_file(
         raise HTTPException(status_code=404, detail="File not found")
 
     if stored_file.file_path:
+        resolved_path = stored_file.file_path
+        if resolved_path.startswith("backend/uploads/"):
+            resolved_path = resolved_path.replace("backend/uploads/", "uploads/", 1)
+
         # Validate file still exists on disk before serving
-        if not os.path.exists(stored_file.file_path):
+        if not os.path.exists(resolved_path):
             logger.warning(
                 "File record %d points to missing path: %s",
                 file_id,
-                stored_file.file_path,
+                resolved_path,
             )
             raise HTTPException(
                 status_code=404, detail="File no longer available on disk"
             )
-        return FileResponse(stored_file.file_path)
+        return FileResponse(resolved_path)
 
     return {"content": stored_file.content_text, "filename": stored_file.filename}
 

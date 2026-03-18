@@ -157,7 +157,7 @@ async def upload_to_brain(
         file_path = None
         content_to_store = None
 
-        UPLOAD_DIR = "backend/uploads"
+        UPLOAD_DIR = "uploads"
         if not os.path.exists(UPLOAD_DIR):
             os.makedirs(UPLOAD_DIR)
 
@@ -601,11 +601,16 @@ def delete_file(
     rag_engine.delete_document(file_record.filename, current_user.id, db)
 
     # 3. Delete from Disk (if applicable)
-    if file_record.file_path and os.path.exists(file_record.file_path):
-        try:
-            os.remove(file_record.file_path)
-        except Exception as e:
-            print(f"Error deleting file from disk: {e}")
+    if file_record.file_path:
+        resolved_path = file_record.file_path
+        if resolved_path.startswith("backend/uploads/"):
+            resolved_path = resolved_path.replace("backend/uploads/", "uploads/", 1)
+            
+        if os.path.exists(resolved_path):
+            try:
+                os.remove(resolved_path)
+            except Exception as e:
+                print(f"Error deleting file from disk: {e}")
 
     # 4. Delete from SQL DB (The Vault)
     db.delete(file_record)
