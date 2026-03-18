@@ -7,7 +7,6 @@ on:
 
 jobs:
   deploy:
-    # This magic line tells GitHub to use your home server instead of their cloud servers
     runs-on: self-hosted
 
     steps:
@@ -23,9 +22,10 @@ jobs:
         run: |
           cd backend
           echo "Rebuilding and restarting backend..."
-          sudo docker compose up -d --build --no-deps braindump-backend
+          # Notice we removed "sudo" from the next two lines
+          docker compose up -d --build --no-deps braindump-backend
           
           echo "Cleaning up old images..."
-          sudo docker image prune -f
+          docker image prune -f
           
           echo "Deployment complete!"
