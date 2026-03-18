@@ -7,43 +7,25 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    # This magic line tells GitHub to use your home server instead of their cloud servers
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to Unix server via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        # 1. Define the environment variable at the STEP level
-        env:
-          ENV_FILE_CONTENT: ${{ secrets.ENV_FILE_CONTENT }}
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: ${{ secrets.SERVER_PORT }}
-          # 2. Tell the SSH action to pass that specific variable over to the server
-          envs: ENV_FILE_CONTENT
-          script: |
-            # 1. Navigate to the root project directory
-            cd /home/sidtom/application/projects/brain-dump
-            
-            echo "Pulling latest code..."
-            git pull origin deployment
+      - name: Create .env file
+        run: |
+          cd backend
+          echo "${{ secrets.ENV_FILE_CONTENT }}" > .env
 
-            # 2. Navigate into the backend directory
-            cd backend
-            
-            echo "Updating .env file..."
-            # Write the contents of the GitHub Secret to the .env file
-            echo "$ENV_FILE_CONTENT" > .env
-
-            echo "Rebuilding and restarting backend..."
-            # Restart only the backend service and rebuild its image
-            sudo docker compose up -d --build --no-deps braindump-backend
-
-            echo "Cleaning up old images..."
-            sudo docker image prune -f
-
-            echo "Deployment complete!"
+      - name: Deploy with Docker Compose
+        run: |
+          cd backend
+          echo "Rebuilding and restarting backend..."
+          sudo docker compose up -d --build --no-deps braindump-backend
+          
+          echo "Cleaning up old images..."
+          sudo docker image prune -f
+          
+          echo "Deployment complete!"
