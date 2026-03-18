@@ -15,15 +15,16 @@ jobs:
 
       - name: Deploy to Unix server via SSH
         uses: appleboy/ssh-action@v1.0.3
+        # 1. Define the environment variable at the STEP level
+        env:
+          ENV_FILE_CONTENT: ${{ secrets.ENV_FILE_CONTENT }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ secrets.SERVER_PORT }}
-          # Pass the GitHub Secret into the SSH environment
+          # 2. Tell the SSH action to pass that specific variable over to the server
           envs: ENV_FILE_CONTENT
-          env:
-            ENV_FILE_CONTENT: ${{ secrets.ENV_FILE_CONTENT }}
           script: |
             # 1. Navigate to the root project directory
             cd /home/sidtom/application/projects/brain-dump
