@@ -10,43 +10,24 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Base64 encode env variables
-        env:
-          ENV_FILE_CONTENT: ${{ secrets.ENV_FILE_CONTENT }}
+      - name: Deploy to Server natively
         run: |
-          echo "ENV_B64=$(echo -n "$ENV_FILE_CONTENT" | base64 -w 0)" >> $GITHUB_ENV
+          # 1. Navigate to the root project directory on the runner's server
+          cd /home/sidtom/application/projects/brain-dump
+          
+          echo "Pulling latest code..."
+          git pull origin deployment
 
-      - name: Deploy to Unix server via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        env:
-          ENV_B64: ${{ env.ENV_B64 }}
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: ${{ secrets.SERVER_PORT }}
-          envs: ENV_B64
-          script: |
-            # 1. Navigate to the root project directory
-            cd /home/sidtom/application/projects/brain-dump
-            
-            echo "Pulling latest code..."
-            git pull origin deployment
-
-            # 2. Navigate into the backend directory
-            cd backend
-            
-            echo "Updating .env file..."
-            # Write the base64-encoded secret to the .env file
-            echo "$ENV_B64" | base64 -d > .env
-            
-            echo "Rebuilding and restarting backend..."
-            docker compose up -d --build --no-deps braindump-backend
-            
-            echo "Cleaning up old images..."
-            docker image prune -f
-            
-            echo "Deployment complete!"
+          # 2. Navigate into the backend directory
+          cd backend
+          
+          # Note: This assumes your .env file is already present at /home/sidtom/application/projects/brain-dump/backend/.env
+          # and you are securely maintaining it on the server directly.
+          
+          echo "Rebuilding and restarting backend..."
+          docker compose up -d --build --no-deps braindump-backend
+          
+          echo "Cleaning up old images..."
+          docker image prune -f
+          
+          echo "Deployment complete!"
