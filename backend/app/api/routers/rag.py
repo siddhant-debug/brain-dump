@@ -13,7 +13,6 @@ import os
 import uuid
 import logging
 from pathlib import Path
-from PyPDF2 import PdfReader
 from sqlalchemy.orm import Session
 from typing import List
 from app.models import models
@@ -24,6 +23,7 @@ from app.core.limiter import limiter
 from . import auth
 
 logger = logging.getLogger(__name__)
+
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -69,6 +69,73 @@ def _save_message(
         db.close()  # ALWAYS runs — prevents connection leak
 
 
+# ---------------------------------------------------------------------------
+# BACKGROUND PROCESSING HELPER
+# ---------------------------------------------------------------------------
+def _process_file_background(user_id: int, file_id: int, safe_filename: str, temp_path: str, is_pdf: bool, final_path: str):
+    """Background task to extract text and index document to vector DB."""
+    from app.core.database import SessionLocal
+    from PyPDF2 import PdfReader
+    import logging
+    import asyncio
+    
+    logger = logging.getLogger(__name__)
+    db = SessionLocal()
+    try:
+        text = ""
+        # The file is currently at temp_path
+        if is_pdf:
+            print(f"[DEBUG BG] Extracting text from PDF: {temp_path}...")
+            reader = PdfReader(temp_path)
+            for page in reader.pages:
+                text += page.extract_text() or ""
+        else:
+            print(f"[DEBUG BG] Extracting text from file: {temp_path}...")
+            with open(temp_path, "r", encoding="utf-8") as f:
+                text = f.read()
+
+        if not text.strip():
+            print("[DEBUG BG] File was empty")
+            return
+
+        print("[DEBUG BG] Indexing text into RAG engine...")
+        # Create a new event loop for async rag engine tasks if running in thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            num_chunks = loop.run_until_complete(
+                rag_engine.async_index_text(safe_filename, text, user_id, source_type="file")
+            )
+            print(f"[DEBUG BG] Indexed {num_chunks} chunks")
+        finally:
+            loop.close()
+
+        # Update the stored file with actual content
+        file_record = db.query(models.StoredFile).filter(models.StoredFile.id == file_id).first()
+        if file_record:
+            if is_pdf:
+                # Move temp to final path
+                shutil.move(temp_path, final_path)
+                file_record.file_path = final_path
+                file_record.content_text = text[:5000]
+            else:
+                file_record.content_text = text
+                # We can remove temp_path for text since we store content in DB
+                os.remove(temp_path)
+            db.commit()
+
+        print(f"[DEBUG BG] NOTE UPLOAD BG TASK COMPLETE — {num_chunks} chunks, {len(text)} chars")
+
+    except Exception as e:
+        logger.error(f"[_process_file_background] Error processing file: {e}", exc_info=True)
+        db.rollback()
+        # Clean up if failed
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+    finally:
+        db.close()
+
+
 # --- RAG ENDPOINT 1: UPLOAD (The Eyes) ---
 @router.post("/upload-to-brain")
 @limiter.limit("20/hour")
@@ -80,139 +147,96 @@ async def upload_to_brain(
     background_tasks: BackgroundTasks = None,
 ):
     print(f"\n{'='*60}")
-    print(f"[DEBUG] NOTE UPLOAD STARTED (BACKGROUND MODE)")
+    print("[DEBUG] NOTE UPLOAD STARTED (BACKGROUND MODE)")
     print(f"[DEBUG] User: {current_user.email} (ID: {current_user.id})")
     print(f"[DEBUG] Filename: {file.filename}")
     print(f"[DEBUG] Content Type: {file.content_type}")
     print(f"{'='*60}\n")
 
-    # 1. Enforce upload size limit (10MB) before saving to disk
-    file_content = await file.read()
-    file_size = len(file_content)
-    if file_size > MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=413, detail="File too large. Maximum allowed size is 10 MB."
-        )
+    # 1. Enforce upload size limit (10MB) via streaming size check
+    # We do not read the whole file into memory. We chunk it.
+    file_size = 0
+    safe_filename = Path(file.filename).name
+    temp_path = f"temp_{current_user.id}_{safe_filename}"
+    
+    print(f"[DEBUG] Milestone 1: Saving to temp path: {temp_path}")
+    
+    with open(temp_path, "wb") as buffer:
+        while True:
+            chunk = await file.read(1024 * 1024)  # 1MB chunks
+            if not chunk:
+                break
+            file_size += len(chunk)
+            if file_size > MAX_UPLOAD_BYTES:
+                buffer.close()
+                os.remove(temp_path)
+                raise HTTPException(
+                    status_code=413, detail="File too large. Maximum allowed size is 10 MB."
+                )
+            buffer.write(chunk)
+            
+    print(f"[DEBUG] Milestone 1 Complete: File streamed to disk (Size: {file_size})")
 
     # 2. Validate MIME type
     content_type = file.content_type
     if not content_type or content_type not in ALLOWED_MIMETYPES:
         guessed_type, _ = mimetypes.guess_type(file.filename)
         if not guessed_type or guessed_type not in ALLOWED_MIMETYPES:
+            os.remove(temp_path)
             raise HTTPException(
                 status_code=415,
-                detail=f"Unsupported file type. Allowed: PDF, TXT, MD, CSV, JSON.",
+                detail="Unsupported file type. Allowed: PDF, TXT, MD, CSV, JSON.",
             )
         content_type = guessed_type
 
-    # 3. Binary check for text files
-    if content_type.startswith("text/") or content_type == "application/json":
-        if b"\x00" in file_content:
-            raise HTTPException(
-                status_code=400, detail="Corrupted or invalid text file."
-            )
+    filename_lower = safe_filename.lower()
+    is_pdf = filename_lower.endswith(".pdf")
+    
+    UPLOAD_DIR = "uploads"
+    if not os.path.exists(UPLOAD_DIR):
+        os.makedirs(UPLOAD_DIR)
+        
+    final_path = os.path.join(UPLOAD_DIR, f"{current_user.id}_{safe_filename}")
 
-    # 4. Save temp file to disk — sanitize filename to prevent path traversal
-    safe_filename = Path(file.filename).name
-    temp_path = f"temp_{current_user.id}_{safe_filename}"
-    print(f"[DEBUG] Milestone 1: Saving to temp path: {temp_path}")
-    with open(temp_path, "wb") as buffer:
-        buffer.write(file_content)
-    print(f"[DEBUG] Milestone 1 Complete: File saved to disk")
-
-    # 2. Process file — temp file is ALWAYS cleaned up in finally block
-    try:
-        text = ""
-        filename_lower = safe_filename.lower()
-
-        if filename_lower.endswith(".pdf"):
-            print(f"[DEBUG] Milestone 2: Extracting text from PDF...")
-            reader = PdfReader(temp_path)
-            for page in reader.pages:
-                text += page.extract_text() or ""
-            print(f"[DEBUG] Milestone 2 Complete: Extracted {len(text)} characters")
-
-        elif filename_lower.endswith(
-            (".txt", ".md", ".json", ".py", ".dart", ".yaml", ".csv")
-        ):
-            print(f"[DEBUG] Milestone 2: Extracting text from text file...")
-            with open(temp_path, "r", encoding="utf-8") as f:
-                text = f.read()
-            print(f"[DEBUG] Milestone 2 Complete: Extracted {len(text)} characters")
-
-        else:
-            print(f"[DEBUG] File type not supported: {safe_filename}")
-            raise HTTPException(status_code=400, detail="File type not supported")
-
-        if not text.strip():
-            print(f"[DEBUG] File was empty")
-            raise HTTPException(status_code=400, detail="File was empty")
-
-        print(f"[DEBUG] Milestone 3: Indexing text into RAG engine...")
-        num_chunks = await rag_engine.async_index_text(
-            safe_filename, text, current_user.id, source_type="file"
+    # 3. Save initial record to DB (sync)
+    print("[DEBUG] Milestone 2: Storing initial file record in database...")
+    def _db_ops():
+        new_file = models.StoredFile(
+            user_id=current_user.id,
+            filename=safe_filename,
+            file_type=content_type,
+            file_size=file_size,
+            content_text="Processing...", # Placeholder until background task completes
+            file_path=None,
         )
-        print(f"[DEBUG] Milestone 3 Complete: Indexed {num_chunks} chunks")
+        db.add(new_file)
+        db.commit()
+        db.refresh(new_file)
+        return new_file.id
 
-        file_path = None
-        content_to_store = None
+    loop = asyncio.get_event_loop()
+    new_file_id = await loop.run_in_executor(None, _db_ops)
+    print(f"[DEBUG] Milestone 2 Complete: File record saved (ID: {new_file_id})")
 
-        UPLOAD_DIR = "uploads"
-        if not os.path.exists(UPLOAD_DIR):
-            os.makedirs(UPLOAD_DIR)
+    # 4. Dispatch Background Task
+    background_tasks.add_task(
+        _process_file_background,
+        user_id=current_user.id,
+        file_id=new_file_id,
+        safe_filename=safe_filename,
+        temp_path=temp_path,
+        is_pdf=is_pdf,
+        final_path=final_path
+    )
+    
+    print("[DEBUG] Milestone 3: Offloaded extraction and indexing to BackgroundTasks")
 
-        if filename_lower.endswith(
-            (".txt", ".md", ".json", ".py", ".dart", ".yaml", ".csv")
-        ):
-            content_to_store = text
-            # Temp file will be cleaned up in finally block
-        else:
-            # Binary/PDF: Move temp to permanent storage
-            final_filename = f"{current_user.id}_{safe_filename}"
-            final_path = os.path.join(UPLOAD_DIR, final_filename)
-            shutil.move(temp_path, final_path)
-            temp_path = None  # Already moved — don't delete in finally
-            file_path = final_path
-            content_to_store = text[:5000]
-
-        print(f"[DEBUG] Milestone 4: Storing file record in database...")
-        loop = asyncio.get_event_loop()
-
-        def _db_ops():
-            new_file = models.StoredFile(
-                user_id=current_user.id,
-                filename=safe_filename,
-                file_type=file.content_type or "unknown",
-                file_size=file.size if hasattr(file, "size") else 0,
-                content_text=content_to_store,
-                file_path=file_path,
-            )
-            db.add(new_file)
-            db.commit()
-            db.refresh(new_file)
-            return new_file.id
-
-        new_file_id = await loop.run_in_executor(None, _db_ops)
-        print(f"[DEBUG] Milestone 4 Complete: File record saved (ID: {new_file_id})")
-
-        print(f"[DEBUG] NOTE UPLOAD COMPLETE — {num_chunks} chunks, {len(text)} chars")
-
-        return {
-            "status": "completed",
-            "message": f"Successfully memorized {safe_filename}",
-            "file_id": new_file_id,
-            "type": file.content_type,
-        }
-
-    except HTTPException:
-        raise  # Re-raise HTTP exceptions as-is (don't wrap in 500)
-    except Exception as e:
-        print(f"[DEBUG] ERROR during processing: {type(e).__name__}")
-        raise HTTPException(status_code=500, detail="An internal error occurred.")
-    finally:
-        # Guaranteed cleanup — runs even on crashes, kills, and exceptions
-        if temp_path and os.path.exists(temp_path):
-            os.remove(temp_path)
+    return {
+        "status": "processing",
+        "message": f"Successfully started analyzing {safe_filename}",
+        "file_id": new_file_id,
+        "type": content_type,
+    }
 
 
 def extract_and_save_identity(user_id: int, message_content: str):
@@ -223,7 +247,6 @@ def extract_and_save_identity(user_id: int, message_content: str):
     from google.genai import types
     from datetime import datetime
     import uuid
-    from . import auth
 
     # Use the top-level rag_engine import to ensure singleton consistency
     get_emb_fn = rag_engine.get_emb_fn
@@ -304,11 +327,9 @@ async def chat_endpoint(
     current_user: models.User = Depends(auth.get_current_user),
 ):
     """Streaming chat endpoint - returns Server-Sent Events (SSE)"""
-    import time
 
-    t_chat_start = time.time()
     print(f"\n{'='*60}")
-    print(f"[DEBUG] CHAT QUERY STARTED (STREAMING)")
+    print("[DEBUG] CHAT QUERY STARTED (STREAMING)")
     print(f"[DEBUG] User ID: {current_user.id}")  # email omitted (PII)
     print(
         f"[DEBUG] Query length: {len(request_body.query)} chars"
@@ -362,13 +383,13 @@ async def chat_endpoint(
         """Generator that yields SSE-formatted chunks"""
         try:
             # 0. Immediate Keep-Alive Ping for Android Client Timeouts
-            print(f"[DEBUG] Sending immediate keep-alive ping to client...")
+            print("[DEBUG] Sending immediate keep-alive ping to client...")
             import json
 
             yield f"data: {json.dumps({'chunk': '', 'done': False, 'status': 'processing'})}\n\n"
 
             # 1. Search for context (Async & Non-Blocking)
-            print(f"[DEBUG] Searching brain for relevant context...")
+            print("[DEBUG] Searching brain for relevant context...")
 
             # Extract location if present
             location_dict = (
@@ -380,8 +401,7 @@ async def chat_endpoint(
             )
 
             if not context_text:
-                print(f"[DEBUG] No documents found for query")
-                import json
+                print("[DEBUG] No documents found for query")
 
                 fallback = "I don't have any notes on that yet."
                 yield f"data: {json.dumps({'chunk': fallback, 'done': True, 'sources': []})}\n\n"
@@ -498,12 +518,10 @@ async def chat_endpoint(
 
                 full_response += chunk
                 # Send chunk as SSE
-                import json
 
                 yield f"data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
 
             # 4. Send final message with sources
-            import json
 
             yield f"data: {json.dumps({'chunk': '', 'done': True, 'sources': sources})}\n\n"
 
@@ -525,7 +543,6 @@ async def chat_endpoint(
                 e,
                 exc_info=True,
             )
-            import json
 
             yield f"data: {json.dumps({'error': f'Something went wrong. If this persists, restart the app. [ref: {err_ref}]', 'done': True})}\n\n"
 

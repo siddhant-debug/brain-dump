@@ -10,6 +10,8 @@ import '../../auth/controllers/auth_controller.dart';
 import '../widgets/secure_pdf_viewer.dart';
 import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../controllers/upload_controller.dart';
+import '../widgets/typewriter_text.dart';
 
 /*
 1 : FileVaultScreen is now exclusively for file storage (The Vault).
@@ -32,6 +34,13 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
     super.dispose();
   }
 
+  String getLoadingMessage(double progress) {
+    if (progress < 0.3) return "Opening the neural gates...";
+    if (progress < 0.6) return "Teaching the AI your secrets...";
+    if (progress < 0.9) return "Connecting neural pathways...";
+    return "The AI is currently pondering your document...";
+  }
+
   Future<void> _pickAndUploadFile() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -40,22 +49,24 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
 
     if (result != null && result.files.single.path != null) {
       final file = File(result.files.single.path!);
-      try {
-        await ref.read(fileServiceProvider).uploadFile(file);
-        if (!mounted) return;
-        ref.invalidate(filesProvider);
+      final success = await ref.read(uploadControllerProvider.notifier).uploadFile(file);
+      
+      if (!mounted) return;
+      if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('File uploaded successfully')),
         );
-      } catch (e) {
-        if (!mounted) return;
-        final colors = ref.read(themeProvider).colors;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Upload failed: $e'),
-            backgroundColor: colors.red,
-          ),
-        );
+      } else {
+        final error = ref.read(uploadControllerProvider).error;
+        if (error != null && error != 'Upload cancelled') {
+          final colors = ref.read(themeProvider).colors;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Upload failed: $error'),
+              backgroundColor: colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -115,6 +126,7 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
   Widget build(BuildContext context) {
     final colors = ref.watch(themeProvider).colors;
     final filesState = ref.watch(filesProvider);
+    final uploadState = ref.watch(uploadControllerProvider);
 
     return Scaffold(
       backgroundColor: colors.bgTop,
@@ -149,7 +161,9 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
                         'Documents',
                         colors,
                         onAdd: () => _pickAndUploadFile(),
+                        isUploading: uploadState.isUploading,
                       ),
+                      _buildUploadProgress(uploadState, colors),
                       const SizedBox(height: 10),
                       _buildFilesList(filesState, colors),
                     ],
@@ -163,7 +177,7 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
     );
   }
 
-  Widget _buildSectionHeader(String title, CircadianColors colors, {VoidCallback? onAdd}) {
+  Widget _buildSectionHeader(String title, CircadianColors colors, {VoidCallback? onAdd, bool isUploading = false}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -175,10 +189,65 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
         ),
         if (onAdd != null)
           IconButton(
-            icon: Icon(Icons.add_circle_outline, color: colors.textDim, size: 20),
-            onPressed: onAdd,
+            icon: isUploading 
+                  ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: colors.accent)) 
+                  : Icon(Icons.add_circle_outline, color: colors.textDim, size: 20),
+            onPressed: isUploading ? null : onAdd,
           ),
       ],
+    );
+  }
+
+  Widget _buildUploadProgress(UploadState state, CircadianColors colors) {
+    if (!state.isUploading) return const SizedBox.shrink();
+    
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colors.surfaceLow,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: colors.accent.withValues(alpha: 0.3), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: TypewriterText(
+                  text: getLoadingMessage(state.progress),
+                  style: AppTextStyles.body(colors.text).copyWith(fontStyle: FontStyle.italic),
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.close, color: colors.textDim, size: 20),
+                onPressed: () {
+                  ref.read(uploadControllerProvider.notifier).cancelUpload();
+                },
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          LinearProgressIndicator(
+            value: state.progress > 0 ? state.progress : null,
+            backgroundColor: colors.surfaceBorder,
+            valueColor: AlwaysStoppedAnimation<Color>(colors.accent),
+            borderRadius: BorderRadius.circular(AppRadius.input),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              '${(state.progress * 100).toInt()}%',
+              style: AppTextStyles.micro(colors.textDim),
+            ),
+          )
+        ],
+      ),
     );
   }
 
