@@ -6,7 +6,7 @@ from sqlalchemy.engine.reflection import Inspector
 # Standard SQLAlchemy URL for psycopg 3 is postgresql+psycopg://
 # If standard postgresql:// is used, it might try psycopg2 which isn't installed.
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://postgres:password123@127.0.0.1:5433/postgres")
-
+#test
 def sync_schema():
     print(f"Connecting to: {DATABASE_URL}")
     try:
