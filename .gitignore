@@ -41,6 +41,8 @@ log.txt
 # Python virtual environments
 .venv/
 .venv_rembg/
+venv/
+backend/venv/
 __pycache__/
 .pytest_cache/
 
