@@ -100,7 +100,7 @@ class ClarifyingPromptSheet extends ConsumerWidget {
       decoration: BoxDecoration(
         color: colors.redBg,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: colors.red.withOpacity(0.3)),
+        border: Border.all(color: colors.red.withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
@@ -142,7 +142,7 @@ class ClarifyingPromptSheet extends ConsumerWidget {
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: colors.accent.withOpacity(0.3)),
+        border: Border.all(color: colors.accent.withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [

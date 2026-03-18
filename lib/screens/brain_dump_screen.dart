@@ -94,6 +94,9 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
+    // [Architect] UX FIX: CLEAN INPUT EARLY synchronously to prevent double-submissions
+    _controller.clear();
+
     final isChatMode = ref.read(brainDumpProvider).isChatMode;
 
     // In journal mode, capture text for ghost animation before clearing
@@ -120,12 +123,8 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
           builder: (context) => const ClarifyingPromptSheet(),
         );
       }
-      _controller.clear();
       return;
     }
-
-    // [Architect] UX FIX: CLEAN INPUT EARLY
-    _controller.clear();
 
     try {
       if (isChatMode) {
