@@ -15,8 +15,11 @@ jobs:
 
       - name: Create .env file
         run: |
-          cd backend
-          echo "${{ secrets.ENV_FILE_CONTENT }}" > .env
+            cd backend
+            # This securely writes the multiline secret exactly as you pasted it in GitHub
+            cat << 'EOF' > .env
+            ${{ secrets.ENV_FILE_CONTENT }}
+            EOF
 
       - name: Deploy with Docker Compose
         run: |
