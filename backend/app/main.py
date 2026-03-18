@@ -10,7 +10,7 @@ from app.api.endpoints import nlp_router
 from app.core import database
 from app.services import rag_engine
 
-#test the github actions
+#test the github actions again
 # Create database tables
 from sqlalchemy import text
 
