@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import and_
 from app.models.models import BrainEmbedding, EpisodicMemory
+from app.models import models
 from app.core.database import SessionLocal
 import json
 import numpy as np
