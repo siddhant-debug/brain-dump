@@ -13,6 +13,7 @@ class MockSecureStorage extends Mock implements FlutterSecureStorage {}
 class MockDio extends Mock implements Dio {}
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late MockHealthService mockService;
   late MockSecureStorage mockStorage;
   late MockDio mockDio;

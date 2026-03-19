@@ -21,6 +21,7 @@ class MockHealthSyncController extends StateNotifier<HealthContextState> with Mo
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late MockBrainService mockBrainService;
   late MockNoteService mockNoteService;
   late MockLocationService mockLocationService;

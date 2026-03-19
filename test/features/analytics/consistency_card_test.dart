@@ -8,6 +8,7 @@ import 'package:brain_dump/features/analytics/services/analytics_service.dart';
 import 'package:brain_dump/features/analytics/models/analytics_models.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('ConsistencyCard shows loading state', (tester) async {
     /// 56: ConsistencyCard shows loading state
     await tester.pumpWidget(

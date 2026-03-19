@@ -11,26 +11,39 @@ class MockBrainDumpNotifier extends StateNotifier<BrainDumpState> with Mock impl
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late MockBrainDumpNotifier mockNotifier;
+  late TextEditingController controller;
+  late FocusNode focusNode;
 
   setUp(() {
     mockNotifier = MockBrainDumpNotifier();
+    controller = TextEditingController();
+    focusNode = FocusNode();
+  });
+
+  tearDown(() {
+    controller.dispose();
+    focusNode.dispose();
   });
 
   Widget createWidgetUnderTest() {
-    final controller = TextEditingController();
-    final focusNode = FocusNode();
-    
     return ProviderScope(
       overrides: [
         brainDumpProvider.overrideWith((ref) => mockNotifier),
       ],
       child: MaterialApp(
         home: Scaffold(
-          body: BrainDumpInput(
-            controller: controller,
-            focusNode: focusNode,
-            onSubmitted: (_) {},
+          body: Consumer(
+            builder: (context, ref, child) {
+              return BrainDumpInput(
+                controller: controller,
+                focusNode: focusNode,
+                onSubmitted: (val) {
+                  ref.read(brainDumpProvider.notifier).processInput(val);
+                },
+              );
+            },
           ),
         ),
       ),
@@ -39,8 +52,6 @@ void main() {
 
   group('BrainDumpInput (Black Canvas)', () {
     testWidgets('renders in journal mode by default', (tester) async {
-      /// 99: renders in journal mode by default
-      // state defaults to isChatMode: false
       await tester.pumpWidget(createWidgetUnderTest());
 
       expect(find.textContaining('Drop a thought'), findsOneWidget);
@@ -48,15 +59,12 @@ void main() {
     });
 
     testWidgets('mode toggle switches to chat mode', (tester) async {
-      /// 100: mode toggle switches to chat mode
       await tester.pumpWidget(createWidgetUnderTest());
 
-      // Since it's a mock, we need to handle the toggle call
       when(() => mockNotifier.toggleMode()).thenAnswer((_) {
         mockNotifier.state = mockNotifier.state.copyWith(isChatMode: true);
       });
 
-      // Better: find by text 'JOURNAL' or the specific icon
       await tester.tap(find.text('JOURNAL'));
       await tester.pump();
 
@@ -65,10 +73,8 @@ void main() {
     });
 
     testWidgets('empty submit does not trigger processInput', (tester) async {
-      /// 101: empty submit does not trigger processInput
       await tester.pumpWidget(createWidgetUnderTest());
 
-      // Tap send button (IconButton)
       await tester.tap(find.byIcon(Icons.arrow_upward));
       await tester.pump();
 
