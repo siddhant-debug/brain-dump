@@ -29,6 +29,7 @@ void main() {
     registerFallbackValue(RequestOptions(path: ''));
 
     when(() => mockService.getAuthorizedTypes()).thenAnswer((_) async => {});
+    when(() => mockService.reinitAfterAuthorization()).thenAnswer((_) async => {});
     
     container = ProviderContainer(
       overrides: [
