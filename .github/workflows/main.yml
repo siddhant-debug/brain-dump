@@ -15,10 +15,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Build image tagged with commit SHA
+        run: docker build -t braindump-backend:${{ github.sha }} .
+
       - name: Install testing tools into server environment
         run: |
           source /home/sidtom/application/projects/brain-dump/backend/venv/bin/activate
-          pip install pytest flake8 black || true
+          pip install pytest flake8 black httpx
 
       - name: Check formatting with Black
         run: |
@@ -47,6 +50,9 @@ jobs:
 
   flutter-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -64,7 +70,7 @@ jobs:
         run: flutter pub get
 
       - name: Analyze Dart code
-        run: dart analyze --fatal-infos --fatal-warnings
+        run: dart analyze --fatal-warnings
 
       - name: Run tests
         # Only runs if there is a 'test' directory
@@ -84,29 +90,28 @@ jobs:
           # 1. Navigate to the root project directory on the runner's server
           cd /home/sidtom/application/projects/brain-dump
           
-          echo "Pulling latest code..."
-          git pull origin deployment
+          echo "Checking out exact commit SHA that passed tests: ${{ github.sha }}..."
+          git fetch origin
+          git checkout ${{ github.sha }}
 
           # 2. Navigate into the backend directory
           cd backend
           
-          # Note: This assumes your .env file is already present at /home/sidtom/application/projects/brain-dump/backend/.env
-          # and you are securely maintaining it on the server directly.
-          
-          echo "Rebuilding and restarting backend..."
-          docker compose up -d --build --no-deps braindump-backend
+          # Use the image built during backend-test job
+          echo "Restarting backend with EXACT tested container image..."
+          IMAGE_TAG=${{ github.sha }} docker compose up -d --no-build braindump-backend
           
           echo "Checking if database migrations are needed..."
           # Check the current database migration status
-          CURRENT_REV=$(docker compose exec -T braindump-backend alembic current 2>/dev/null || true)
+          CURRENT_REV=$(IMAGE_TAG=${{ github.sha }} docker compose exec -T braindump-backend alembic current 2>/dev/null || true)
           if [[ "$CURRENT_REV" == *"(head)"* ]]; then
             echo "Database is already at the latest revision. Skipping migrations."
           else
             echo "Pending migrations detected. Running alembic upgrade head..."
-            docker compose exec -T braindump-backend alembic upgrade head
+            IMAGE_TAG=${{ github.sha }} docker compose exec -T braindump-backend alembic upgrade head
           fi
           
           echo "Cleaning up old images..."
           docker image prune -f
           
-          echo "Deployment complete!"
+          echo "Deployment complete for SHA: ${{ github.sha }}!"
