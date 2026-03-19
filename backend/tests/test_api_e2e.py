@@ -1,6 +1,12 @@
 import pytest
 import random
 import string
+import sys
+import os
+
+# Add the backend directory to Python path so it can find the 'app' module
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from fastapi.testclient import TestClient
 from app.main import app
 from app.core.database import SessionLocal
