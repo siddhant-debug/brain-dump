@@ -78,7 +78,7 @@ def test_files_flow(setup_teardown_user):
     # This matches the requests format used in test_endpoints.py
     files = {"file": (filename, file_content.encode('utf-8'), "text/plain")}
     
-    response = client.post("/files/upload", files=files, headers=headers)
+    response = client.post("/chat/upload-to-brain", files=files, headers=headers)
     assert response.status_code == 200, f"File upload failed: {response.text}"
     
     response = client.get("/files/", headers=headers)
@@ -97,21 +97,20 @@ def test_rag_chat_flow(setup_teardown_user):
     response = client.post("/chat/upload-to-brain", files=files, headers=headers)
     assert response.status_code == 200, f"Upload to brain failed: {response.text}"
     
-    # Currently TestClient can consume streaming responses
     query = "What is the airspeed velocity of a swallow?"
     
-    # TestClient streaming response iterable
+    # TestClient block-fetches streaming response natively without 'stream=True' keyword
     response = client.post(
         "/chat/chat",
         json={"query": query},
-        headers=headers,
-        stream=True
+        headers=headers
     )
     assert response.status_code == 200
     
     has_chunk = False
     import json
-    for line in response.iter_lines():
+    # response.text contains the full SSE payload delimited by newlines
+    for line in response.text.splitlines():
         if not line: continue
         if line.startswith("data: "):
             try:
