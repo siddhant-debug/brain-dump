@@ -20,7 +20,7 @@ def test_rag_ingestion_chunks_text():
 def test_rag_dense_embed_returns_vector():
     """Validates that dense embedding returns a float array"""
     with patch("app.services.rag_engine.SentenceTransformer") as mock_st:
-        mock_st.return_value.encode.return_value = [0.1] * 768
+        mock_st.return_value.encode.return_value = np.array([0.1] * 768)
         # Reset the singleton state to force reload
         rag_engine._rag_service._emb_model = None
         emb_fn = rag_engine.get_emb_fn()
@@ -49,16 +49,20 @@ def test_rag_hybrid_search_returns_ranked_results():
     mock_emb.id = "1"
     
     with patch("app.services.rag_engine.get_emb_fn") as mock_emb_fn:
-        mock_emb_fn.return_value.encode.return_value = [np.zeros(768)]
+        mock_emb_fn.return_value.encode.return_value = np.zeros((1, 768))
         db.query().filter().order_by().limit().all.return_value = [mock_emb]
         
         # Mock BM25 store
-        with patch.object(rag_engine._rag_service.bm25_store, "get_or_build") as mock_bm25:
-            mock_bm25.return_value = None # Skip BM25 for simplicity
-            
-            context, sources = rag_engine.retrieve_context(query, user_id, db)
-            assert "test result" in context
-            assert "test.txt" in sources
+        with patch.object(rag_engine._rag_service.bm25_store, "get_or_build") as mock_bm25_get:
+            mock_bm25_get.return_value = MagicMock()
+            mock_bm25_get.return_value.get_scores.return_value = [0.5]
+            with patch.object(rag_engine._rag_service.bm25_store, "get_registry_map", return_value={0: "1"}):
+                with patch.object(rag_engine._rag_service.bm25_store, "get_content_map", return_value={"1": "test result"}):
+                    with patch.object(rag_engine._rag_service.bm25_store, "get_metadata_map", return_value={"1": {"source": "test.txt"}}):
+                        context, sources = rag_engine.retrieve_context(query, user_id, db)
+                        assert context is not None
+                        assert "test result" in context
+                        assert "test.txt" in sources
 
 @pytest.mark.integration
 def test_rag_reranker_orders_by_relevance():
@@ -86,17 +90,20 @@ def test_rag_ingestion_with_fake_db():
         assert db.commit.called
 
 @pytest.mark.integration
-@pytest.mark.asyncio
-async def test_rag_asks_brain_returns_stream():
+def test_rag_asks_brain_returns_stream():
     """Validates ask_brain() yields SSE chunks — mocked Gemini"""
-    with patch("app.services.rag_engine.gemini_service.async_stream") as mock_stream:
-        async def fake_stream(*args, **kwargs):
-            yield "chunk1"
-            yield "chunk2"
-        mock_stream.side_effect = fake_stream
-        
-        chunks = []
-        async for chunk in rag_engine.ask_gemini_stream_async("context", "query", 1):
-            chunks.append(chunk)
-        
-        assert chunks == ["chunk1", "chunk2"]
+    import anyio
+    async def run_test():
+        with patch("app.services.rag_engine.gemini_service.async_stream") as mock_stream:
+            async def fake_stream(*args, **kwargs):
+                yield "chunk1"
+                yield "chunk2"
+            mock_stream.side_effect = fake_stream
+            
+            chunks = []
+            async for chunk in rag_engine.ask_gemini_stream_async("context", "query", 1):
+                chunks.append(chunk)
+            return chunks
+
+    chunks = anyio.run(run_test)
+    assert chunks == ["chunk1", "chunk2"]

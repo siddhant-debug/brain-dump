@@ -49,6 +49,8 @@ void main() {
       when(() => mockService.getMusicUserToken()).thenAnswer((_) async => 'user_token');
       when(() => mockDio.get(any(), options: any(named: 'options')))
           .thenAnswer((_) async => Response(requestOptions: RequestOptions(path: ''), data: {'recent_songs': []}));
+      when(() => mockDio.post(any(), options: any(named: 'options'), data: any(named: 'data')))
+          .thenAnswer((_) async => Response(requestOptions: RequestOptions(path: ''), data: {'primary_tone': 'Neutral', 'short_description': 'Test'}));
 
       await container.read(musicSyncControllerProvider.notifier).requestPermission();
 

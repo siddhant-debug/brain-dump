@@ -115,9 +115,6 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
 
-    // Cancel any ongoing stream
-    await _currentStreamSubscription?.cancel();
-
     // 1. Add User Message immediately
     final userMsgId = _uuid.v4();
     final userMsg = ChatMessage(
@@ -133,6 +130,9 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
       isProcessing: true,
       error: null,
     );
+
+    // Cancel any ongoing stream
+    await _currentStreamSubscription?.cancel();
 
     // [PERSISTENCE] Save to Notes DB if NOT in Chat Mode
     // This prevents redundant entries for queries (e.g. "what is success?")

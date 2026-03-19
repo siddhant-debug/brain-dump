@@ -5,6 +5,7 @@ from app.services import vault_service
 from app.models import models
 from fastapi import HTTPException
 import os
+from app.api.routers import auth
 
 def test_get_secure_document_not_found_raises_404():
     """Returns 404 when doc_id doesn't belong to user"""
@@ -33,13 +34,10 @@ def test_get_secure_document_path_normalizes_prefix():
     db.query().filter().first.return_value = mock_file
     
     with patch("os.path.exists", return_value=True):
-        # We also need to mock FileResponse or check the path passed to it
-        with patch("app.services.vault_service.FileResponse") as mock_res:
-            vault_service.get_secure_document(1, 1, db)
-            # Check if backend/ was stripped
-            called_path = mock_res.call_args[0][0]
-            assert "backend/uploads" not in called_path
-            assert called_path.startswith("uploads/")
+        result_path = vault_service.get_secure_document(1, 1, db)
+        # Check if backend/ was stripped
+        assert "backend/uploads" not in result_path
+        assert result_path.startswith("uploads/")
 
 def test_get_secure_document_missing_file_raises_404():
     """Returns 404 when path points to non-existent file on disk"""
@@ -70,7 +68,7 @@ def test_upload_to_brain_saves_file(tmp_path):
     app.dependency_overrides[database.get_db] = lambda: db
     
     # Mock the background task to avoid actual processing
-    with patch("app.api.routers.rag.background_tasks") as mock_bg:
+    with patch("fastapi.BackgroundTasks.add_task") as mock_add_task:
         file_content = b"fake pdf content"
         files = {"file": ("test.pdf", file_content, "application/pdf")}
         

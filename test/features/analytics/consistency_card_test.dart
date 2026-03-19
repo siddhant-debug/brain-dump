@@ -20,7 +20,6 @@ void main() {
     );
 
     expect(find.text('Consistency'), findsOneWidget);
-    // Assuming loadingCard shows some indicator or specific text
   });
 
   testWidgets('ConsistencyCard shows error state', (tester) async {
@@ -33,6 +32,8 @@ void main() {
         child: const MaterialApp(home: Scaffold(body: ConsistencyCard())),
       ),
     );
+
+    await tester.pump();
 
     expect(find.text('Could not load consistency data'), findsOneWidget);
   });
@@ -57,6 +58,8 @@ void main() {
         child: const MaterialApp(home: Scaffold(body: ConsistencyCard())),
       ),
     );
+
+    await tester.pump();
 
     expect(find.text('12'), findsOneWidget);
     expect(find.textContaining('Best: 15 days'), findsOneWidget);
@@ -83,8 +86,8 @@ void main() {
       ),
     );
 
-    // Each HeatmapDay is rendered as a Container inside HeatmapRow
-    // We can count them by looking for the Tooltips wrapping them
+    await tester.pump();
+
     expect(find.byType(Tooltip), findsNWidgets(30));
   });
 
@@ -108,6 +111,8 @@ void main() {
         child: const MaterialApp(home: Scaffold(body: ConsistencyCard())),
       ),
     );
+
+    await tester.pump();
 
     expect(find.byTooltip('2024-03-19: 7 notes'), findsOneWidget);
   });

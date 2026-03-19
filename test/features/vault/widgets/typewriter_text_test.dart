@@ -58,6 +58,7 @@ void main() {
           ),
         ),
       );
+      await tester.pump();
 
       // Should restart from empty
       expect(find.text(''), findsOneWidget);

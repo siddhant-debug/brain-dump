@@ -47,6 +47,9 @@ void main() {
       when(() => mockService.getAuthorizedTypes()).thenAnswer((_) async => {'heart_rate'});
       when(() => mockService.reinitAfterAuthorization()).thenAnswer((_) async => {});
       when(() => mockService.getLatestSnapshot()).thenAnswer((_) async => null);
+      when(() => mockStorage.read(key: 'jwt_token')).thenAnswer((_) async => 'fake_jwt');
+      when(() => mockDio.post(any(), options: any(named: 'options'), data: any(named: 'data')))
+          .thenAnswer((_) async => Response(requestOptions: RequestOptions(path: ''), statusCode: 200));
 
       await container.read(healthSyncControllerProvider.notifier).requestPermission();
 

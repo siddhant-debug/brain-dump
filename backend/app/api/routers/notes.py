@@ -11,6 +11,42 @@ from . import auth
 router = APIRouter(prefix="/notes", tags=["notes"])
 
 
+def process_note_background(
+    note_id: int, content: str, user_id: int, location_context: dict = None
+):
+    from app.core.database import SessionLocal
+    from app.models import models
+
+    bg_db = SessionLocal()
+    try:
+        # 2a. Run LLM Analysis for Insights
+        insights = rag_engine.analyze_thought_insights(content)
+
+        # Update the SQL note record with insights
+        note_record = bg_db.query(models.Note).filter(models.Note.id == note_id).first()
+        if note_record:
+            note_record.sentiment = insights.get("sentiment", "Neutral")
+            note_record.categories = insights.get("categories", [])
+            bg_db.commit()
+            print(f"[INFO] Analyzed note {note_id}: {insights}")
+
+        # 2b. Index in Vector DB
+        rag_engine.index_text(
+            filename=f"note_{note_id}",
+            text=content,
+            user_id=user_id,
+            db=bg_db,
+            location_context=location_context,
+            source_type="note",
+        )
+        print(f"[INFO] Indexed note {note_id} for user {user_id}")
+    except Exception as e:
+        print(f"[ERROR] Failed to process note {note_id} in background: {e}")
+        bg_db.rollback()
+    finally:
+        bg_db.close()
+
+
 @router.post("/", response_model=schemas.NoteResponse)
 @limiter.limit("30/minute")
 def create_note(
@@ -52,43 +88,6 @@ def create_note(
     #     print(f"[ERROR] Failed to save note to chat history: {e}")
 
     # 2. Index in Vector DB & Analyze (Background Task)
-    def process_note_background(
-        note_id: int, content: str, user_id: int, location_context: dict = None
-    ):
-        from app.core.database import SessionLocal
-        from app.models import models
-
-        bg_db = SessionLocal()
-        try:
-            # 2a. Run LLM Analysis for Insights
-            insights = rag_engine.analyze_thought_insights(content)
-
-            # Update the SQL note record with insights
-            note_record = (
-                bg_db.query(models.Note).filter(models.Note.id == note_id).first()
-            )
-            if note_record:
-                note_record.sentiment = insights.get("sentiment", "Neutral")
-                note_record.categories = insights.get("categories", [])
-                bg_db.commit()
-                print(f"[INFO] Analyzed note {note_id}: {insights}")
-
-            # 2b. Index in Vector DB
-            rag_engine.index_text(
-                filename=f"note_{note_id}",
-                text=content,
-                user_id=user_id,
-                db=bg_db,
-                location_context=location_context,
-                source_type="note",
-            )
-            print(f"[INFO] Indexed note {note_id} for user {user_id}")
-        except Exception as e:
-            print(f"[ERROR] Failed to process note {note_id} in background: {e}")
-            bg_db.rollback()
-        finally:
-            bg_db.close()
-
     # Extract location if present
     location_dict = note.location.dict() if note.location else None
 

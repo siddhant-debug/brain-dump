@@ -45,7 +45,7 @@ void main() {
 
       // We can't easily test navigation pop without a mock observer or checking if it's still there
       // but let's just ensure it's present.
-      expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
+      expect(find.byType(BackButton), findsOneWidget);
     });
   });
 }

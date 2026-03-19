@@ -1,49 +1,82 @@
-Analyzing brain-dump...
+Run if [ -d "test" ]; then
 
-  error - lib/core/widgets/minimal_icon_button.dart:47:30 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/presentation/analytics_screen.dart:125:34 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/presentation/analytics_screen.dart:136:36 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/presentation/analytics_screen.dart:217:26 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/presentation/analytics_screen.dart:229:28 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/presentation/analytics_screen.dart:252:24 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/presentation/analytics_screen.dart:275:20 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/presentation/analytics_screen.dart:280:20 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/presentation/analytics_screen.dart:379:35 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/presentation/analytics_screen.dart:401:32 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/presentation/analytics_screen.dart:409:32 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/widgets/loops_bottom_sheet.dart:15:16 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/widgets/loops_bottom_sheet.dart:46:26 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/widgets/loops_bottom_sheet.dart:59:30 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/widgets/loops_bottom_sheet.dart:67:30 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/widgets/loops_bottom_sheet.dart:88:26 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/widgets/loops_bottom_sheet.dart:182:36 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/widgets/loops_bottom_sheet.dart:193:36 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/widgets/loops_bottom_sheet.dart:231:38 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/widgets/loops_bottom_sheet.dart:242:44 - Invalid constant value. - invalid_constant
-  error - lib/features/analytics/widgets/loops_bottom_sheet.dart:253:44 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:255:22 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:265:45 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:269:45 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:275:49 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:313:20 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:421:28 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:445:24 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:479:26 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:499:47 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:544:16 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:576:22 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:661:22 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:862:32 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:869:34 - Invalid constant value. - invalid_constant
-  error - lib/screens/brain_dump_screen.dart:925:18 - Invalid constant value. - invalid_constant
-  error - lib/screens/dashboard_screen.dart:159:28 - Invalid constant value. - invalid_constant
-  error - lib/screens/dashboard_screen.dart:182:34 - Invalid constant value. - invalid_constant
-  error - lib/screens/dashboard_screen.dart:242:26 - Invalid constant value. - invalid_constant
-  error - lib/screens/dashboard_screen.dart:280:22 - Invalid constant value. - invalid_constant
-  error - lib/screens/dashboard_screen.dart:292:28 - Invalid constant value. - invalid_constant
-  error - lib/screens/dashboard_screen.dart:304:28 - Invalid constant value. - invalid_constant
-  error - lib/screens/neural_canvas_page.dart:174:30 - Invalid constant value. - invalid_constant
-  error - lib/screens/neural_canvas_page.dart:231:30 - Invalid constant value. - invalid_constant
-   info - lib/features/analytics/presentation/analytics_screen.dart:302:18 - Unnecessary use of multiple underscores. Try using '_'. - unnecessary_underscores
+✅ /home/runner/work/brain-dump/brain-dump/test/widget_test.dart: Brain Dump App Tests App root component renders correctly
+✅ /home/runner/work/brain-dump/brain-dump/test/widget_test.dart: Brain Dump App Tests PersistentHeader renders title correctly
+✅ /home/runner/work/brain-dump/brain-dump/test/widget_test.dart: Brain Dump App Tests AnalyticsScreen loads and displays basic UI
+✅ /home/runner/work/brain-dump/brain-dump/test/features/auth/login_screen_test.dart: LoginScreen Tests renders login UI correctly
+✅ /home/runner/work/brain-dump/brain-dump/test/features/auth/login_screen_test.dart: LoginScreen Tests toggles between login and signup
+✅ /home/runner/work/brain-dump/brain-dump/test/features/auth/login_screen_test.dart: LoginScreen Tests shows warning snackbar if fields are empty
+✅ /home/runner/work/brain-dump/brain-dump/test/features/auth/login_screen_test.dart: LoginScreen Tests calls login on the controller when form is filled
+✅ /home/runner/work/brain-dump/brain-dump/test/features/vault/file_vault_screen_test.dart: FileVaultScreen renders list of files
+✅ /home/runner/work/brain-dump/brain-dump/test/features/vault/file_vault_screen_test.dart: FileVaultScreen search filters file list
+✅ /home/runner/work/brain-dump/brain-dump/test/features/vault/file_vault_screen_test.dart: FileVaultScreen shows loading message during upload
+✅ /home/runner/work/brain-dump/brain-dump/test/features/vault/file_vault_screen_test.dart: FileVaultScreen calls deleteFile on service
+✅ /home/runner/work/brain-dump/brain-dump/test/features/vault/widgets/typewriter_text_test.dart: TypewriterText starts empty and fills over time
+❌ /home/runner/work/brain-dump/brain-dump/test/features/vault/widgets/typewriter_text_test.dart: TypewriterText updates when text changes (failed)
+✅ /home/runner/work/brain-dump/brain-dump/test/features/vault/note_detail_screen_test.dart: NoteDetailScreen renders note details correctly
+❌ /home/runner/work/brain-dump/brain-dump/test/features/vault/note_detail_screen_test.dart: NoteDetailScreen back button pops screen (failed)
+✅ /home/runner/work/brain-dump/brain-dump/test/features/vault/thoughts_screen_test.dart: ThoughtsScreen renders list of notes
+✅ /home/runner/work/brain-dump/brain-dump/test/features/vault/thoughts_screen_test.dart: ThoughtsScreen shows delete confirmation dialog
+✅ /home/runner/work/brain-dump/brain-dump/test/features/vault/thoughts_screen_test.dart: ThoughtsScreen calls deleteNote on service when confirmed
+✅ /home/runner/work/brain-dump/brain-dump/test/features/vault/thoughts_screen_test.dart: ThoughtsScreen shows empty state when no notes
+✅ /home/runner/work/brain-dump/brain-dump/test/features/vault/thoughts_screen_test.dart: ThoughtsScreen Add Note opens add note dialog
+❌ /home/runner/work/brain-dump/brain-dump/test/features/brain_dump/widgets/brain_dump_input_test.dart: BrainDumpInput (Black Canvas) renders in journal mode by default (failed)
+❌ /home/runner/work/brain-dump/brain-dump/test/features/brain_dump/widgets/brain_dump_input_test.dart: BrainDumpInput (Black Canvas) mode toggle switches to chat mode (failed)
+❌ /home/runner/work/brain-dump/brain-dump/test/features/brain_dump/widgets/brain_dump_input_test.dart: BrainDumpInput (Black Canvas) empty submit does not trigger processInput (failed)
+❌ /home/runner/work/brain-dump/brain-dump/test/features/brain_dump/widgets/brain_dump_input_test.dart: BrainDumpInput (Black Canvas) typing and submitting triggers processInput (failed)
+✅ /home/runner/work/brain-dump/brain-dump/test/features/brain_dump/brain_dump_toggle_test.dart: BrainDumpState defaults to Journal mode (isChatMode = false)
+✅ /home/runner/work/brain-dump/brain-dump/test/features/brain_dump/brain_dump_toggle_test.dart: BrainDumpState copyWith preserves isChatMode when not specified
+✅ /home/runner/work/brain-dump/brain-dump/test/features/brain_dump/brain_dump_toggle_test.dart: BrainDumpState copyWith updates isChatMode
+✅ /home/runner/work/brain-dump/brain-dump/test/features/brain_dump/brain_dump_toggle_test.dart: BrainDumpState copyWith preserves all other fields when toggling mode
+✅ /home/runner/work/brain-dump/brain-dump/test/features/brain_dump/brain_dump_toggle_test.dart: BrainDumpState copyWith with clearError resets error but keeps isChatMode
+✅ /home/runner/work/brain-dump/brain-dump/test/features/brain_dump/brain_dump_toggle_test.dart: BrainDumpNotifier.toggleMode toggleMode flips isChatMode from false to true
+✅ /home/runner/work/brain-dump/brain-dump/test/features/brain_dump/brain_dump_toggle_test.dart: BrainDumpNotifier.toggleMode toggleMode flips isChatMode from true to false
+✅ /home/runner/work/brain-dump/brain-dump/test/features/brain_dump/brain_dump_toggle_test.dart: BrainDumpNotifier.toggleMode toggleMode preserves messages and other state
+✅ /home/runner/work/brain-dump/brain-dump/test/features/brain_dump/brain_dump_toggle_test.dart: BrainDumpNotifier.toggleMode rapid toggles do not corrupt state
+✅ /home/runner/work/brain-dump/brain-dump/test/features/analytics/models_test.dart: Analytics Models ConsistencyData.fromJson parses correctly
+✅ /home/runner/work/brain-dump/brain-dump/test/features/analytics/models_test.dart: Analytics Models ThemesData.fromJson parses correctly
+✅ /home/runner/work/brain-dump/brain-dump/test/features/analytics/models_test.dart: Analytics Models LoopsData.fromJson parses correctly
+✅ /home/runner/work/brain-dump/brain-dump/test/features/analytics/models_test.dart: Analytics Models PipelineData.fromJson parses correctly
+✅ /home/runner/work/brain-dump/brain-dump/test/features/analytics/analytics_service_test.dart: AnalyticsService getConsistency returns data on success
+✅ /home/runner/work/brain-dump/brain-dump/test/features/analytics/analytics_service_test.dart: AnalyticsService getThemes returns data on success
+✅ /home/runner/work/brain-dump/brain-dump/test/features/analytics/analytics_service_test.dart: AnalyticsService getLoops returns data on success
+✅ /home/runner/work/brain-dump/brain-dump/test/features/analytics/analytics_service_test.dart: AnalyticsService getPipeline returns data on success
+✅ /home/runner/work/brain-dump/brain-dump/test/features/analytics/analytics_service_test.dart: AnalyticsService handles 500 server error
+✅ /home/runner/work/brain-dump/brain-dump/test/features/analytics/consistency_card_test.dart: ConsistencyCard shows loading state
+❌ /home/runner/work/brain-dump/brain-dump/test/features/analytics/consistency_card_test.dart: ConsistencyCard shows error state (failed)
+❌ /home/runner/work/brain-dump/brain-dump/test/features/analytics/consistency_card_test.dart: ConsistencyCard renders streak and stats correctly (failed)
+❌ /home/runner/work/brain-dump/brain-dump/test/features/analytics/consistency_card_test.dart: Heatmap renders correct number of day dots (failed)
+❌ /home/runner/work/brain-dump/brain-dump/test/features/analytics/consistency_card_test.dart: Tooltip shows correct count for a specific day (failed)
+✅ /home/runner/work/brain-dump/brain-dump/test/features/analytics/consistency_card_test.dart: Heatmap intensity uses different colors
+❌ /home/runner/work/brain-dump/brain-dump/test/features/music/music_sync_controller_test.dart: MusicSyncController initializes with no auth (failed)
+❌ /home/runner/work/brain-dump/brain-dump/test/features/music/music_sync_controller_test.dart: MusicSyncController requestPermission updates auth state (failed)
+❌ /home/runner/work/brain-dump/brain-dump/test/features/music/music_sync_controller_test.dart: MusicSyncController _analyzeVibeOnBackend triggers post to backend (failed)
+✅ /home/runner/work/brain-dump/brain-dump/test/features/music/music_sync_controller_test.dart: MusicSyncController recent songs are cached locally
+❌ /home/runner/work/brain-dump/brain-dump/test/features/music/music_sync_controller_test.dart: MusicSyncController handles 401 on backend sync (failed)
+✅ /home/runner/work/brain-dump/brain-dump/test/features/music/music_sync_controller_test.dart: MusicSyncController Lifecycle polling logic starts after permission
+✅ /home/runner/work/brain-dump/brain-dump/test/features/music/music_service_test.dart: MusicService requestAuthorization calls music_kit
+✅ /home/runner/work/brain-dump/brain-dump/test/features/music/music_service_test.dart: MusicService checkAuthorization calls music_kit
+✅ /home/runner/work/brain-dump/brain-dump/test/features/music/music_service_test.dart: MusicService isPlaying handles system player state
+✅ /home/runner/work/brain-dump/brain-dump/test/features/music/music_service_test.dart: MusicService getCurrentSong parses native response
+✅ /home/runner/work/brain-dump/brain-dump/test/features/music/music_service_test.dart: MusicService getMusicUserToken two-step flow
+❌ /home/runner/work/brain-dump/brain-dump/test/features/health/health_sync_controller_test.dart: HealthSyncController initializes with no auth (failed)
+❌ /home/runner/work/brain-dump/brain-dump/test/features/health/health_sync_controller_test.dart: HealthSyncController requestPermission updates auth state (failed)
+❌ /home/runner/work/brain-dump/brain-dump/test/features/health/health_sync_controller_test.dart: HealthSyncController refreshHealthContext posts to backend (failed)
+✅ /home/runner/work/brain-dump/brain-dump/test/features/health/health_sync_controller_test.dart: HealthSyncController polling logic starts after permission
+❌ /home/runner/work/brain-dump/brain-dump/test/features/health/health_sync_controller_test.dart: HealthSyncController gate keeps fetches from happening if unauthorized (failed)
+✅ /home/runner/work/brain-dump/brain-dump/test/features/health/health_service_test.dart: HealthService requestAuthorization calls native method
+✅ /home/runner/work/brain-dump/brain-dump/test/features/health/health_service_test.dart: HealthService getAuthorizedTypes parses status map
+✅ /home/runner/work/brain-dump/brain-dump/test/features/health/health_service_test.dart: HealthService getLatestSnapshot aggregates values
+✅ /home/runner/work/brain-dump/brain-dump/test/features/health/health_service_test.dart: HealthService handles PlatformException gracefully
+✅ /home/runner/work/brain-dump/brain-dump/test/providers/brain_dump_provider_test.dart: BrainDumpProvider initializes in journal mode
+✅ /home/runner/work/brain-dump/brain-dump/test/providers/brain_dump_provider_test.dart: BrainDumpProvider toggleMode switches to chat mode
+✅ /home/runner/work/brain-dump/brain-dump/test/providers/brain_dump_provider_test.dart: BrainDumpProvider toggleMode switches back to journal mode
+❌ /home/runner/work/brain-dump/brain-dump/test/providers/brain_dump_provider_test.dart: BrainDumpProvider processInput adds user message immediately (failed)
+✅ /home/runner/work/brain-dump/brain-dump/test/providers/brain_dump_provider_test.dart: BrainDumpProvider processInput sets isProcessing true then false
+✅ /home/runner/work/brain-dump/brain-dump/test/providers/brain_dump_provider_test.dart: BrainDumpProvider processInput with error sets error state
+✅ /home/runner/work/brain-dump/brain-dump/test/providers/brain_dump_provider_test.dart: BrainDumpProvider saveNoteSilently does not add message to list
+✅ /home/runner/work/brain-dump/brain-dump/test/providers/brain_dump_provider_test.dart: BrainDumpProvider clearLocalHistory empties messages
+✅ /home/runner/work/brain-dump/brain-dump/test/providers/brain_dump_provider_test.dart: BrainDumpProvider empty input is ignored
 
-45 issues found.
+Error: 58 tests passed, 19 failed.
+Error: Process completed with exit code 1.
