@@ -35,8 +35,12 @@ jobs:
       - name: Run unit tests
         run: |
           source /home/sidtom/application/projects/brain-dump/backend/venv/bin/activate
+          # 1. Copy the production .env file used by the backend so tests can connect to the DB
+          cp /home/sidtom/application/projects/brain-dump/backend/.env ./.env || true
+          
+          # 2. Run only the tests in backend/tests/ (ignoring scripts)
           if [ -d "tests" ]; then
-            pytest
+            pytest tests/
           else
             echo "No tests directory found, skipping."
           fi
@@ -52,6 +56,9 @@ jobs:
         with:
           channel: 'stable'
           cache: true
+
+      - name: Create dummy .env for analysis
+        run: touch .env
 
       - name: Install dependencies
         run: flutter pub get
