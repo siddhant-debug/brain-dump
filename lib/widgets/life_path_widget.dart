@@ -63,7 +63,7 @@ class LifePathWidget extends ConsumerWidget {
                 )
               : const SizedBox.shrink(),
             loading: () => const _SkeletonText(width: 200),
-            error: (_, __) => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
           ),
           lifePathAsync.when(
             data: (items) {

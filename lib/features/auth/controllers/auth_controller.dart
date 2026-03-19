@@ -94,7 +94,7 @@ class UserModel {
       id: json['id'],
       email: json['email'],
       fullName: json['full_name'],
-      profilePic: json['profile_pic'] != null ? json['profile_pic'].toString() : null,
+      profilePic: json['profile_pic']?.toString(),
       hasCompletedLifePath: json['has_completed_life_path'] ?? false,
       macroGoal: json['macro_goal'],
     );

@@ -49,8 +49,10 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
 
     if (result != null && result.files.single.path != null) {
       final file = File(result.files.single.path!);
-      final success = await ref.read(uploadControllerProvider.notifier).uploadFile(file);
-      
+      final success = await ref
+          .read(uploadControllerProvider.notifier)
+          .uploadFile(file);
+
       if (!mounted) return;
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -137,7 +139,10 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
               title: 'The Vault',
               actions: [
                 IconButton(
-                  icon: Icon(Icons.logout_rounded, color: colors.textDim.withValues(alpha: 0.3)),
+                  icon: Icon(
+                    Icons.logout_rounded,
+                    color: colors.textDim.withValues(alpha: 0.3),
+                  ),
                   onPressed: () =>
                       ref.read(authControllerProvider.notifier).signOut(),
                 ),
@@ -177,21 +182,37 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
     );
   }
 
-  Widget _buildSectionHeader(String title, CircadianColors colors, {VoidCallback? onAdd, bool isUploading = false}) {
+  Widget _buildSectionHeader(
+    String title,
+    CircadianColors colors, {
+    VoidCallback? onAdd,
+    bool isUploading = false,
+  }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
           title.toUpperCase(),
-          style: AppTextStyles.label(colors.textDim).copyWith(
-            letterSpacing: 1.2,
-          ),
+          style: AppTextStyles.label(
+            colors.textDim,
+          ).copyWith(letterSpacing: 1.2),
         ),
         if (onAdd != null)
           IconButton(
-            icon: isUploading 
-                  ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: colors.accent)) 
-                  : Icon(Icons.add_circle_outline, color: colors.textDim, size: 20),
+            icon: isUploading
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: colors.accent,
+                    ),
+                  )
+                : Icon(
+                    Icons.add_circle_outline,
+                    color: colors.textDim,
+                    size: 20,
+                  ),
             onPressed: isUploading ? null : onAdd,
           ),
       ],
@@ -200,14 +221,17 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
 
   Widget _buildUploadProgress(UploadState state, CircadianColors colors) {
     if (!state.isUploading) return const SizedBox.shrink();
-    
+
     return Container(
       margin: const EdgeInsets.only(top: 8, bottom: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: colors.surfaceLow,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: colors.accent.withValues(alpha: 0.3), width: 1),
+        border: Border.all(
+          color: colors.accent.withValues(alpha: 0.3),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -218,7 +242,9 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
               Expanded(
                 child: TypewriterText(
                   text: getLoadingMessage(state.progress),
-                  style: AppTextStyles.body(colors.text).copyWith(fontStyle: FontStyle.italic),
+                  style: AppTextStyles.body(
+                    colors.text,
+                  ).copyWith(fontStyle: FontStyle.italic),
                 ),
               ),
               IconButton(
@@ -245,13 +271,16 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
               '${(state.progress * 100).toInt()}%',
               style: AppTextStyles.micro(colors.textDim),
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildFilesList(AsyncValue<List<Map<String, dynamic>>> filesState, CircadianColors colors) {
+  Widget _buildFilesList(
+    AsyncValue<List<Map<String, dynamic>>> filesState,
+    CircadianColors colors,
+  ) {
     return Column(
       children: [
         Padding(
@@ -264,7 +293,9 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
             cursorColor: colors.accent,
             decoration: InputDecoration(
               hintText: 'Search vault...',
-              hintStyle: AppTextStyles.body(colors.textDim.withValues(alpha: 0.5)),
+              hintStyle: AppTextStyles.body(
+                colors.textDim.withValues(alpha: 0.5),
+              ),
               prefixIcon: Icon(Icons.search, color: colors.textDim, size: 18),
               filled: true,
               fillColor: colors.surfaceLow,
@@ -278,9 +309,14 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppRadius.input),
-                borderSide: BorderSide(color: colors.accent.withValues(alpha: 0.5)),
+                borderSide: BorderSide(
+                  color: colors.accent.withValues(alpha: 0.5),
+                ),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
             ),
           ),
         ),
@@ -325,7 +361,10 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(AppRadius.card),
-                          side: BorderSide(color: colors.surfaceBorder, width: 0.5),
+                          side: BorderSide(
+                            color: colors.surfaceBorder,
+                            width: 0.5,
+                          ),
                         ),
                         title: Text(
                           'Delete File?',
@@ -379,16 +418,15 @@ class _FileVaultScreenState extends ConsumerState<FileVaultScreen> {
           loading: () => Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 40),
-              child: CircularProgressIndicator(color: colors.textDim.withValues(alpha: 0.2)),
+              child: CircularProgressIndicator(
+                color: colors.textDim.withValues(alpha: 0.2),
+              ),
             ),
           ),
           error: (e, _) => Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 40),
-              child: Text(
-                'Error: $e',
-                style: TextStyle(color: colors.red),
-              ),
+              child: Text('Error: $e', style: TextStyle(color: colors.red)),
             ),
           ),
         ),
@@ -419,7 +457,11 @@ class FileViewer extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, color: colors.text, size: 20),
+          icon: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: colors.text,
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -431,9 +473,7 @@ class FileViewer extends ConsumerWidget {
     if (filename.endsWith('.md')) {
       return Markdown(
         data: content['content'] ?? '',
-        styleSheet: MarkdownStyleSheet.fromTheme(
-          Theme.of(context),
-        ).copyWith(
+        styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
           p: AppTextStyles.serifBody(colors.text).copyWith(fontSize: 16),
           h1: AppTextStyles.h1(colors.text),
           h2: AppTextStyles.h2(colors.text),
@@ -455,10 +495,9 @@ class FileViewer extends ConsumerWidget {
         padding: const EdgeInsets.all(20),
         child: Text(
           content['content'] ?? '',
-          style: AppTextStyles.serifBody(colors.text).copyWith(
-            fontSize: 16,
-            height: 1.6,
-          ),
+          style: AppTextStyles.serifBody(
+            colors.text,
+          ).copyWith(fontSize: 16, height: 1.6),
         ),
       );
     }
@@ -492,7 +531,10 @@ class _VaultFileItem extends StatelessWidget {
         decoration: BoxDecoration(
           color: colors.surfaceLow,
           borderRadius: BorderRadius.circular(AppRadius.card),
-          border: Border.all(color: colors.surfaceBorder.withValues(alpha: 0.1), width: 0.5),
+          border: Border.all(
+            color: colors.surfaceBorder.withValues(alpha: 0.1),
+            width: 0.5,
+          ),
         ),
         child: Row(
           children: [
@@ -505,7 +547,9 @@ class _VaultFileItem extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppRadius.icon),
               ),
               child: Icon(
-                isPdf ? Icons.picture_as_pdf_outlined : Icons.description_outlined,
+                isPdf
+                    ? Icons.picture_as_pdf_outlined
+                    : Icons.description_outlined,
                 color: isPdf ? colors.red : colors.accent,
                 size: 18,
               ),
@@ -530,7 +574,11 @@ class _VaultFileItem extends StatelessWidget {
               ),
             ),
             IconButton(
-              icon: Icon(Icons.delete_outline, color: colors.textDim.withValues(alpha: 0.3), size: 18),
+              icon: Icon(
+                Icons.delete_outline,
+                color: colors.textDim.withValues(alpha: 0.3),
+                size: 18,
+              ),
               onPressed: onDelete,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),

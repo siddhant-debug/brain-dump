@@ -63,9 +63,9 @@ class UploadController extends StateNotifier<UploadState> with WidgetsBindingObs
         cancelToken: cancelToken,
         onSendProgress: (count, total) {
           if (total > 0 && mounted) {
-            final progress = count / total;
+            final progress = (count / total) * 0.9;
             // The upload is finished (data sent), but the server needs time to index in the background 
-            // if we were polling. For now progress reflects the file transfer.
+            // if we were polling. For now progress reflects the file transfer capped at 90%.
             state = state.copyWith(progress: progress);
           }
         },

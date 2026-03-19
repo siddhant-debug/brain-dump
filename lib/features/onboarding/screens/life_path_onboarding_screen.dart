@@ -72,7 +72,7 @@ class _LifePathOnboardingScreenState extends ConsumerState<LifePathOnboardingScr
           Text(
             "Let's calibrate your graph.",
             style: AppTextStyles.h1(Colors.white).copyWith(
-              color: Colors.white.withOpacity(0.9),
+            color: Colors.white.withValues(alpha: 0.9),
               fontSize: 28,
               fontWeight: FontWeight.w400,
             ),
@@ -134,7 +134,7 @@ class _LifePathOnboardingScreenState extends ConsumerState<LifePathOnboardingScr
       children: [
         Text(
           question,
-          style: AppTextStyles.body(Colors.white.withOpacity(0.5)),
+          style: AppTextStyles.body(Colors.white.withValues(alpha: 0.5)),
         ),
         const SizedBox(height: 16),
         ...options.map((opt) {
@@ -151,13 +151,13 @@ class _LifePathOnboardingScreenState extends ConsumerState<LifePathOnboardingScr
                 decoration: BoxDecoration(
                   color: isSelected ? const Color(0xFF2A2A2A) : Colors.transparent,
                   border: Border.all(
-                    color: isSelected ? Colors.white.withOpacity(0.2) : Colors.white.withOpacity(0.05),
+                    color: isSelected ? Colors.white.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
                   ),
                   borderRadius: BorderRadius.circular(30),
                 ),
                 child: Text(
                   opt,
-                  style: AppTextStyles.h3(isSelected ? Colors.white : Colors.white.withOpacity(0.7)).copyWith(
+                  style: AppTextStyles.h3(isSelected ? Colors.white : Colors.white.withValues(alpha: 0.7)).copyWith(
                     fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
                   ),
                 ),
@@ -197,7 +197,7 @@ class _LifePathOnboardingScreenState extends ConsumerState<LifePathOnboardingScr
               style: AppTextStyles.bodyMed(Colors.white).copyWith(fontSize: 18),
               decoration: InputDecoration(
                 hintText: "Type freely...",
-                hintStyle: TextStyle(color: Colors.white.withOpacity(0.1)),
+                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.1)),
                 border: InputBorder.none,
               ),
             ).animate().fadeIn(delay: 400.ms),
@@ -235,7 +235,7 @@ class _LifePathOnboardingScreenState extends ConsumerState<LifePathOnboardingScr
               style: AppTextStyles.h2(Colors.white).copyWith(fontSize: 22),
               decoration: InputDecoration(
                 hintText: "e.g. Building a legacy",
-                hintStyle: TextStyle(color: Colors.white.withOpacity(0.05)),
+                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.05)),
                 border: InputBorder.none,
               ),
             ).animate().fadeIn(delay: 400.ms),
@@ -280,11 +280,11 @@ class _LifePathOnboardingScreenState extends ConsumerState<LifePathOnboardingScr
               duration: 300.ms,
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               decoration: BoxDecoration(
-                color: canProceed ? Colors.white : Colors.white.withOpacity(0.05),
+                color: canProceed ? Colors.white : Colors.white.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(30),
                 boxShadow: canProceed ? [
                   BoxShadow(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     blurRadius: 20,
                     spreadRadius: 2,
                   )

@@ -7,6 +7,20 @@ import '../features/health/controllers/health_sync_controller.dart';
 import '../features/music/controllers/music_sync_controller.dart';
 import '../features/vault/services/file_service.dart';
 import '../features/brain_dump/providers/brain_dump_provider.dart';
+import '../features/brain_dump/services/location_service.dart';
+
+final locationNameProvider = FutureProvider<String?>((ref) async {
+  final service = ref.read(locationServiceProvider);
+  try {
+    final ctx = await service.getCurrentLocationContext();
+    if (ctx != null) {
+      return ctx['city'] as String? ?? ctx['location_type'] as String?;
+    }
+  } catch (_) {
+    // Ignore errors to not break ContextBar
+  }
+  return null;
+});
 
 class ContextBar extends ConsumerWidget {
   const ContextBar({super.key});
@@ -25,6 +39,8 @@ class ContextBar extends ConsumerWidget {
         musicState.isPlaying && musicState.currentSong != null;
     final memoryCount = filesAsync.value?.length ?? 0;
     final isReflecting = brainDumpState.isReflecting;
+    final locationAsync = ref.watch(locationNameProvider);
+    final locationName = locationAsync.value;
     
     String timeAgo(DateTime? dt) {
       if (dt == null) return "never";
@@ -78,15 +94,14 @@ class ContextBar extends ConsumerWidget {
                     colors: colors,
                   ),
                 ],
-                // TODO: Wire up real location detection. For now, omit if unknown.
-                /*
-                _divider(colors),
-                _ContextItem(
-                  label: "Bengaluru",
-                  dotColor: const Color(0xFF60A5FA),
-                  colors: colors,
-                ),
-                */
+                if (locationName != null) ...[
+                  _divider(colors),
+                  _ContextItem(
+                    label: locationName,
+                    dotColor: const Color(0xFF60A5FA),
+                    colors: colors,
+                  ),
+                ],
                 if (memoryCount > 0) ...[
                   _divider(colors),
                   _ContextItem(
