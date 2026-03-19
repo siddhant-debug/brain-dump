@@ -25,6 +25,8 @@ void main() {
     mockDio = MockDio();
 
     registerFallbackValue(HealthSnapshot(fetchedAt: DateTime.now(), authorizedTypes: {}));
+    registerFallbackValue(Options());
+    registerFallbackValue(RequestOptions(path: ''));
 
     when(() => mockService.getAuthorizedTypes()).thenAnswer((_) async => {});
     

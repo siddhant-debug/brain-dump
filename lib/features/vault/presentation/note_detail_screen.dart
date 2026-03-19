@@ -74,6 +74,7 @@ class _NoteDetailScreenState extends ConsumerState<NoteDetailScreen> {
     return Scaffold(
       backgroundColor: colors.bgTop,
       appBar: AppBar(
+        leading: const BackButton(),
         title: Text(
           widget.note.title ?? 'Thought Detail',
           style: AppTextStyles.h3(colors.text),

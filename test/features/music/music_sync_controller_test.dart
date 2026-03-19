@@ -24,6 +24,10 @@ void main() {
     mockStorage = MockSecureStorage();
     mockDio = MockDio();
 
+    registerFallbackValue(MusicItem(title: 'S', artistName: 'A'));
+    registerFallbackValue(Options());
+    registerFallbackValue(RequestOptions(path: ''));
+
     when(() => mockService.checkAuthorization()).thenAnswer((_) async => false);
     
     container = ProviderContainer(
