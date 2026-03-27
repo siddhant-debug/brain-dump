@@ -79,26 +79,26 @@ def _process_file_background(user_id: int, file_id: int, safe_filename: str, tem
     import logging
     import asyncio
     
-    logger = logging.getLogger(__name__)
+    bg_logger = logging.getLogger(__name__)
     db = SessionLocal()
     try:
         text = ""
         # The file is currently at temp_path
         if is_pdf:
-            print(f"[DEBUG BG] Extracting text from PDF: {temp_path}...")
+            bg_logger.debug("[BG] Extracting text from PDF: %s", temp_path)
             reader = PdfReader(temp_path)
             for page in reader.pages:
                 text += page.extract_text() or ""
         else:
-            print(f"[DEBUG BG] Extracting text from file: {temp_path}...")
+            bg_logger.debug("[BG] Extracting text from file: %s", temp_path)
             with open(temp_path, "r", encoding="utf-8") as f:
                 text = f.read()
 
         if not text.strip():
-            print("[DEBUG BG] File was empty")
+            bg_logger.debug("[BG] File was empty after extraction")
             return
 
-        print("[DEBUG BG] Indexing text into RAG engine...")
+        bg_logger.debug("[BG] Indexing text into RAG engine...")
         # Create a new event loop for async rag engine tasks if running in thread
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -106,7 +106,7 @@ def _process_file_background(user_id: int, file_id: int, safe_filename: str, tem
             num_chunks = loop.run_until_complete(
                 rag_engine.async_index_text(safe_filename, text, user_id, source_type="file")
             )
-            print(f"[DEBUG BG] Indexed {num_chunks} chunks")
+            bg_logger.debug("[BG] Indexed %d chunks", num_chunks)
         finally:
             loop.close()
 
@@ -124,10 +124,10 @@ def _process_file_background(user_id: int, file_id: int, safe_filename: str, tem
                 os.remove(temp_path)
             db.commit()
 
-        print(f"[DEBUG BG] NOTE UPLOAD BG TASK COMPLETE — {num_chunks} chunks, {len(text)} chars")
+        bg_logger.info("[BG] File upload complete — %d chunks, %d chars", num_chunks, len(text))
 
     except Exception as e:
-        logger.error(f"[_process_file_background] Error processing file: {e}", exc_info=True)
+        bg_logger.error("[BG] Error processing file: %s", e, exc_info=True)
         db.rollback()
         # Clean up if failed
         if os.path.exists(temp_path):
@@ -146,12 +146,7 @@ async def upload_to_brain(
     db: Session = Depends(database.get_db),
     background_tasks: BackgroundTasks = None,
 ):
-    print(f"\n{'='*60}")
-    print("[DEBUG] NOTE UPLOAD STARTED (BACKGROUND MODE)")
-    print(f"[DEBUG] User: {current_user.email} (ID: {current_user.id})")
-    print(f"[DEBUG] Filename: {file.filename}")
-    print(f"[DEBUG] Content Type: {file.content_type}")
-    print(f"{'='*60}\n")
+    logger.info("[upload] Started for user %d — file=%s type=%s", current_user.id, file.filename, file.content_type)
 
     # 1. Enforce upload size limit (10MB) via streaming size check
     # We do not read the whole file into memory. We chunk it.
@@ -159,7 +154,7 @@ async def upload_to_brain(
     safe_filename = Path(file.filename).name
     temp_path = f"temp_{current_user.id}_{safe_filename}"
     
-    print(f"[DEBUG] Milestone 1: Saving to temp path: {temp_path}")
+    logger.debug("[upload] Streaming file to temp path: %s", temp_path)
     
     with open(temp_path, "wb") as buffer:
         while True:
@@ -175,7 +170,7 @@ async def upload_to_brain(
                 )
             buffer.write(chunk)
             
-    print(f"[DEBUG] Milestone 1 Complete: File streamed to disk (Size: {file_size})")
+    logger.debug("[upload] File streamed to disk — size=%d bytes", file_size)
 
     # 2. Validate MIME type
     content_type = file.content_type
@@ -199,7 +194,7 @@ async def upload_to_brain(
     final_path = os.path.join(UPLOAD_DIR, f"{current_user.id}_{safe_filename}")
 
     # 3. Save initial record to DB (sync)
-    print("[DEBUG] Milestone 2: Storing initial file record in database...")
+    logger.debug("[upload] Storing initial file record in DB...")
     def _db_ops():
         new_file = models.StoredFile(
             user_id=current_user.id,
@@ -216,7 +211,7 @@ async def upload_to_brain(
 
     loop = asyncio.get_event_loop()
     new_file_id = await loop.run_in_executor(None, _db_ops)
-    print(f"[DEBUG] Milestone 2 Complete: File record saved (ID: {new_file_id})")
+    logger.debug("[upload] File record saved — id=%s", new_file_id)
 
     # 4. Dispatch Background Task
     background_tasks.add_task(
@@ -229,7 +224,7 @@ async def upload_to_brain(
         final_path=final_path
     )
     
-    print("[DEBUG] Milestone 3: Offloaded extraction and indexing to BackgroundTasks")
+    logger.debug("[upload] Offloaded extraction and indexing to BackgroundTasks")
 
     return {
         "status": "processing",
@@ -328,13 +323,7 @@ async def chat_endpoint(
 ):
     """Streaming chat endpoint - returns Server-Sent Events (SSE)"""
 
-    print(f"\n{'='*60}")
-    print("[DEBUG] CHAT QUERY STARTED (STREAMING)")
-    print(f"[DEBUG] User ID: {current_user.id}")  # email omitted (PII)
-    print(
-        f"[DEBUG] Query length: {len(request_body.query)} chars"
-    )  # content omitted (PII)
-    print(f"{'='*60}\n")
+    logger.info("[chat] Query started — user_id=%d query_len=%d chars", current_user.id, len(request_body.query))
 
     # 1. Save User Message to History using the _save_message helper (M-1 fix)
     loop = asyncio.get_event_loop()
@@ -351,7 +340,11 @@ async def chat_endpoint(
     def _fetch_history_and_directives():
         _history = (
             db.query(models.ChatMessage)
-            .filter(models.ChatMessage.user_id == current_user.id)
+            .filter(
+                models.ChatMessage.user_id == current_user.id,
+                # Exclude the message we just saved to avoid duplication in prompt context
+                models.ChatMessage.content != request_body.query,
+            )
             .order_by(models.ChatMessage.timestamp.desc())
             .limit(10)
             .all()
@@ -370,9 +363,9 @@ async def chat_endpoint(
         None, _fetch_history_and_directives
     )
 
-    # Exclude the exact message we just saved so it's not duplicated
-    history_messages = [m for m in history_messages if m.content != request_body.query]
-    history_messages = history_messages[::-1]  # oldest to newest
+    # Exclude the message we just saved (already filtered at DB level via the query below)
+    # history already comes back oldest→newest from the DB (ASC order)
+    history_messages = history_messages[::-1]  # flip DESC→ASC for chronological display
     chat_history_list = [
         {"sender": msg.sender, "content": msg.content} for msg in history_messages
     ]
@@ -383,13 +376,13 @@ async def chat_endpoint(
         """Generator that yields SSE-formatted chunks"""
         try:
             # 0. Immediate Keep-Alive Ping for Android Client Timeouts
-            print("[DEBUG] Sending immediate keep-alive ping to client...")
+            logger.debug("[chat] Sending keep-alive ping")
             import json
 
             yield f"data: {json.dumps({'chunk': '', 'done': False, 'status': 'processing'})}\n\n"
 
             # 1. Search for context (Async & Non-Blocking)
-            print("[DEBUG] Searching brain for relevant context...")
+            logger.debug("[chat] Searching brain for relevant context")
 
             # Extract location if present
             location_dict = (
@@ -401,13 +394,13 @@ async def chat_endpoint(
             )
 
             if not context_text:
-                print("[DEBUG] No documents found for query")
+                logger.debug("[chat] No documents found for query")
 
                 fallback = "I don't have any notes on that yet."
                 yield f"data: {json.dumps({'chunk': fallback, 'done': True, 'sources': []})}\n\n"
                 return
 
-            print(f"[DEBUG] Found relevant context. Length: {len(context_text)} chars")
+            logger.debug("[chat] Found relevant context — %d chars", len(context_text))
 
             # Extract music layer if present and enrich with VAD Mood Vector
             music_layer = ""
@@ -564,9 +557,11 @@ def list_files(
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(database.get_db),
 ):
+    # Issue 5 fix: always return newest-first so the client sees a stable, deterministic order
     files = (
         db.query(models.StoredFile)
         .filter(models.StoredFile.user_id == current_user.id)
+        .order_by(models.StoredFile.id.desc())
         .all()
     )
     return files
@@ -579,19 +574,18 @@ def get_chat_history(
     limit: int = 50,
     offset: int = 0,
 ):
-    """Retrieve chat history for the current user"""
+    """Retrieve chat history for the current user in chronological (oldest-first) order."""
     limit = min(limit, 100)  # MED-3: hard cap — client cannot exceed 100
+    # Issue 1 fix: ORDER BY ASC at the DB level — no Python reversal needed
     messages = (
         db.query(models.ChatMessage)
         .filter(models.ChatMessage.user_id == current_user.id)
-        .order_by(models.ChatMessage.timestamp.desc())
+        .order_by(models.ChatMessage.timestamp.asc())
         .offset(offset)
         .limit(limit)
         .all()
     )
-
-    # Return in chronological order
-    return messages[::-1]
+    return messages
 
 
 @router.delete("/files/{file_id}", status_code=204)
@@ -627,7 +621,7 @@ def delete_file(
             try:
                 os.remove(resolved_path)
             except Exception as e:
-                print(f"Error deleting file from disk: {e}")
+                logger.error("[files] Error deleting file from disk: %s", e)
 
     # 4. Delete from SQL DB (The Vault)
     db.delete(file_record)

@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, date, timezone
 from collections import Counter
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from app.core import database
@@ -75,6 +76,9 @@ def get_consistency(
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(database.get_db),
 ):
+    #
+    # COMMENT:- This seems like service-level code inside of view
+    #
     """
     Returns:
     - current_streak: days in a row (from today backwards)
@@ -91,7 +95,11 @@ def get_consistency(
             db.query(models.Note)
             .filter(models.Note.user_id == uid)
             .order_by(models.Note.created_at.asc())
-            .all()
+            .all() 
+            #
+            #COMMENT :- DB entries should have timestamp field of their own, 
+            #use sort method directly using that as part of the DB query instead of doing it in code
+            #
         )
         total_notes = len(all_notes)
 
@@ -377,26 +385,32 @@ def get_loops(
 
         # Default fast path check
         if not current_user.needs_loop_recalc:
-            cached_loops = db.query(DetectedLoop).filter(DetectedLoop.user_id == uid).all()
+            # Issue 3 fix: push sort to Postgres using CASE WHEN — no Python sort needed
+            _severity_order = case(
+                (DetectedLoop.severity == "high", 0),
+                (DetectedLoop.severity == "medium", 1),
+                (DetectedLoop.severity == "low", 2),
+                else_=9,
+            )
+            cached_loops = (
+                db.query(DetectedLoop)
+                .filter(DetectedLoop.user_id == uid)
+                .order_by(_severity_order, DetectedLoop.occurrences.desc())
+                .all()
+            )
             if cached_loops:
-                results = []
-                for loop in cached_loops:
-                    results.append(
-                        {
-                            "theme_guess": loop.theme_guess,
-                            "occurrences": loop.occurrences,
-                            "severity": loop.severity,
-                            "first_seen": loop.first_seen,
-                            "last_seen": loop.last_seen,
-                            "notes": loop.notes_json,
-                            "path_forward": loop.path_forward,
-                        }
-                    )
-                # Sort: high severity first, then by occurrences
-                severity_order = {"high": 0, "medium": 1, "low": 2}
-                results.sort(
-                    key=lambda x: (severity_order.get(x["severity"], 9), -x["occurrences"])
-                )
+                results = [
+                    {
+                        "theme_guess": loop.theme_guess,
+                        "occurrences": loop.occurrences,
+                        "severity": loop.severity,
+                        "first_seen": loop.first_seen,
+                        "last_seen": loop.last_seen,
+                        "notes": loop.notes_json,
+                        "path_forward": loop.path_forward,
+                    }
+                    for loop in cached_loops
+                ]
                 return {"loops": results, "notes_scanned": -1}
 
         notes = _notes_last_n_days(uid, db, days)
@@ -841,7 +855,20 @@ def get_pipeline(
         lane_by_key = {l["key"]: i for i, l in enumerate(PIPELINE_LANES)}
 
         # ── Build nodes capped at MAX_PIPELINE_NODES (most recent) ───────────
-        recent_notes = notes[-MAX_PIPELINE_NODES:]
+        # Issue 6 fix: fetch only MAX_PIPELINE_NODES newest notes at the DB level
+        # instead of fetching ALL notes for the window and slicing in Python.
+        ist_tz = timezone(timedelta(hours=5, minutes=30))
+        cutoff = _now_ist() - timedelta(days=days)
+        recent_notes = (
+            db.query(models.Note)
+            .filter(
+                models.Note.user_id == uid,
+                models.Note.created_at >= cutoff,
+            )
+            .order_by(models.Note.created_at.desc())
+            .limit(MAX_PIPELINE_NODES)
+            .all()
+        )[::-1]  # flip to chronological for the parent-chain logic (≤50 rows, trivial)
         last_in_lane: dict[int, str] = {}
         pipeline_nodes = []
 

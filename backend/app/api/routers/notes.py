@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from typing import List
+import logging
 from app.models import models
 from app.schemas import schemas
 from app.core import database
@@ -9,6 +10,7 @@ from app.services import rag_engine
 from . import auth
 
 router = APIRouter(prefix="/notes", tags=["notes"])
+logger = logging.getLogger(__name__)
 
 
 def process_note_background(
@@ -28,7 +30,7 @@ def process_note_background(
             note_record.sentiment = insights.get("sentiment", "Neutral")
             note_record.categories = insights.get("categories", [])
             bg_db.commit()
-            print(f"[INFO] Analyzed note {note_id}: {insights}")
+            logger.info("[notes] Analyzed note %d: %s", note_id, insights)
 
         # 2b. Index in Vector DB
         rag_engine.index_text(
@@ -39,9 +41,9 @@ def process_note_background(
             location_context=location_context,
             source_type="note",
         )
-        print(f"[INFO] Indexed note {note_id} for user {user_id}")
+        logger.info("[notes] Indexed note %d for user %d", note_id, user_id)
     except Exception as e:
-        print(f"[ERROR] Failed to process note {note_id} in background: {e}")
+        logger.error("[notes] Failed to process note %d in background: %s", note_id, e)
         bg_db.rollback()
     finally:
         bg_db.close()
@@ -141,7 +143,7 @@ def delete_note(
             filename=f"note_{note_id}", user_id=current_user.id, db=db
         )
     except Exception as e:
-        print(f"[WARNING] Failed to delete note {note_id} from vector DB: {e}")
+        logger.warning("[notes] Failed to delete note %d from vector DB: %s", note_id, e)
 
     # 2. Delete from SQL (The Vault)
     db.delete(note)
