@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BrainDump</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300;1,9..40,400&family=Crimson+Pro:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'DM Sans', -apple-system, sans-serif;
+  background: #060608;
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  align-items: center;
+  padding: 28px 16px 60px;
+  gap: 20px;
+}
+
+/* ── Controls ── */
+.controls { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.pill-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+
+.pill {
+  padding: 5px 15px; border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: transparent;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px; font-weight: 400;
+  color: rgba(255,255,255,0.3);
+  cursor: pointer; transition: all 0.2s; letter-spacing: 0.02em;
+}
+.pill.active { color: rgba(255,255,255,0.85); border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); }
+.pill.phase-pill.active { color: var(--phase-color, rgba(255,255,255,0.85)); border-color: var(--phase-border, rgba(255,255,255,0.2)); }
+
+/* ── Device ── */
+.device {
+  width: 375px; min-height: 812px;
+  border-radius: 50px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  position: relative;
+  display: flex; flex-direction: column;
+  box-shadow: 0 50px 120px rgba(0,0,0,0.85), 0 0 0 0.5px rgba(255,255,255,0.12) inset;
+  flex-shrink: 0;
+}
+
+/* ── Notch ── */
+.notch {
+  width: 126px; height: 34px;
+  border-radius: 0 0 20px 20px;
+  margin: 0 auto;
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  z-index: 30;
+}
+
+/* ── Status ── */
+.sb {
+  padding: 14px 26px 2px;
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; font-weight: 500;
+  position: relative; z-index: 10;
+}
+
+/* ── Nav ── */
+.nav {
+  padding: 10px 26px 14px;
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-bottom: 0.5px solid;
+  position: relative; z-index: 10;
+}
+.greeting {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 26px; font-weight: 300; font-style: italic;
+  letter-spacing: -0.01em; line-height: 1.2;
+}
+.greeting strong { font-weight: 400; font-style: normal; }
+.nav-meta {
+  display: flex; align-items: center; gap: 5px;
+  margin-top: 5px; font-size: 10px;
+}
+.r-badge {
+  padding: 2px 8px; border-radius: 20px;
+  font-size: 9px; font-weight: 500;
+  letter-spacing: 0.03em;
+}
+.nav-dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+
+/* ── Body ── */
+.body {
+  flex: 1; overflow-y: auto; padding: 0 0 110px;
+}
+.body::-webkit-scrollbar { display: none; }
+
+/* ── Section header ── */
+.s-head {
+  font-size: 9px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 20px 26px 8px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+
+/* ── Live strip — NO boxes, just inline pills ── */
+.live-strip {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  padding: 0 26px 4px;
+}
+.live-pill {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; padding: 4px 10px; border-radius: 20px;
+  border: 0.5px solid; font-weight: 400;
+  white-space: nowrap;
+}
+.live-pill-icon { font-size: 11px; }
+
+/* ── Readiness row — flat, no card ── */
+.readiness-row {
+  padding: 12px 26px 0;
+  display: flex; align-items: flex-end; justify-content: space-between;
+}
+.r-score-big { font-size: 48px; font-weight: 300; line-height: 1; letter-spacing: -0.03em; }
+.r-score-label { font-size: 11px; font-weight: 400; margin-bottom: 4px; }
+.r-bars { display: flex; flex-direction: column; gap: 7px; width: 160px; }
+.r-bar { display: flex; flex-direction: column; gap: 3px; }
+.r-bar-top { display: flex; justify-content: space-between; font-size: 9px; }
+.r-bar-track { height: 2px; border-radius: 1px; background: rgba(255,255,255,0.07); }
+.r-bar-fill { height: 2px; border-radius: 1px; transition: width 0.7s ease; }
+.r-insight {
+  padding: 10px 26px 0; font-size: 11px; line-height: 1.6;
+  font-style: italic; font-family: 'Crimson Pro', serif;
+  font-weight: 300;
+}
+
+/* ── Divider ── */
+.div { height: 0.5px; margin: 20px 26px 0; }
+
+/* ── Gita quote — no box, pure typography ── */
+.gita-wrap { padding: 20px 26px 4px; }
+.gita-sanskrit {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 15px; font-weight: 300; font-style: italic;
+  line-height: 1.7; letter-spacing: 0.01em;
+  margin-bottom: 8px;
+}
+.gita-english {
+  font-size: 12px; font-weight: 300; line-height: 1.65;
+  margin-bottom: 4px;
+}
+.gita-hindi {
+  font-size: 11px; font-weight: 300; line-height: 1.6;
+  opacity: 0.5;
+}
+.gita-source { font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 8px; opacity: 0.3; }
+
+/* ── Path — minimal, no card backgrounds ── */
+.path-wrap { padding: 0 26px; }
+.path-goal-label { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.3; margin-bottom: 4px; }
+.path-goal-text {
+  font-family: 'Crimson Pro', serif;
+  font-size: 16px; font-weight: 300; font-style: italic;
+  line-height: 1.4; margin-bottom: 4px;
+}
+.path-pct { font-size: 10px; font-weight: 500; opacity: 0.4; margin-bottom: 16px; }
+
+.tl { position: relative; padding-left: 18px; }
+.tl-line { position: absolute; left: 4px; top: 8px; bottom: 8px; width: 1px; }
+
+.tl-item { position: relative; margin-bottom: 12px; }
+.tl-dot { width: 8px; height: 8px; border-radius: 50%; position: absolute; left: -16px; top: 5px; border: 1px solid; }
+.tl-dot.goal { width: 11px; height: 11px; left: -17.5px; top: 3px; }
+.tl-dot.dim { opacity: 0.3; }
+
+.tl-title { font-size: 12px; font-weight: 400; line-height: 1.3; margin-bottom: 2px; }
+.tl-sub { font-size: 10px; line-height: 1.5; opacity: 0.45; }
+.tl-tag {
+  display: inline-block; margin-top: 5px; margin-right: 4px;
+  font-size: 9px; padding: 2px 7px; border-radius: 10px;
+}
+
+/* ── Omni ── */
+.omni-wrap { padding: 0 20px; margin-top: 20px; }
+.omni {
+  border-radius: 16px; padding: 13px 16px;
+  display: flex; align-items: center; gap: 10px;
+  border: 0.5px solid; cursor: text;
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+}
+.omni-text { flex: 1; font-size: 13px; font-style: italic; font-family: 'Crimson Pro', serif; font-weight: 300; }
+.omni-btn {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; flex-shrink: 0; border: 0.5px solid;
+}
+
+/* ── Dump cards — ultra minimal ── */
+.dump-wrap { padding: 0 26px; display: flex; flex-direction: column; gap: 16px; }
+.dump-item { border-left: 1px solid; padding-left: 14px; }
+.dump-text { font-size: 12px; font-weight: 300; line-height: 1.65; margin-bottom: 6px; }
+.dump-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+.dump-tag { font-size: 9px; opacity: 0.35; }
+
+/* ── Vault ── */
+.vault-wrap { padding: 0 20px; }
+.v-search {
+  width: 100%; padding: 11px 15px; border-radius: 13px;
+  border: 0.5px solid; font-family: 'DM Sans', sans-serif;
+  font-size: 12px; outline: none; margin-bottom: 16px;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.v-file {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; border-radius: 12px;
+  border: 0.5px solid; margin-bottom: 8px;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.v-icon {
+  width: 30px; height: 34px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8px; font-weight: 600; flex-shrink: 0; letter-spacing: 0.03em;
+}
+.v-name { font-size: 11px; font-weight: 400; }
+.v-meta { font-size: 9px; opacity: 0.35; margin-top: 2px; }
+
+/* ── Ask — magic UI ── */
+.ask-wrap { padding: 0 20px; display: flex; flex-direction: column; gap: 10px; }
+.ask-context-bar {
+  display: flex; gap: 5px; flex-wrap: wrap;
+  padding: 10px 14px; border-radius: 12px;
+  border: 0.5px solid; margin-bottom: 4px;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.ctx-item { font-size: 9px; display: flex; align-items: center; gap: 3px; }
+.ctx-dot { width: 4px; height: 4px; border-radius: 50%; display: inline-block; }
+
+.msg-row { display: flex; flex-direction: column; gap: 2px; }
+.msg-user { align-self: flex-end; }
+.bubble {
+  display: inline-block; padding: 9px 13px;
+  border-radius: 14px; font-size: 12px; line-height: 1.55;
+  max-width: 90%; font-weight: 300;
+}
+.bubble-ai-wrap { display: flex; gap: 8px; align-items: flex-start; }
+.b-avatar {
+  width: 20px; height: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 500; flex-shrink: 0; margin-top: 2px;
+}
+.b-src { font-size: 8px; opacity: 0.3; margin-top: 3px; letter-spacing: 0.02em; }
+
+/* memory sparks — the magic dots ── */
+.memory-sparks { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
+.spark { width: 16px; height: 3px; border-radius: 2px; opacity: 0.5; }
+.spark-label { font-size: 8px; opacity: 0.3; margin-left: 2px; }
+
+.ask-input-row {
+  display: flex; gap: 8px; align-items: center;
+  padding-top: 4px;
+}
+.ask-input {
+  flex: 1; border-radius: 12px; padding: 10px 14px;
+  border: 0.5px solid; font-size: 12px;
+  font-family: 'DM Sans', sans-serif; outline: none;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.ask-send {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; flex-shrink: 0; border: 0.5px solid; cursor: pointer;
+}
+
+/* ── Tab bar ── */
+.tabs {
+  position: sticky; bottom: 0; z-index: 50;
+  display: flex; padding: 9px 20px 26px; gap: 2px;
+  border-top: 0.5px solid;
+  backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px);
+}
+.tab {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; gap: 3px; padding: 5px 4px;
+  border-radius: 10px; cursor: pointer;
+  opacity: 0.3; transition: opacity 0.15s;
+}
+.tab.on { opacity: 1; }
+.tab-ic { font-size: 17px; }
+.tab-lb { font-size: 8px; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 500; }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <div class="pill-row" id="phases"></div>
+  <div class="pill-row" id="pages"></div>
+</div>
+
+<div class="device" id="device">
+  <div class="notch" id="notch"></div>
+  <div class="sb" id="sb"></div>
+  <div class="nav" id="nav"></div>
+  <div class="body" id="body"></div>
+  <div class="tabs" id="tabs"></div>
+</div>
+
+<script>
+/* ── Gita quotes ── */
+const GITA = [
+  {
+    sk: 'कर्मण्येवाधिकारस्ते मा फलेषु कदाचन।\nमा कर्मफलहेतुर्भूर्मा ते सङ्गोऽस्त्वकर्मणि॥',
+    en: 'You have a right to perform your prescribed duties, but you are not entitled to the fruits of your actions.',
+    hi: 'कर्म करो, फल की चिंता मत करो।',
+    ref: 'Bhagavad Gita · 2.47'
+  },
+  {
+    sk: 'योगस्थः कुरु कर्माणि सङ्गं त्यक्त्वा धनञ्जय।\nसिद्ध्यसिद्ध्योः समो भूत्वा समत्वं योग उच्यते॥',
+    en: 'Be steadfast in yoga, O Arjuna. Perform your duty and abandon all attachment to success or failure. Such evenness of mind is called yoga.',
+    hi: 'समभाव में स्थिर होकर कर्म करो — यही योग है।',
+    ref: 'Bhagavad Gita · 2.48'
+  },
+  {
+    sk: 'नैनं छिन्दन्ति शस्त्राणि नैनं दहति पावकः।\nन चैनं क्लेदयन्त्यापो न शोषयति मारुतः॥',
+    en: 'The soul can never be cut into pieces by any weapon, nor burned by fire, nor moistened by water, nor withered by the wind.',
+    hi: 'आत्मा अजर, अमर और अविनाशी है।',
+    ref: 'Bhagavad Gita · 2.23'
+  },
+  {
+    sk: 'श्रेयान्स्वधर्मो विगुणः परधर्मात्स्वनुष्ठितात्।\nस्वधर्मे निधनं श्रेयः परधर्मो भयावहः॥',
+    en: 'It is better to perform one\'s own duties imperfectly than to master the duties of another. Better to die in one\'s own dharma than in the dharma of another.',
+    hi: 'अपना अधूरा धर्म किसी दूसरे के पूर्ण धर्म से श्रेष्ठ है।',
+    ref: 'Bhagavad Gita · 3.35'
+  },
+  {
+    sk: 'यदा यदा हि धर्मस्य ग्लानिर्भवति भारत।\nअभ्युत्थानमधर्मस्य तदाऽऽत्मानं सृजाम्यहम्॥',
+    en: 'Whenever righteousness wanes and unrighteousness increases, I manifest myself on earth.',
+    hi: 'जब-जब धर्म की हानि होती है, मैं स्वयं प्रकट होता हूँ।',
+    ref: 'Bhagavad Gita · 4.7'
+  },
+  {
+    sk: 'सर्वधर्मान्परित्यज्य मामेकं शरणं व्रज।\nअहं त्वां सर्वपापेभ्यो मोक्षयिष्यामि मा शुचः॥',
+    en: 'Abandon all varieties of dharma and simply surrender unto me alone. I shall liberate you from all sinful reactions; do not fear.',
+    hi: 'सब धर्म छोड़कर केवल मेरी शरण में आ जा — मैं तुझे मुक्त करूँगा।',
+    ref: 'Bhagavad Gita · 18.66'
+  }
+];
+
+/* ── Phase data ── */
+const P = {
+  dawn: {
+    id:'dawn', label:'Dawn', time:'5:48', bat:'92%', bpm:'62',
+    greet:'Morning,', name:'Siddhant',
+    phase:'Dawn · 5–10am',
+    readiness:72, rLabel:'High', rColor:'#4A7C59', rBg:'rgba(74,124,89,0.12)',
+    rDot:'#52B788', rHint:'Body recovered. Push with intention.',
+    steps:'4,280', kcal:'186',
+    prompt:'What\'s the focus for today?',
+    bg:'linear-gradient(170deg,#F5EFE2 0%,#EAE0CB 100%)',
+    notch:'#EDE3CD',
+    text:'#1C1C2E', textD:'#6A6A82', textF:'#ACACBC',
+    border:'rgba(28,28,46,0.1)',
+    navBg:'rgba(245,239,226,0.72)',
+    glass:'rgba(255,255,255,0.48)',
+    glassB:'rgba(28,28,46,0.08)',
+    accent:'#C49A2A', accentBg:'rgba(196,154,42,0.1)', accentB:'rgba(196,154,42,0.2)',
+    green:'#4A7C59', greenBg:'rgba(74,124,89,0.1)',
+    red:'#B5341E', redBg:'rgba(181,52,30,0.08)',
+    spine:'rgba(196,154,42,0.4)',
+    tabBg:'rgba(245,239,226,0.78)',
+    tabOn:'#C49A2A',
+    phaseColor:'#C49A2A',
+    dumpBorder:'rgba(28,28,46,0.15)',
+    barColor:'#C49A2A',
+    livePillBg:'rgba(255,255,255,0.4)', livePillB:'rgba(28,28,46,0.1)', livePillC:'#6A6A82',
+  },
+  day: {
+    id:'day', label:'Day', time:'2:31', bat:'84%', bpm:'67',
+    greet:'Afternoon,', name:'Siddhant',
+    phase:'Day · 10am–5pm',
+    readiness:88, rLabel:'High', rColor:'#2D6A4F', rBg:'rgba(45,106,79,0.1)',
+    rDot:'#52B788', rHint:'Peak window. Do your hardest work now.',
+    steps:'12,540', kcal:'612',
+    prompt:'What are you thinking about?',
+    bg:'linear-gradient(170deg,#FAFAF8 0%,#F0EFEC 100%)',
+    notch:'#EEECEA',
+    text:'#111111', textD:'#606060', textF:'#AAAAAA',
+    border:'rgba(17,17,17,0.08)',
+    navBg:'rgba(250,250,248,0.75)',
+    glass:'rgba(245,245,242,0.72)',
+    glassB:'rgba(17,17,17,0.07)',
+    accent:'#2D6A4F', accentBg:'rgba(45,106,79,0.08)', accentB:'rgba(45,106,79,0.18)',
+    green:'#2D6A4F', greenBg:'rgba(45,106,79,0.08)',
+    red:'#C0392B', redBg:'rgba(192,57,43,0.07)',
+    spine:'rgba(45,106,79,0.35)',
+    tabBg:'rgba(250,250,248,0.8)',
+    tabOn:'#2D6A4F',
+    phaseColor:'#2D6A4F',
+    dumpBorder:'rgba(17,17,17,0.12)',
+    barColor:'#2D6A4F',
+    livePillBg:'rgba(240,240,237,0.8)', livePillB:'rgba(17,17,17,0.08)', livePillC:'#606060',
+  },
+  dusk: {
+    id:'dusk', label:'Dusk', time:'7:48', bat:'71%', bpm:'72',
+    greet:'Evening,', name:'Siddhant',
+    phase:'Dusk · 5–9pm',
+    readiness:55, rLabel:'Moderate', rColor:'#D4840A', rBg:'rgba(212,132,10,0.1)',
+    rDot:'#F5A623', rHint:'Moderate load. Wind down slowly.',
+    steps:'15,200', kcal:'820',
+    prompt:'Reflect on your day...',
+    bg:'linear-gradient(170deg,#1A1728 0%,#130F1E 100%)',
+    notch:'#100D18',
+    text:'#DDD8EC', textD:'#9990AA', textF:'#5E5870',
+    border:'rgba(221,216,236,0.07)',
+    navBg:'rgba(26,23,40,0.68)',
+    glass:'rgba(38,34,56,0.6)',
+    glassB:'rgba(221,216,236,0.07)',
+    accent:'#C97C3A', accentBg:'rgba(201,124,58,0.1)', accentB:'rgba(201,124,58,0.2)',
+    green:'#6BCB77', greenBg:'rgba(107,203,119,0.1)',
+    red:'#FF5A5A', redBg:'rgba(255,90,90,0.1)',
+    spine:'rgba(201,124,58,0.3)',
+    tabBg:'rgba(16,13,24,0.75)',
+    tabOn:'#C97C3A',
+    phaseColor:'#C97C3A',
+    dumpBorder:'rgba(221,216,236,0.1)',
+    barColor:'#C97C3A',
+    livePillBg:'rgba(38,34,56,0.7)', livePillB:'rgba(221,216,236,0.08)', livePillC:'#9990AA',
+  },
+  night: {
+    id:'night', label:'Night', time:'11:22', bat:'55%', bpm:'58',
+    greet:'Late night,', name:'Siddhant',
+    phase:'Night · 9pm–5am',
+    readiness:34, rLabel:'Low', rColor:'#9B8FEE', rBg:'rgba(155,143,238,0.1)',
+    rDot:'#7B68EE', rHint:'Rest is the work tonight. Let the mind empty.',
+    steps:'15,800', kcal:'874',
+    prompt:'Brain dump before bed...',
+    bg:'linear-gradient(170deg,#0C0C0F 0%,#070709 100%)',
+    notch:'#050507',
+    text:'#C4C4CC', textD:'#80808A', textF:'#404048',
+    border:'rgba(196,196,204,0.07)',
+    navBg:'rgba(12,12,15,0.6)',
+    glass:'rgba(18,18,22,0.65)',
+    glassB:'rgba(196,196,204,0.06)',
+    accent:'#8B80E0', accentBg:'rgba(139,128,224,0.1)', accentB:'rgba(139,128,224,0.2)',
+    green:'#4ECDC4', greenBg:'rgba(78,205,196,0.08)',
+    red:'#FF6B6B', redBg:'rgba(255,107,107,0.08)',
+    spine:'rgba(139,128,224,0.3)',
+    tabBg:'rgba(8,8,10,0.75)',
+    tabOn:'#8B80E0',
+    phaseColor:'#8B80E0',
+    dumpBorder:'rgba(196,196,204,0.08)',
+    barColor:'#8B80E0',
+    livePillBg:'rgba(18,18,22,0.7)', livePillB:'rgba(196,196,204,0.07)', livePillC:'#80808A',
+  }
+};
+
+const PAGES = [{id:'home',ic:'⌂',lb:'home'},{id:'vault',ic:'◈',lb:'vault'},{id:'ask',ic:'✦',lb:'ask'}];
+
+let phase = 'night', page = 'home';
+let gitaIdx = Math.floor(Math.random() * GITA.length);
+
+/* ── Build controls ── */
+const phaseEl = document.getElementById('phases');
+Object.values(P).forEach(p => {
+  const b = document.createElement('button');
+  b.className = 'pill phase-pill' + (p.id === phase ? ' active' : '');
+  b.textContent = p.label;
+  b.style.setProperty('--phase-color', p.phaseColor);
+  b.style.setProperty('--phase-border', p.phaseColor + '60');
+  b.onclick = () => {
+    phase = p.id;
+    phaseEl.querySelectorAll('.pill').forEach((x,i) => {
+      const pid = Object.keys(P)[i];
+      x.className = 'pill phase-pill' + (pid === phase ? ' active' : '');
+    });
+    render();
+  };
+  phaseEl.appendChild(b);
+});
+
+const pageEl = document.getElementById('pages');
+PAGES.forEach(pg => {
+  const b = document.createElement('button');
+  b.className = 'pill' + (pg.id === page ? ' active' : '');
+  b.textContent = pg.lb;
+  b.onclick = () => {
+    page = pg.id;
+    pageEl.querySelectorAll('.pill').forEach((x,i) => { x.className = 'pill' + (PAGES[i].id === page ? ' active' : ''); });
+    render();
+  };
+  pageEl.appendChild(b);
+});
+
+/* ── Render ── */
+function render() {
+  const ph = P[phase];
+  const gita = GITA[gitaIdx];
+  const device = document.getElementById('device');
+  device.style.background = ph.bg;
+  document.getElementById('notch').style.background = ph.notch;
+
+  // status
+  document.getElementById('sb').style.cssText = `padding:14px 26px 2px;display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:500;color:${ph.text};position:relative;z-index:10;`;
+  document.getElementById('sb').innerHTML = `<span>${ph.time}</span><span style="opacity:0.5">●●● ${ph.bat}</span>`;
+
+  // nav
+  const nav = document.getElementById('nav');
+  nav.style.cssText = `padding:10px 26px 14px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:0.5px solid ${ph.border};background:${ph.navBg};position:relative;z-index:10;`;
+  nav.innerHTML = `
+    <div class="greeting" style="color:${ph.text}">${ph.greet} <strong>${ph.name}</strong></div>
+    <div class="nav-meta">
+      <span class="nav-dot" style="background:${ph.rDot}"></span>
+      <span style="color:${ph.textF};font-size:10px">${ph.phase}</span>
+      <span style="color:${ph.textF};font-size:10px;opacity:0.4">·</span>
+      <span class="r-badge" style="background:${ph.rBg};color:${ph.rColor}">${ph.rLabel} readiness</span>
+      <span style="color:${ph.textF};font-size:10px;opacity:0.4">·</span>
+      <span style="color:${ph.textF};font-size:10px">${ph.bpm} bpm</span>
+    </div>`;
+
+  // body
+  const body = document.getElementById('body');
+  if (page === 'home') body.innerHTML = homeHTML(ph, gita);
+  else if (page === 'vault') body.innerHTML = vaultHTML(ph);
+  else body.innerHTML = askHTML(ph);
+
+  // tabs
+  const tabs = document.getElementById('tabs');
+  tabs.style.cssText = `position:sticky;bottom:0;z-index:50;display:flex;padding:9px 20px 26px;gap:2px;border-top:0.5px solid ${ph.border};background:${ph.tabBg};backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);`;
+  tabs.innerHTML = PAGES.map(pg => `
+    <div class="tab ${pg.id===page?'on':''}" style="color:${pg.id===page?ph.tabOn:ph.textF};${pg.id===page?`background:${ph.accentBg}`:''}" onclick="page='${pg.id}';pageEl.querySelectorAll('.pill').forEach((x,i)=>{x.className='pill'+(PAGES[i].id===page?'  active':'');});render()">
+      <span class="tab-ic">${pg.ic}</span>
+      <span class="tab-lb">${pg.lb}</span>
+    </div>`).join('');
+}
+
+function bw(v,mx){ return Math.min(100,Math.round(v/mx*100))+'%'; }
+
+function homeHTML(ph, gita) {
+  return `
+    <!-- omni -->
+    <div class="omni-wrap">
+      <div class="omni" style="background:${ph.glass};border-color:${ph.glassB}">
+        <div class="omni-text" style="color:${ph.textD}">${ph.prompt}</div>
+        <div class="omni-btn" style="background:${ph.accentBg};border-color:${ph.accentB};color:${ph.accent}">🎙</div>
+      </div>
+    </div>
+
+    <!-- live context — pills, no boxes -->
+    <div class="s-head" style="color:${ph.textF}"><span>Now</span></div>
+    <div class="live-strip">
+      <span class="live-pill" style="background:${ph.livePillBg};border-color:${ph.livePillB};color:${ph.livePillC}">
+        <span class="live-pill-icon">👟</span>${ph.steps} steps
+      </span>
+      <span class="live-pill" style="background:${ph.livePillBg};border-color:${ph.livePillB};color:${ph.livePillC}">
+        <span class="live-pill-icon">❤️</span>${ph.bpm} bpm
+      </span>
+      <span class="live-pill" style="background:${ph.livePillBg};border-color:${ph.livePillB};color:${ph.livePillC}">
+        <span class="live-pill-icon">🔥</span>${ph.kcal} kcal
+      </span>
+      <span class="live-pill" style="background:${ph.livePillBg};border-color:${ph.livePillB};color:${ph.accent}">
+        <span class="live-pill-icon">🎵</span>Lo-Fi Beats
+      </span>
+    </div>
+
+    <!-- readiness — no card, raw numbers + bars -->
+    <div class="s-head" style="color:${ph.textF};padding-top:18px"><span>Readiness</span></div>
+    <div class="readiness-row">
+      <div>
+        <div class="r-score-big" style="color:${ph.text}">${ph.readiness}</div>
+        <div class="r-score-label" style="color:${ph.rColor}">${ph.rLabel}</div>
+      </div>
+      <div class="r-bars">
+        <div class="r-bar">
+          <div class="r-bar-top"><span style="color:${ph.textF}">HRV</span><span style="color:${ph.textF}">${Math.round(ph.readiness*0.55)}ms</span></div>
+          <div class="r-bar-track"><div class="r-bar-fill" style="width:${bw(ph.readiness,100)};background:${ph.barColor}"></div></div>
+        </div>
+        <div class="r-bar">
+          <div class="r-bar-top"><span style="color:${ph.textF}">Sleep</span><span style="color:${ph.textF}">${(ph.readiness*0.085).toFixed(1)}h</span></div>
+          <div class="r-bar-track"><div class="r-bar-fill" style="width:${bw(Math.max(ph.readiness-5,10),100)};background:${ph.barColor}"></div></div>
+        </div>
+        <div class="r-bar">
+          <div class="r-bar-top"><span style="color:${ph.textF}">Recovery</span><span style="color:${ph.textF}">${Math.max(ph.readiness-8,10)}%</span></div>
+          <div class="r-bar-track"><div class="r-bar-fill" style="width:${bw(Math.max(ph.readiness-8,10),100)};background:${ph.barColor}"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="r-insight" style="color:${ph.textD}">${ph.rHint}</div>
+
+    <!-- divider -->
+    <div class="div" style="background:${ph.border}"></div>
+
+    <!-- Gita quote — no box, pure type -->
+    <div class="gita-wrap">
+      <div class="gita-source" style="color:${ph.textF}">Reflect</div>
+      <div class="gita-sanskrit" style="color:${ph.text}">${gita.sk.replace(/\n/g,'<br>')}</div>
+      <div class="gita-english" style="color:${ph.textD}">${gita.en}</div>
+      <div class="gita-hindi" style="color:${ph.textD}">${gita.hi}</div>
+      <div class="gita-source" style="color:${ph.textF};margin-top:8px">${gita.ref}</div>
+    </div>
+
+    <!-- divider -->
+    <div class="div" style="background:${ph.border}"></div>
+
+    <!-- life path -->
+    <div class="s-head" style="color:${ph.textF}">
+      <span>Life path</span>
+      <span style="color:${ph.accent};font-size:10px">71% aligned</span>
+    </div>
+    <div class="path-wrap">
+      <div class="path-goal-label" style="color:${ph.textF}">Main goal</div>
+      <div class="path-goal-text" style="color:${ph.textD}">Free of all responsibilities</div>
+
+      <div class="tl">
+        <div class="tl-line" style="background:${ph.spine}"></div>
+
+        <div class="tl-item">
+          <div class="tl-dot goal" style="background:${ph.accentBg};border-color:${ph.accent}"></div>
+          <div class="tl-title" style="color:${ph.text}">Become a better builder</div>
+          <div class="tl-sub" style="color:${ph.textD}">Work · 81% aligned this week</div>
+          <span class="tl-tag" style="background:${ph.accentBg};color:${ph.accent}">best week yet</span>
+        </div>
+
+        <div class="tl-item">
+          <div class="tl-dot" style="background:${ph.greenBg};border-color:${ph.green}"></div>
+          <div class="tl-title" style="color:${ph.text}">Late night clarity</div>
+          <div class="tl-sub" style="color:${ph.textD}">The life path idea — this could be real</div>
+          <span class="tl-tag" style="background:${ph.greenBg};color:${ph.green}">moving forward</span>
+        </div>
+
+        <div class="tl-item">
+          <div class="tl-dot goal" style="background:${ph.accentBg};border-color:${ph.accent}"></div>
+          <div class="tl-title" style="color:${ph.text}">Save ₹5L this year</div>
+          <div class="tl-sub" style="color:${ph.textD}">Financial · 45% aligned</div>
+          <span class="tl-tag" style="background:${ph.accentBg};color:${ph.accent}">needs focus</span>
+        </div>
+
+        <div class="tl-item">
+          <div class="tl-dot" style="background:${ph.redBg};border-color:${ph.red}"></div>
+          <div class="tl-title" style="color:${ph.text}">Sleep is off again</div>
+          <div class="tl-sub" style="color:${ph.textD}">3rd late night this week</div>
+          <span class="tl-tag" style="background:${ph.redBg};color:${ph.red}">health risk</span>
+        </div>
+
+        <div class="tl-item">
+          <div class="tl-dot goal dim" style="background:${ph.redBg};border-color:${ph.red}"></div>
+          <div class="tl-title" style="color:${ph.text}">Quit smoking</div>
+          <div class="tl-sub" style="color:${ph.textD}">Personal · 12% aligned</div>
+          <span class="tl-tag" style="background:${ph.redBg};color:${ph.red}">recurring loop</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- divider -->
+    <div class="div" style="background:${ph.border};margin-top:20px"></div>
+
+    <!-- recent dumps — list style, no cards -->
+    <div class="s-head" style="color:${ph.textF}"><span>Recent</span></div>
+    <div class="dump-wrap">
+      <div class="dump-item" style="border-color:${ph.dumpBorder}">
+        <div class="dump-text" style="color:${ph.text}">Need to refine the RAG pipeline routing. PostgreSQL handling vectors well but LLM translation step is lagging.</div>
+        <div class="dump-tags">
+          <span class="dump-tag" style="color:${ph.textF}">📍 Bengaluru Home</span>
+          <span class="dump-tag" style="color:${ph.textF}">🎵 Lo-Fi</span>
+          <span class="dump-tag" style="color:${ph.textF}">🧠 High Focus</span>
+        </div>
+      </div>
+      <div class="dump-item" style="border-color:${ph.dumpBorder}">
+        <div class="dump-text" style="color:${ph.text}">UI shouldn't feel like a gimmick. Hide the context. Let the person feel it, don't show them the machinery.</div>
+        <div class="dump-tags">
+          <span class="dump-tag" style="color:${ph.textF}">📍 Bengaluru</span>
+          <span class="dump-tag" style="color:${ph.textF}">🌙 Late Night</span>
+        </div>
+      </div>
+      <div class="dump-item" style="border-color:${ph.dumpBorder}">
+        <div class="dump-text" style="color:${ph.text}">What does free actually mean? No deadlines, no anxiety about money, no obligations that feel like chains.</div>
+        <div class="dump-tags">
+          <span class="dump-tag" style="color:${ph.textF}">🌙 2:14 AM</span>
+          <span class="dump-tag" style="color:${ph.textF}">💤 Low readiness</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function vaultHTML(ph) {
+  const files = [
+    {name:'BrainDump Architecture.md',size:'12 KB',type:'MD',c:'#8B80E0'},
+    {name:'Health Goals 2026.pdf',size:'340 KB',type:'PDF',c:'#FF6B6B'},
+    {name:'RAG Implementation.md',size:'8 KB',type:'MD',c:'#8B80E0'},
+    {name:'Workout Routine.txt',size:'2 KB',type:'TXT',c:'#4ECDC4'},
+    {name:'Bhagavad Gita Notes.md',size:'6 KB',type:'MD',c:'#C49A2A'},
+  ];
+  return `
+    <div class="vault-wrap" style="padding-top:16px">
+      <input class="v-search" placeholder="Search vault..."
+        style="background:${ph.glass};border-color:${ph.glassB};color:${ph.text};"/>
+      <div class="s-head" style="color:${ph.textF};padding:0 0 10px">${files.length} documents</div>
+      ${files.map(f=>`
+        <div class="v-file" style="background:${ph.glass};border-color:${ph.glassB}">
+          <div class="v-icon" style="background:${f.c}18;color:${f.c}">${f.type}</div>
+          <div><div class="v-name" style="color:${ph.text}">${f.name}</div><div class="v-meta" style="color:${ph.textF}">${f.size}</div></div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function askHTML(ph) {
+  return `
+    <!-- invisible context bar — this is the magic -->
+    <div style="padding:14px 20px 0">
+      <div class="ask-context-bar" style="background:${ph.glass};border-color:${ph.glassB}">
+        <span style="font-size:9px;color:${ph.textF};letter-spacing:0.06em;text-transform:uppercase;opacity:0.5;margin-right:4px">Context</span>
+        <span class="ctx-item" style="color:${ph.textF}"><span class="ctx-dot" style="background:${ph.rDot}"></span>${ph.rLabel} readiness</span>
+        <span style="color:${ph.textF};opacity:0.3;font-size:9px">·</span>
+        <span class="ctx-item" style="color:${ph.textF}"><span class="ctx-dot" style="background:#A78BFA"></span>Lo-Fi playing</span>
+        <span style="color:${ph.textF};opacity:0.3;font-size:9px">·</span>
+        <span class="ctx-item" style="color:${ph.textF}"><span class="ctx-dot" style="background:#60A5FA"></span>Bengaluru</span>
+        <span style="color:${ph.textF};opacity:0.3;font-size:9px">·</span>
+        <span class="ctx-item" style="color:${ph.textF}"><span class="ctx-dot" style="background:#6EE7B7"></span>12 memories</span>
+      </div>
+    </div>
+
+    <div class="ask-wrap" style="padding-top:14px">
+
+      <!-- opening message — no prompt, just appears -->
+      <div class="msg-row">
+        <div class="bubble-ai-wrap">
+          <div class="b-avatar" style="background:${ph.accentBg};color:${ph.accent}">B</div>
+          <div>
+            <div class="bubble" style="background:${ph.glass};color:${ph.text};border:0.5px solid ${ph.glassB}">
+              Different kind of quiet tonight.
+            </div>
+            <div class="b-src" style="color:${ph.textF}">from 1 memory · 11 days ago</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- user asks -->
+      <div class="msg-row msg-user">
+        <div class="bubble" style="background:${ph.accent};color:#fff">how is my health?</div>
+      </div>
+
+      <!-- ai response — context woven in invisibly -->
+      <div class="msg-row">
+        <div class="bubble-ai-wrap">
+          <div class="b-avatar" style="background:${ph.accentBg};color:${ph.accent}">B</div>
+          <div>
+            <div class="bubble" style="background:${ph.glass};color:${ph.text};border:0.5px solid ${ph.glassB}">
+              Readiness is <span style="color:${ph.rColor};font-weight:500">${ph.rLabel}</span> — HRV at ${Math.round(ph.readiness*0.55)}ms, below your 45ms average.
+              ${ph.readiness < 50
+                ? 'Three late nights in a row. The body remembers even if you don\'t. Sleep is the work tonight.'
+                : ph.readiness < 70
+                ? 'Not your peak, but solid. Keep the load moderate and you\'ll bounce back tomorrow.'
+                : 'You\'re fully recovered. This is your window — use it.'}
+            </div>
+            <!-- memory sparks — the magic signal -->
+            <div class="memory-sparks">
+              <div class="spark" style="background:${ph.rColor}"></div>
+              <div class="spark" style="background:#A78BFA;width:10px"></div>
+              <div class="spark" style="background:#60A5FA;width:22px"></div>
+              <span class="spark-label" style="color:${ph.textF}">3 memories connected</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- user asks again -->
+      <div class="msg-row msg-user">
+        <div class="bubble" style="background:${ph.accent};color:#fff">what have I been looping on?</div>
+      </div>
+
+      <!-- ai magic response -->
+      <div class="msg-row">
+        <div class="bubble-ai-wrap">
+          <div class="b-avatar" style="background:${ph.accentBg};color:${ph.accent}">B</div>
+          <div>
+            <div class="bubble" style="background:${ph.glass};color:${ph.text};border:0.5px solid ${ph.glassB}">
+              Finances and smoking — both surfaced 4 times this week, always late at night. The pattern: stress peaks when readiness is low. Your clearest thinking about BrainDump came during morning walks.
+            </div>
+            <div class="memory-sparks">
+              <div class="spark" style="background:${ph.red}"></div>
+              <div class="spark" style="background:${ph.accent};width:28px"></div>
+              <div class="spark" style="background:${ph.green};width:14px"></div>
+              <span class="spark-label" style="color:${ph.textF}">12 memories · 7 days</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- input -->
+    <div class="ask-input-row" style="padding:8px 20px 0">
+      <input class="ask-input" placeholder="ask anything..."
+        style="background:${ph.glass};border-color:${ph.glassB};color:${ph.text};"/>
+      <div class="ask-send" style="background:${ph.accentBg};border-color:${ph.accentB};color:${ph.accent}">↑</div>
+    </div>`;
+}
+
+render();
+</script>
+</body>
+</html>

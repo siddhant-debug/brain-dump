@@ -3,13 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../features/auth/controllers/auth_controller.dart';
 import '../../../core/widgets/persistent_header.dart';
-import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/theme_provider.dart';
 import 'settingspage.dart';
-import 'pages/insights_page.dart';
-import 'pages/loops_page.dart';
 import 'pages/health_page.dart';
 import 'pages/music_page.dart';
-import 'pages/pipeline_page.dart';
 import 'widgets/page_indicator.dart';
 
 class AnalyticsScreen extends ConsumerStatefulWidget {
@@ -62,26 +59,29 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
+    final colors = themeState.colors;
+
     const pages = [
-      InsightsPage(),
-      LoopsPage(),
+      //InsightsPage(),
+      //LoopsPage(),
       HealthPage(),
       MusicPage(),
-      PipelinePage(),
+      //PipelinePage(),
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: colors.bgTop,
       body: SafeArea(
         child: Column(
           children: [
             PersistentHeader(
-              title: 'Brain Insights',
+              title: 'Health and Music',
               actions: [
                 IconButton(
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.settings_rounded,
-                    color: Colors.white24,
+                    color: colors.textDim,
                   ),
                   onPressed: () {
                     Navigator.push(
@@ -94,7 +94,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                   tooltip: 'Settings',
                 ),
                 IconButton(
-                  icon: const Icon(Icons.logout_rounded, color: Colors.white24),
+                  icon: Icon(Icons.logout_rounded, color: colors.textDim),
                   onPressed: () =>
                       ref.read(authControllerProvider.notifier).signOut(),
                   tooltip: 'Sign out',
@@ -105,24 +105,24 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
               AnimatedOpacity(
                 opacity: _showSwipeHint ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 600),
-                child: const Padding(
-                  padding: EdgeInsets.only(bottom: 8),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
                         Icons.arrow_back_ios,
                         size: 12,
-                        color: Colors.white24,
+                        color: colors.textDim,
                       ),
                       Text(
                         ' swipe to explore ',
-                        style: TextStyle(color: Colors.white24, fontSize: 11),
+                        style: TextStyle(color: colors.textDim, fontSize: 11),
                       ),
                       Icon(
                         Icons.arrow_forward_ios,
                         size: 12,
-                        color: Colors.white24,
+                        color: colors.textDim,
                       ),
                     ],
                   ),
@@ -139,11 +139,11 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                   return Container(
                     margin: const EdgeInsets.only(bottom: 2),
                     decoration: BoxDecoration(
-                      color: AppColors.background,
+                      color: colors.bgTop,
                       borderRadius: BorderRadius.circular(0),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
+                          color: colors.bgBottom.withValues(alpha: 0.3),
                           blurRadius: 20,
                           offset: const Offset(-4, 0), // shadow on left edge
                         ),

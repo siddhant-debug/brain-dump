@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_provider.dart';
+import '../../../../core/theme/app_theme.dart';
 
-class FullPageHeader extends StatelessWidget {
+class FullPageHeader extends ConsumerWidget {
   final IconData icon;
   final String title;
   final Color accent;
@@ -15,28 +18,26 @@ class FullPageHeader extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Icon(icon, color: accent, size: 22),
-            const SizedBox(width: 12),
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(themeProvider).colors;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Icon(icon, color: accent, size: 24),
+          const SizedBox(width: 12),
+          Text(
+            title,
+            style: AppTextStyles.greeting(colors.text).copyWith(
+              fontSize: 24,
+              fontStyle: FontStyle.normal,
             ),
-            const Spacer(),
-            if (trailing != null) trailing!,
-          ],
-        ),
-        const SizedBox(height: 12),
-        Divider(color: accent.withValues(alpha: 0.3), height: 1, thickness: 1),
-      ],
+          ),
+          const Spacer(),
+          ?trailing,
+        ],
+      ),
     );
   }
 }

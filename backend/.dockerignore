@@ -1,0 +1,15 @@
+postgres_data/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+env.bak/
+venv.bak/
+.env
+.git/
+.vscode/
+.idea/

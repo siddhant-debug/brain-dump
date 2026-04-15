@@ -28,7 +28,10 @@ class FileService {
   /*
   3 : uploadFile converts a local File into a MultipartFile for server consumption.
   */
-  Future<void> uploadFile(File file) async {
+  Future<void> uploadFile(File file, {
+    void Function(int, int)? onSendProgress,
+    CancelToken? cancelToken,
+  }) async {
     final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
@@ -42,6 +45,8 @@ class FileService {
     await _dio.post(
       '/chat/upload-to-brain',
       data: formData,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
       options: Options(
         headers: {'Authorization': 'Bearer $token'},
         receiveTimeout: const Duration(seconds: 60),
@@ -104,5 +109,5 @@ class FileService {
 When ref.invalidate(filesProvider) is called, it re-fetches the list from the API.
 */
 final filesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) {
-  return ref.read(fileServiceProvider).getFiles();
+  return ref.watch(fileServiceProvider).getFiles();
 });

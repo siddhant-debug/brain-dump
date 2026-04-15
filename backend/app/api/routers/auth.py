@@ -21,7 +21,7 @@ if not SECRET_KEY:
     )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = (
-    30  # H-4 FIX: Reduced from 24h to 30m to minimize attack window
+    1440  # Increased to 24h as per user request
 )
 
 

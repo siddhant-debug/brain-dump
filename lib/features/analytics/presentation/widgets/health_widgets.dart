@@ -1,26 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../health/controllers/health_sync_controller.dart';
 import '../../../health/models/health_snapshot.dart';
 import 'metric_card.dart';
 
-class HealthStatusChip extends StatelessWidget {
+class HealthStatusChip extends ConsumerWidget {
   final HealthContextState state;
   const HealthStatusChip({super.key, required this.state});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(themeProvider).colors;
     if (!state.isAuthorized) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: AppColors.error.withValues(alpha: 0.1),
+          color: colors.red.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Text(
+        child: Text(
           'Disconnected',
-          style: TextStyle(color: AppColors.error, fontSize: 11),
+          style: TextStyle(color: colors.red, fontSize: 11),
         ),
       );
     }
@@ -28,8 +30,8 @@ class HealthStatusChip extends StatelessWidget {
     final color = switch (label) {
       'HIGH' => Colors.greenAccent,
       'MODERATE' => Colors.orangeAccent,
-      'LOW' => Colors.redAccent,
-      _ => AppColors.textSecondary,
+      'LOW' => colors.red,
+      _ => colors.textDim,
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -50,32 +52,33 @@ class HealthStatusChip extends StatelessWidget {
   }
 }
 
-class ErrorBanner extends StatelessWidget {
+class ErrorBanner extends ConsumerWidget {
   final String error;
   const ErrorBanner({super.key, required this.error});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(themeProvider).colors;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.error.withValues(alpha: 0.1),
+        color: colors.red.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+        border: Border.all(color: colors.red.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.error_outline_rounded,
-            color: AppColors.error,
+            color: colors.red,
             size: 18,
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               error,
-              style: const TextStyle(color: AppColors.error, fontSize: 12),
+              style: TextStyle(color: colors.red, fontSize: 12),
             ),
           ),
         ],
@@ -84,17 +87,18 @@ class ErrorBanner extends StatelessWidget {
   }
 }
 
-class HRVCard extends StatelessWidget {
+class HRVCard extends ConsumerWidget {
   final HealthSnapshot snap;
   const HRVCard({super.key, required this.snap});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(themeProvider).colors;
     final current = snap.hrvCurrent;
     final avg = snap.hrvAvg7d;
     final hasData = current != null;
 
-    Color trendColor = AppColors.textSecondary;
+    Color trendColor = colors.textDim;
     String trendLabel = '';
     if (current != null && avg != null) {
       if (current >= avg) {
@@ -104,81 +108,62 @@ class HRVCard extends StatelessWidget {
         trendColor = Colors.orangeAccent;
         trendLabel = '~ Near 7d avg';
       } else {
-        trendColor = Colors.redAccent;
+        trendColor = colors.red;
         trendLabel = '↓ Below 7d avg';
       }
     }
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceHigh,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.purpleAccent.withValues(alpha: 0.15)),
-      ),
-      child: Row(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.graphic_eq_rounded,
-            color: Colors.purpleAccent,
-            size: 22,
-          ),
-          const SizedBox(width: 14),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
             children: [
               Text(
-                'HRV (Heart Rate Variability)',
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                'HRV'.toUpperCase(),
+                style: AppTextStyles.label(colors.textDim).copyWith(
+                  letterSpacing: 1.2,
                 ),
               ),
-              const SizedBox(height: 4),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    hasData ? current.toStringAsFixed(1) : '--',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'ms',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
+              const Spacer(),
+              Text(
+                hasData ? current.toStringAsFixed(1) : '--',
+                style: AppTextStyles.bodyMed(colors.text).copyWith(
+                  fontSize: 18,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'ms',
+                style: AppTextStyles.caption(colors.textDim),
               ),
             ],
           ),
-          const Spacer(),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          const SizedBox(height: 8),
+          if (avg != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+              child: LinearProgressIndicator(
+                value: (current ?? 0) / (avg * 1.5).clamp(1, 200),
+                backgroundColor: colors.accent.withValues(alpha: 0.1),
+                valueColor: AlwaysStoppedAnimation<Color>(colors.accent),
+                minHeight: 4,
+              ),
+            ),
+          const SizedBox(height: 6),
+          Row(
             children: [
               if (avg != null)
                 Text(
                   '7d avg: ${avg.toStringAsFixed(1)} ms',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                  ),
+                  style: AppTextStyles.caption(colors.textDim),
                 ),
-              const SizedBox(height: 4),
+              const Spacer(),
               if (trendLabel.isNotEmpty)
                 Text(
                   trendLabel,
-                  style: TextStyle(
-                    color: trendColor,
-                    fontSize: 12,
+                  style: AppTextStyles.caption(trendColor).copyWith(
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -190,12 +175,13 @@ class HRVCard extends StatelessWidget {
   }
 }
 
-class SleepCard extends StatelessWidget {
+class SleepCard extends ConsumerWidget {
   final SleepSummary? sleep;
   const SleepCard({super.key, this.sleep});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(themeProvider).colors;
     if (sleep == null) {
       return const EmptyMetricCard(
         icon: Icons.nights_stay_rounded,
@@ -204,72 +190,74 @@ class SleepCard extends StatelessWidget {
       );
     }
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceHigh,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.indigoAccent.withValues(alpha: 0.15)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.nights_stay_rounded,
-                color: Colors.indigoAccent,
-                size: 18,
-              ),
-              const SizedBox(width: 8),
               Text(
-                'Sleep Last Night',
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                'SLEEP'.toUpperCase(),
+                style: AppTextStyles.label(colors.textDim).copyWith(
+                  letterSpacing: 1.2,
                 ),
               ),
               const Spacer(),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    sleep!.totalHours.toStringAsFixed(1),
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(width: 3),
-                  Text(
-                    'hrs',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+              Text(
+                sleep!.totalHours.toStringAsFixed(1),
+                style: AppTextStyles.bodyMed(colors.text).copyWith(
+                  fontSize: 18,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                'hrs',
+                style: AppTextStyles.caption(colors.textDim),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            child: SizedBox(
+              height: 4,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: (sleep!.deepHours * 10).toInt(),
+                    child: Container(color: Colors.indigoAccent),
+                  ),
+                  Expanded(
+                    flex: (sleep!.remHours * 10).toInt(),
+                    child: Container(color: colors.accent),
+                  ),
+                  Expanded(
+                    flex: (sleep!.awakeHours * 10).toInt(),
+                    child: Container(color: Colors.orangeAccent),
+                  ),
+                  Expanded(
+                    flex: ((sleep!.totalHours - sleep!.deepHours - sleep!.remHours - sleep!.awakeHours).clamp(0, 24) * 10).toInt(),
+                    child: Container(color: colors.textDim.withValues(alpha: 0.1)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
             children: [
               SleepStage(
                 label: 'Deep',
                 hours: sleep!.deepHours,
                 color: Colors.indigoAccent,
               ),
-              const SizedBox(width: 12),
               SleepStage(
                 label: 'REM',
                 hours: sleep!.remHours,
-                color: Colors.purpleAccent,
+                color: colors.accent,
               ),
-              const SizedBox(width: 12),
               SleepStage(
                 label: 'Awake',
                 hours: sleep!.awakeHours,
@@ -283,7 +271,7 @@ class SleepCard extends StatelessWidget {
   }
 }
 
-class SleepStage extends StatelessWidget {
+class SleepStage extends ConsumerWidget {
   final String label;
   final double hours;
   final Color color;
@@ -295,18 +283,20 @@ class SleepStage extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(themeProvider).colors;
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 8,
-          height: 8,
+          width: 6,
+          height: 6,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 5),
+        const SizedBox(width: 4),
         Text(
           '$label ${hours.toStringAsFixed(1)}h',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          style: AppTextStyles.caption(colors.textDim),
         ),
       ],
     );
@@ -329,7 +319,7 @@ class WorkoutCard extends StatelessWidget {
     return MetricCard(
       icon: Icons.fitness_center_rounded,
       color: Colors.lightGreenAccent,
-      title: 'Last Workout',
+      title: 'LAST WORKOUT',
       value: workout!.durationMinutes.toStringAsFixed(0),
       unit: 'min',
       subtitle: workout!.calories != null
@@ -339,7 +329,7 @@ class WorkoutCard extends StatelessWidget {
   }
 }
 
-class EmptyMetricCard extends StatelessWidget {
+class EmptyMetricCard extends ConsumerWidget {
   final IconData icon;
   final Color color;
   final String title;
@@ -351,13 +341,14 @@ class EmptyMetricCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(themeProvider).colors;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceHigh,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: colors.surfaceBorder.withValues(alpha: 0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -367,10 +358,10 @@ class EmptyMetricCard extends StatelessWidget {
             children: [
               Icon(icon, color: color.withValues(alpha: 0.3), size: 16),
               const SizedBox(width: 6),
-              const Text(
+              Text(
                 'No data',
                 style: TextStyle(
-                  color: Colors.white24,
+                  color: colors.textDim.withValues(alpha: 0.5),
                   fontSize: 13,
                   fontStyle: FontStyle.italic,
                 ),
@@ -380,8 +371,8 @@ class EmptyMetricCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             title,
-            style: const TextStyle(
-              color: Colors.white38,
+            style: TextStyle(
+              color: colors.textDim.withValues(alpha: 0.7),
               fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
@@ -392,17 +383,18 @@ class EmptyMetricCard extends StatelessWidget {
   }
 }
 
-class EmptyState extends StatelessWidget {
+class EmptyState extends ConsumerWidget {
   const EmptyState({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(themeProvider).colors;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 32),
       child: Center(
         child: Text(
           'No health data yet — try refreshing.',
-          style: TextStyle(color: AppColors.textSecondary),
+          style: TextStyle(color: colors.textDim),
         ),
       ),
     );
@@ -414,6 +406,7 @@ class NotConnectedHint extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(themeProvider).colors;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 32),
       child: Center(
@@ -422,7 +415,7 @@ class NotConnectedHint extends ConsumerWidget {
             Text(
               'Tap "Connect Apple Health" to grant access\nand see your health data here.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary, height: 1.6),
+              style: TextStyle(color: colors.textDim, height: 1.6),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -432,7 +425,7 @@ class NotConnectedHint extends ConsumerWidget {
               icon: const Icon(Icons.health_and_safety_rounded),
               label: const Text('Connect Apple Health'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accent,
+                backgroundColor: colors.accent,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -450,22 +443,23 @@ class NotConnectedHint extends ConsumerWidget {
   }
 }
 
-class DebugPanel extends StatefulWidget {
+class DebugPanel extends ConsumerStatefulWidget {
   final HealthSnapshot snap;
   const DebugPanel({super.key, required this.snap});
 
   @override
-  State<DebugPanel> createState() => _DebugPanelState();
+  ConsumerState<DebugPanel> createState() => _DebugPanelState();
 }
 
-class _DebugPanelState extends State<DebugPanel> {
+class _DebugPanelState extends ConsumerState<DebugPanel> {
   bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
+    final colors = ref.watch(themeProvider).colors;
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surfaceHigh.withValues(alpha: 0.5),
+        color: colors.surface.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -474,13 +468,13 @@ class _DebugPanelState extends State<DebugPanel> {
             dense: true,
             title: Text(
               'RAG Debug Data',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+              style: TextStyle(color: colors.textDim, fontSize: 11),
             ),
             trailing: Icon(
               _expanded
                   ? Icons.keyboard_arrow_up_rounded
                   : Icons.keyboard_arrow_down_rounded,
-              color: AppColors.textSecondary,
+              color: colors.textDim,
               size: 16,
             ),
             onTap: () => setState(() => _expanded = !_expanded),
@@ -490,8 +484,8 @@ class _DebugPanelState extends State<DebugPanel> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: Text(
                 widget.snap.toRagContext(),
-                style: const TextStyle(
-                  color: Colors.white24,
+                style: TextStyle(
+                  color: colors.textDim.withValues(alpha: 0.5),
                   fontSize: 10,
                   fontFamily: 'Courier',
                 ),

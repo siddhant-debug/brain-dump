@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/theme/app_theme.dart';
 
-class MetricCard extends StatelessWidget {
+class MetricCard extends ConsumerWidget {
   final IconData icon;
   final Color color;
   final String title;
   final String value;
   final String unit;
   final String? subtitle;
+  final double? progress; // 0.0 to 1.0
 
   const MetricCard({
     super.key,
@@ -17,66 +20,57 @@ class MetricCard extends StatelessWidget {
     required this.value,
     required this.unit,
     this.subtitle,
+    this.progress,
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceHigh,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.12)),
-      ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(themeProvider).colors;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
-              Icon(icon, color: color, size: 16),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+              Text(
+                title.toUpperCase(),
+                style: AppTextStyles.label(colors.textDim).copyWith(
+                  letterSpacing: 1.2,
                 ),
+              ),
+              const Spacer(),
+              Text(
+                value,
+                style: AppTextStyles.bodyMed(colors.text).copyWith(
+                  fontSize: 18,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                unit,
+                style: AppTextStyles.caption(colors.textDim),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+          if (progress != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+              child: LinearProgressIndicator(
+                value: progress,
+                backgroundColor: color.withValues(alpha: 0.1),
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+                minHeight: 4,
               ),
-              const SizedBox(width: 3),
-              Text(
-                unit,
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
-              ),
-            ],
-          ),
+            ),
           if (subtitle != null) ...[
-            const SizedBox(height: 3),
+            const SizedBox(height: 6),
             Text(
               subtitle!,
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 10),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.caption(colors.textDim).copyWith(
+                fontStyle: FontStyle.italic,
+              ),
             ),
           ],
         ],

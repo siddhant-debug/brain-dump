@@ -7,13 +7,13 @@ class SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text.toUpperCase(),
-      style: TextStyle(
-        color: AppColors.textSecondary,
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 1.2,
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.md, bottom: AppSpacing.sm),
+      child: Text(
+        text.toUpperCase(),
+        style: AppTextStyles.label(AppColors.textSecondary).copyWith(
+          letterSpacing: 1.2,
+        ),
       ),
     );
   }

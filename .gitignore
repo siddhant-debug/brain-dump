@@ -23,6 +23,33 @@ temp_*.pdf
 temp_*.txt
 temp_*.md
 
+# PostgreSQL data directory (Docker volume - never commit this)
+backend/postgres_data/
+postgres_data/
+
+# Database backups (may contain sensitive user data)
+backend/backup.sql
+*.sql
+
+# Log and error dump files
+backend/error.txt
+backend/log.txt
+*.log.txt
+error.txt
+log.txt
+
+# Python virtual environments
+.venv/
+.venv_rembg/
+venv/
+backend/venv/
+__pycache__/
+.pytest_cache/
+
+# Python compiled
+*.pyc
+*.pyo
+
 .DS_Store
 .atom/
 .build/

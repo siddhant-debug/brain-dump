@@ -27,6 +27,7 @@ class BrainService {
     String query, {
     Map<String, dynamic>? location,
     Map<String, dynamic>? musicContext,
+    Map<String, dynamic>? healthContext,
   }) async* {
     final token = await _getToken();
     if (token == null) throw Exception('User not authenticated');
@@ -37,7 +38,8 @@ class BrainService {
         data: {
           'query': query,
           'location': location,
-          'music_context': ?musicContext,
+          'music_context': musicContext,
+          'health_context': healthContext,
         },
         options: Options(
           headers: {
@@ -176,6 +178,21 @@ class BrainService {
       // Return empty list on error to not block UI, but print loudly
       debugPrint('Failed to fetch chat history: $e');
       return [];
+    }
+  }
+
+  /// END SESSION: POST /chat/end-session
+  Future<void> endSession() async {
+    final token = await _getToken();
+    if (token == null) return;
+
+    try {
+      await _dio.post(
+        '/chat/end-session',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+    } catch (e) {
+      debugPrint('End session signal failed: $e');
     }
   }
 }

@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Maintain dependencies for Flutter
+  - package-ecosystem: "pub"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "flutter"
+
+  # Maintain dependencies for Python backend
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "python"

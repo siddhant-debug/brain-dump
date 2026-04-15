@@ -9,11 +9,13 @@ GET /analytics/pipeline     — thought pipeline graph (nodes + lane topology)
 """
 
 import re
+import os
 import logging
 from datetime import datetime, timedelta, date, timezone
 from collections import Counter
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from app.core import database
@@ -74,6 +76,9 @@ def get_consistency(
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(database.get_db),
 ):
+    #
+    # COMMENT:- This seems like service-level code inside of view
+    #
     """
     Returns:
     - current_streak: days in a row (from today backwards)
@@ -90,7 +95,11 @@ def get_consistency(
             db.query(models.Note)
             .filter(models.Note.user_id == uid)
             .order_by(models.Note.created_at.asc())
-            .all()
+            .all() 
+            #
+            #COMMENT :- DB entries should have timestamp field of their own, 
+            #use sort method directly using that as part of the DB query instead of doing it in code
+            #
         )
         total_notes = len(all_notes)
 
@@ -349,7 +358,7 @@ def get_themes(
 # 3. RECURRING LOOPS
 # ─────────────────────────────────────────────────────────────────────────────
 
-L2_DISTANCE_CUTOFF = 0.65  # Empirical L2 distance for sentence transformers
+LOOP_L2_THRESHOLD = float(os.getenv("LOOP_L2_THRESHOLD", "0.65"))  # Empirical L2 distance for sentence transformers
 MAX_NOTES_TO_SCAN = 100  # cap to avoid O(n²) — most users have far fewer
 MIN_NOTE_LENGTH = 10  # Ignore short notes (e.g. "Buy milk") to avoid garbage clusters
 LOOP_PATH_TEMPLATES = {
@@ -371,6 +380,39 @@ def get_loops(
     try:
         days = min(days, 90)
         uid = current_user.id
+
+        from app.models.models import DetectedLoop
+
+        # Default fast path check
+        if not current_user.needs_loop_recalc:
+            # Issue 3 fix: push sort to Postgres using CASE WHEN — no Python sort needed
+            _severity_order = case(
+                (DetectedLoop.severity == "high", 0),
+                (DetectedLoop.severity == "medium", 1),
+                (DetectedLoop.severity == "low", 2),
+                else_=9,
+            )
+            cached_loops = (
+                db.query(DetectedLoop)
+                .filter(DetectedLoop.user_id == uid)
+                .order_by(_severity_order, DetectedLoop.occurrences.desc())
+                .all()
+            )
+            if cached_loops:
+                results = [
+                    {
+                        "theme_guess": loop.theme_guess,
+                        "occurrences": loop.occurrences,
+                        "severity": loop.severity,
+                        "first_seen": loop.first_seen,
+                        "last_seen": loop.last_seen,
+                        "notes": loop.notes_json,
+                        "path_forward": loop.path_forward,
+                    }
+                    for loop in cached_loops
+                ]
+                return {"loops": results, "notes_scanned": -1}
+
         notes = _notes_last_n_days(uid, db, days)
 
         if len(notes) < 3:
@@ -396,6 +438,11 @@ def get_loops(
         # 2. Batched Query using pgvector
         try:
             from app.models.models import BrainEmbedding
+            from sqlalchemy.sql import func
+
+            corpus_size = db.query(func.count(BrainEmbedding.id))\
+                .filter(BrainEmbedding.user_id == uid).scalar() or 0
+            neighbor_limit = max(5, corpus_size // 100)
 
             emb_model = rag_engine.get_emb_fn()
             query_embeddings = emb_model.encode(
@@ -410,9 +457,9 @@ def get_loops(
                         BrainEmbedding.embedding.l2_distance(q_emb).label("distance"),
                         BrainEmbedding.metadata_,
                     )
-                    .filter(BrainEmbedding.metadata_.op("->>")("user_id") == str(uid))
+                    .filter(BrainEmbedding.user_id == uid)
                     .order_by("distance")
-                    .limit(5)
+                    .limit(neighbor_limit)
                     .all()
                 )
 
@@ -434,7 +481,7 @@ def get_loops(
 
                         for i, doc_id in enumerate(neighbor_ids):
                             dist = distances[i]
-                            if dist < L2_DISTANCE_CUTOFF:
+                            if dist < LOOP_L2_THRESHOLD:
                                 meta = (
                                     metadatas[i]
                                     if metadatas and i < len(metadatas)
@@ -552,6 +599,30 @@ def get_loops(
         loops.sort(
             key=lambda x: (severity_order.get(x["severity"], 9), -x["occurrences"])
         )
+
+        try:
+            # Clear old cache
+            db.query(DetectedLoop).filter(DetectedLoop.user_id == uid).delete()
+
+            # Insert new loops
+            for loop in loops:
+                db.add(DetectedLoop(
+                    user_id=uid,
+                    theme_guess=loop["theme_guess"],
+                    severity=loop["severity"],
+                    occurrences=loop["occurrences"],
+                    first_seen=loop["first_seen"],
+                    last_seen=loop["last_seen"],
+                    notes_json=loop["notes"],
+                    path_forward=loop["path_forward"]
+                ))
+
+            # Mark cache as fresh
+            current_user.needs_loop_recalc = False
+            db.commit()
+        except Exception as e:
+            logger.error(f"Failed to cache loops for user {uid}: {e}")
+            db.rollback()
 
         return {"loops": loops, "notes_scanned": len(scan_notes)}
 
@@ -784,7 +855,20 @@ def get_pipeline(
         lane_by_key = {l["key"]: i for i, l in enumerate(PIPELINE_LANES)}
 
         # ── Build nodes capped at MAX_PIPELINE_NODES (most recent) ───────────
-        recent_notes = notes[-MAX_PIPELINE_NODES:]
+        # Issue 6 fix: fetch only MAX_PIPELINE_NODES newest notes at the DB level
+        # instead of fetching ALL notes for the window and slicing in Python.
+        ist_tz = timezone(timedelta(hours=5, minutes=30))
+        cutoff = _now_ist() - timedelta(days=days)
+        recent_notes = (
+            db.query(models.Note)
+            .filter(
+                models.Note.user_id == uid,
+                models.Note.created_at >= cutoff,
+            )
+            .order_by(models.Note.created_at.desc())
+            .limit(MAX_PIPELINE_NODES)
+            .all()
+        )[::-1]  # flip to chronological for the parent-chain logic (≤50 rows, trivial)
         last_in_lane: dict[int, str] = {}
         pipeline_nodes = []
 

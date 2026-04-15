@@ -1,0 +1,117 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - deployment
+
+jobs:
+  backend-test:
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build image tagged with commit SHA
+        run: docker build -t braindump-backend:${{ github.sha }} .
+
+      - name: Install testing tools into server environment
+        run: |
+          source /home/sidtom/application/projects/brain-dump/backend/venv/bin/activate
+          pip install pytest flake8 black httpx
+
+      - name: Check formatting with Black
+        run: |
+          source /home/sidtom/application/projects/brain-dump/backend/venv/bin/activate
+          black --check . || true
+        continue-on-error: true # Warning only for now
+
+      - name: Lint with flake8
+        run: |
+          source /home/sidtom/application/projects/brain-dump/backend/venv/bin/activate
+          # Stops the build if there are syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Run unit tests
+        run: |
+          source /home/sidtom/application/projects/brain-dump/backend/venv/bin/activate
+          # 1. Copy the production .env file used by the backend so tests can connect to the DB
+          cp /home/sidtom/application/projects/brain-dump/backend/.env ./.env || true
+          
+          # 2. Run only the tests in backend/tests/ (ignoring scripts)
+          if [ -d "tests" ]; then
+            pytest tests/
+          else
+            echo "No tests directory found, skipping."
+          fi
+
+  flutter-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Create dummy .env for analysis
+        run: touch .env
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze Dart code
+        run: dart analyze --fatal-warnings
+
+      - name: Run tests
+        # Only runs if there is a 'test' directory
+        run: |
+          if [ -d "test" ]; then
+            flutter test
+          else
+            echo "No test directory found, skipping tests."
+          fi
+
+  deploy:
+    needs: [backend-test, flutter-test] # Forces deploy to wait for tests!
+    runs-on: self-hosted
+    steps:
+      - name: Deploy to Server natively
+        run: |
+          # 1. Navigate to the root project directory on the runner's server
+          cd /home/sidtom/application/projects/brain-dump
+          
+          echo "Checking out exact commit SHA that passed tests: ${{ github.sha }}..."
+          git fetch origin
+          git checkout ${{ github.sha }}
+
+          # 2. Navigate into the backend directory
+          cd backend
+          
+          # Use the image built during backend-test job
+          echo "Restarting backend with EXACT tested container image..."
+          IMAGE_TAG=${{ github.sha }} docker compose up -d --no-build braindump-backend
+          
+          echo "Checking if database migrations are needed..."
+          # Check the current database migration status
+          CURRENT_REV=$(IMAGE_TAG=${{ github.sha }} docker compose exec -T braindump-backend alembic current 2>/dev/null || true)
+          if [[ "$CURRENT_REV" == *"(head)"* ]]; then
+            echo "Database is already at the latest revision. Skipping migrations."
+          else
+            echo "Pending migrations detected. Running alembic upgrade head..."
+            IMAGE_TAG=${{ github.sha }} docker compose exec -T braindump-backend alembic upgrade head
+          fi
+          
+          echo "Cleaning up old images..."
+          docker image prune -f
+          
+          echo "Deployment complete for SHA: ${{ github.sha }}!"

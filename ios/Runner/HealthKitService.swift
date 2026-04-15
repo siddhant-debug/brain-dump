@@ -274,7 +274,7 @@ class HealthKitService {
             
             DispatchQueue.main.async {
                 if total == 0 && awake == 0 {
-                    print("[HealthKitService] getSleep -> nil (no samples in window \(windowStart) – \(windowEnd))")
+                    print("[HealthKitService] ⚠️ getSleep -> nil (No samples found in window \(windowStart) – \(windowEnd). Ensure Health app shows sleep data for last night.)")
                     result(nil)
                 } else {
                     let dict: [String: Double] = [
@@ -283,7 +283,7 @@ class HealthKitService {
                         "rem_hours": rem / 3600,
                         "awake_hours": awake / 3600
                     ]
-                    print("[HealthKitService] getSleep -> \(dict)")
+                    print("[HealthKitService] ✅ getSleep -> \(dict)")
                     result(dict)
                 }
             }
@@ -333,14 +333,17 @@ class HealthKitService {
         let end = Date()
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
         
-        let query = HKStatisticsQuery(quantityType: energyType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, statistics, _ in
+        let query = HKStatisticsQuery(quantityType: energyType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, statistics, error in
+            if let error = error {
+                print("[HealthKitService] ❌ getActiveEnergy error: \(error.localizedDescription)")
+            }
             DispatchQueue.main.async {
                 if let sum = statistics?.sumQuantity() {
                     let kcal = sum.doubleValue(for: HKUnit.kilocalorie())
-                    print("[HealthKitService] getActiveEnergy -> \(kcal) kcal")
+                    print("[HealthKitService] ✅ getActiveEnergy -> \(kcal) kcal")
                     result(kcal)
                 } else {
-                    print("[HealthKitService] getActiveEnergy -> nil")
+                    print("[HealthKitService] ⚠️ getActiveEnergy -> nil (No active energy data. Note: iPhone alone often doesn't report active energy without a Watch or Workout.)")
                     result(nil)
                 }
             }

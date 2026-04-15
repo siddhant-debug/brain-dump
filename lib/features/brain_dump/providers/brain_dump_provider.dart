@@ -7,6 +7,7 @@ import '../../notes/services/note_service.dart';
 import '../models/chat_message.dart';
 import '../services/location_service.dart';
 import '../../music/controllers/music_sync_controller.dart';
+import '../../health/controllers/health_sync_controller.dart';
 import 'package:dio/dio.dart';
 
 String _formatError(dynamic e) {
@@ -33,12 +34,14 @@ class BrainDumpState {
   final bool isProcessing;
   final String? error;
   final bool isChatMode;
+  final bool isReflecting;
 
   BrainDumpState({
     this.messages = const [],
     this.isProcessing = false,
     this.error,
     this.isChatMode = false, // Default: Journal mode
+    this.isReflecting = false,
   });
 
   BrainDumpState copyWith({
@@ -47,12 +50,14 @@ class BrainDumpState {
     String? error,
     bool clearError = false,
     bool? isChatMode,
+    bool? isReflecting,
   }) {
     return BrainDumpState(
       messages: messages ?? this.messages,
       isProcessing: isProcessing ?? this.isProcessing,
       error: clearError ? null : (error ?? this.error),
       isChatMode: isChatMode ?? this.isChatMode,
+      isReflecting: isReflecting ?? this.isReflecting,
     );
   }
 }
@@ -110,9 +115,6 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
 
-    // Cancel any ongoing stream
-    await _currentStreamSubscription?.cancel();
-
     // 1. Add User Message immediately
     final userMsgId = _uuid.v4();
     final userMsg = ChatMessage(
@@ -128,6 +130,27 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
       isProcessing: true,
       error: null,
     );
+
+    // Cancel any ongoing stream
+    await _currentStreamSubscription?.cancel();
+
+    // [PERSISTENCE] Save to Notes DB if NOT in Chat Mode
+    // This prevents redundant entries for queries (e.g. "what is success?")
+    if (!state.isChatMode) {
+      unawaited(() async {
+        try {
+          await ref.read(noteServiceProvider).saveNote(trimmed);
+          ref.invalidate(
+            notesProvider,
+          ); // Refresh "Recent Notes" and Thoughts list
+          debugPrint("[DEBUG] Note saved successfully from OmniBar");
+        } catch (e) {
+          debugPrint("[DEBUG] Note persistence failed: $e");
+        }
+      }());
+    } else {
+      debugPrint("[DEBUG] Chat Mode: Skipping persistent note save.");
+    }
 
     // 2. Add "Thinking..." placeholder IMMEDIATELY
     final aiMsgId = _uuid.v4();
@@ -190,9 +213,21 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     } catch (e) {
       debugPrint("[DEBUG] Music context fetch skipped: $e");
     }
+    
+    // [CONTEXT] Fetch Health Snapshot from Riverpod State
+    Map<String, dynamic>? healthContext;
+    try {
+      final healthState = ref.read(healthSyncControllerProvider);
+      if (healthState.isAuthorized && healthState.latestSnapshot != null) {
+        healthContext = healthState.latestSnapshot!.toJson();
+        debugPrint("[DEBUG] Injecting Health Context to Chat Payload: $healthContext");
+      }
+    } catch (e) {
+      debugPrint("[DEBUG] Health context fetch skipped: $e");
+    }
 
     try {
-      await _handleQuery(trimmed, locationContext, musicContext, aiMsgId);
+      await _handleQuery(trimmed, locationContext, musicContext, healthContext, aiMsgId);
     } catch (e) {
       // Update ONLY the specific message by ID
       state = state.copyWith(
@@ -217,6 +252,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     String text,
     Map<String, dynamic>? location,
     Map<String, dynamic>? musicContext,
+    Map<String, dynamic>? healthContext,
     String aiMsgId,
   ) async {
     // 2.5 Update placeholder with location if available
@@ -238,10 +274,12 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     List<String> sources = [];
 
     try {
-      await for (var data
-          in ref
-              .read(brainServiceProvider)
-              .askBrain(text, location: location, musicContext: musicContext)) {
+      await for (var data in ref.read(brainServiceProvider).askBrain(
+        text,
+        location: location,
+        musicContext: musicContext,
+        healthContext: healthContext,
+      )) {
         // Handle text chunk
         if (data['chunk'] != null) {
           fullAnswer += data['chunk'];
@@ -332,9 +370,28 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     }
   }
 
-  /// Clear message history from local state (doesn't affect backend)
+  /// Clear message history from local state and signal backend to reflect
   void clearLocalHistory() {
     state = state.copyWith(messages: []);
+    endSession(); // Trigger reflection in background
+  }
+
+  /// Signal the backend that a session has ended (manual trigger)
+  Future<void> endSession() async {
+    state = state.copyWith(isReflecting: true);
+    try {
+      await ref.read(brainServiceProvider).endSession();
+      debugPrint("[DEBUG] End session signal sent to backend");
+      
+      // Keep reflecting state for a few seconds for visual feedback
+      await Future.delayed(const Duration(seconds: 3));
+    } catch (e) {
+      debugPrint("[DEBUG] End session signal failed: $e");
+    } finally {
+      if (mounted) {
+        state = state.copyWith(isReflecting: false);
+      }
+    }
   }
 
   /// Toggle between Chat and Journal mode

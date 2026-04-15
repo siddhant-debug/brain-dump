@@ -65,9 +65,7 @@ class MySettings extends ConsumerWidget {
             title: const Text('Dark Mode'),
             subtitle: const Text('Toggle between dark and light themes'),
             value: isDark,
-            onChanged: (value) {
-              ref.read(themeModeProvider.notifier).toggleTheme();
-            },
+            onChanged: null, // Disabled: Theme is now automatically circadian
           ),
           const Divider(),
           const Padding(

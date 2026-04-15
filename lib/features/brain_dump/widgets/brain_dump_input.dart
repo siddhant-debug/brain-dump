@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/brain_dump_provider.dart';
 
-/*
-1 : BrainDumpInput is the primary text entry component.
-It is designed to be borderless and full-screen style, 
-facilitating a distraction-free 'writing trance'.
-*/
-class BrainDumpInput extends StatelessWidget {
+class BrainDumpInput extends ConsumerWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final ValueChanged<String> onSubmitted;
@@ -20,47 +17,61 @@ class BrainDumpInput extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    /*
-    2 : Dynamic hint text personalizes the experience if the userName is known.
-    */
-    final hint = userName != null
-        ? 'welcome back ${userName!.toLowerCase()}, start typing…'
-        : 'just start typing…';
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(brainDumpProvider);
+    
+    final hint = state.isChatMode
+        ? 'Ask anything...'
+        : (userName != null
+            ? 'welcome back ${userName!.toLowerCase()}, Drop a thought…'
+            : 'Drop a thought…');
 
-    return Padding(
-      padding: const EdgeInsets.only(
-        top: 40.0,
-      ), // Ensure it's below status bar/neural trunk top
-      child: TextField(
-        controller: controller,
-        focusNode: focusNode,
-        autofocus: true,
-        maxLines: null,
-        // expands: true, // Removed to prevent full-screen hit-testing
-        keyboardType: TextInputType.multiline,
-        textInputAction: TextInputAction.newline,
-        textAlignVertical: TextAlignVertical.top,
-        decoration: InputDecoration(
-          border: InputBorder.none,
-          hintText: hint,
-          hintStyle: const TextStyle(
-            color: Color(0x30FFFFFF),
-            fontSize: 18,
-            fontWeight: FontWeight.w300,
-            letterSpacing: 0.5,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1), width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => ref.read(brainDumpProvider.notifier).toggleMode(),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                state.isChatMode ? 'CHAT' : 'JOURNAL',
+                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+              ),
+            ),
           ),
-        ),
-        style: const TextStyle(
-          color: Color(0xD9FFFFFF),
-          fontSize: 18,
-          height: 1.6,
-          fontWeight: FontWeight.w300,
-          letterSpacing: 0.3,
-        ),
-        cursorColor: const Color(0x99FFFFFF),
-        cursorWidth: 1.5,
-        onSubmitted: onSubmitted,
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              maxLines: null,
+              onSubmitted: onSubmitted,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.arrow_upward, color: Colors.white),
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                onSubmitted(controller.text);
+              }
+            },
+          ),
+        ],
       ),
     );
   }

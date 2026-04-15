@@ -8,6 +8,7 @@ networks:
 services:
   # The FastAPI Python App
   braindump-backend:
+    image: braindump-backend:${IMAGE_TAG:-latest}
     build: .
     container_name: braindump-backend
     restart: unless-stopped

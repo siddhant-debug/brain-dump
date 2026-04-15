@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     JSON,
     Float,
+    Index,
 )
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -20,7 +21,39 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
     profile_pic = Column(String, nullable=True)
+    weight_kg = Column(Float, nullable=True)
+    height_cm = Column(Float, nullable=True)
+    needs_loop_recalc = Column(Boolean, default=True, server_default="true")
+    life_path_baseline = Column(JSON, nullable=True)  # {current: str, archive: List[str]}
+    macro_goal = Column(String, nullable=True)
+    last_lifepath_eval = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def has_completed_life_path(self) -> bool:
+        return self.life_path_baseline is not None and self.macro_goal is not None
+
+
+class HealthSnapshot(Base):
+    __tablename__ = "health_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    readiness = Column(String, nullable=True)  # HIGH, MODERATE, LOW, SYNCING
+    heart_rate = Column(JSON, nullable=True)  # {current, avg_24h, resting}
+    hrv = Column(JSON, nullable=True)  # {current, avg_7d}
+    sleep = Column(JSON, nullable=True)  # {total_hours, deep_hours, rem_hours, awake_hours}
+    steps_today = Column(Integer, nullable=True)
+    active_energy_kcal = Column(Float, nullable=True)
+    last_workout = Column(JSON, nullable=True)  # {type, duration_minutes, calories}
+    fetched_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_health_snapshot_dedup", "user_id", "fetched_at"),
+    )
 
 
 class StoredFile(Base):
@@ -46,6 +79,11 @@ class Note(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
     content = Column(String, nullable=False)
+    title = Column(String, nullable=True)
+    location_name = Column(String, nullable=True)
+    music_track = Column(String, nullable=True)
+    focus_mode = Column(String, nullable=True)
+    health_readiness = Column(String, nullable=True)
     is_favorite = Column(Boolean, default=False)
     sentiment = Column(String, nullable=True)  # "Positive", "Negative", "Neutral"
     categories = Column(JSON, nullable=True)  # Array of strings
@@ -93,6 +131,39 @@ class MusicVibeCache(Base):
     )
 
 
+class MusicHistory(Base):
+    __tablename__ = "music_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    title = Column(String, nullable=False)
+    artist = Column(String, nullable=False)
+    played_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+from sqlalchemy.dialects.postgresql import ARRAY
+
+class DetectedLoop(Base):
+    __tablename__ = "detected_loops"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
+                     index=True, nullable=False)
+    theme_guess = Column(String, nullable=False)
+    severity = Column(String)           # "high" | "low"
+    occurrences = Column(Integer)
+    path_forward = Column(String)
+    first_seen = Column(String)
+    last_seen = Column(String)
+    notes_json = Column(JSON, nullable=False) # Store the serialized notes for easy return
+    computed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+
+
+
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -104,4 +175,42 @@ class BrainEmbedding(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     document = Column(String, nullable=False)
     embedding = Column(Vector(768), nullable=False)
+    source_type = Column(String, nullable=False, server_default="note", index=True)
     metadata_ = Column("metadata", JSONB, nullable=False)
+
+
+class EpisodicMemory(Base):
+    """
+    Stores synthesized reflections of past AI-User interactions.
+    Used for long-term 'learning' and stylistic grounding.
+    """
+    __tablename__ = "episodic_memories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    summary_json = Column(JSONB, nullable=False) # Keys: context_tags, summary, what_worked, what_to_avoid
+    embedding = Column(Vector(768), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index(
+            "idx_episodic_mem_vec",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_l2_ops"},
+        ),
+    )
+
+
+class LifePathNode(Base):
+    __tablename__ = "lifepath_nodes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    computed_at = Column(DateTime(timezone=True), server_default=func.now())
+    trajectory = Column(JSONB, nullable=False)  # {progress: [], blockers: [], loops: [], goals: []}
+    context_snapshot = Column(JSONB, nullable=False)  # {health: {}, music: {}, note_ids: []}
+    embedding_id = Column(String, ForeignKey("brain_embeddings.id"), nullable=True)

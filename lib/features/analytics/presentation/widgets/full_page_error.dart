@@ -11,13 +11,13 @@ class FullPageError extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
+          Icon(
             Icons.error_outline_rounded,
             color: AppColors.error,
             size: 40,
           ),
-          const SizedBox(height: 16),
-          Text(message, style: const TextStyle(color: AppColors.error)),
+          SizedBox(height: 16),
+          Text(message, style: TextStyle(color: AppColors.error)),
         ],
       ),
     );

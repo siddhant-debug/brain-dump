@@ -1,27 +1,41 @@
+import 'package:brain_dump/core/theme/app_theme.dart';
+import 'package:brain_dump/core/theme/theme_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../notes/models/note.dart';
 
-class NoteDetailScreen extends StatelessWidget {
-  final Map<String, dynamic> note;
+class NoteDetailScreen extends ConsumerStatefulWidget {
+  final Note note;
   const NoteDetailScreen({super.key, required this.note});
 
-  Widget _buildSentimentBadge(String? sentiment) {
+  @override
+  ConsumerState<NoteDetailScreen> createState() => _NoteDetailScreenState();
+}
+
+class _NoteDetailScreenState extends ConsumerState<NoteDetailScreen> {
+  Widget _buildSentimentBadge(String? sentiment, CircadianColors colors) {
     if (sentiment == null || sentiment.isEmpty) return const SizedBox.shrink();
 
     Color bgColor;
     IconData icon;
+    Color textColor = colors.text;
+    
     switch (sentiment.toLowerCase()) {
       case 'positive':
-        bgColor = Colors.green.withValues(alpha: 0.2);
+        bgColor = colors.greenBg;
         icon = Icons.sentiment_satisfied_alt;
+        textColor = colors.green;
         break;
       case 'negative':
-        bgColor = Colors.red.withValues(alpha: 0.2);
+        bgColor = colors.redBg;
         icon = Icons.sentiment_dissatisfied;
+        textColor = colors.red;
         break;
       case 'neutral':
       default:
-        bgColor = Colors.grey.withValues(alpha: 0.2);
+        bgColor = colors.surfaceLow;
         icon = Icons.sentiment_neutral;
+        textColor = colors.textDim;
         break;
     }
 
@@ -30,18 +44,19 @@ class NoteDetailScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.surfaceBorder, width: 0.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: Colors.white),
+          Icon(icon, size: 16, color: textColor),
           const SizedBox(width: 8),
           Text(
-            sentiment,
-            style: const TextStyle(
-              color: Colors.white,
+            sentiment.toUpperCase(),
+            style: AppTextStyles.label(textColor).copyWith(
               fontWeight: FontWeight.bold,
-              fontSize: 12,
+              fontSize: 10,
+              letterSpacing: 0.5,
             ),
           ),
         ],
@@ -51,22 +66,26 @@ class NoteDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<dynamic>? categories = note['categories'];
-    final String? sentiment = note['sentiment'];
+    final List<String> categories = widget.note.categories;
+    final String? sentiment = widget.note.sentiment;
+    final themeState = ref.watch(themeProvider);
+    final colors = themeState.colors;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF111111),
+      backgroundColor: colors.bgTop,
       appBar: AppBar(
-        title: const Text(
-          'Thought Detail',
-          style: TextStyle(color: Colors.white),
+        leading: const BackButton(),
+        title: Text(
+          widget.note.title ?? 'Thought Detail',
+          style: AppTextStyles.h3(colors.text),
         ),
         backgroundColor: Colors.transparent,
-        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
+        iconTheme: IconThemeData(color: colors.text),
       ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -74,39 +93,34 @@ class NoteDetailScreen extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _buildSentimentBadge(sentiment),
+                  _buildSentimentBadge(sentiment, colors),
                   Text(
-                    note['created_at'].toString().split('T')[0],
-                    style: const TextStyle(color: Colors.white38, fontSize: 14),
+                    widget.note.createdAt.toString().split(' ')[0],
+                    style: AppTextStyles.caption(colors.textFaint),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 32),
 
               // The Thought Content
               Text(
-                note['content'] ?? '',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white,
-                  height: 1.4,
+                widget.note.content,
+                style: AppTextStyles.h2(colors.text).copyWith(
+                  height: 1.5,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 40),
 
               // Categories Section
-              if (categories != null && categories.isNotEmpty) ...[
-                const Text(
-                  'Insights',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white54,
-                    letterSpacing: 1.2,
+              if (categories.isNotEmpty) ...[
+                Text(
+                  'INSIGHTS',
+                  style: AppTextStyles.label(colors.textFaint).copyWith(
+                    letterSpacing: 1.5,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -117,15 +131,13 @@ class NoteDetailScreen extends StatelessWidget {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.1),
+                        color: colors.accentBg,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white24),
+                        border: Border.all(color: colors.accentBorder, width: 0.5),
                       ),
                       child: Text(
-                        '#${cat.toString()}',
-                        style: const TextStyle(
-                          color: Colors.blueAccent,
-                          fontWeight: FontWeight.w600,
+                        '#${cat.toLowerCase()}',
+                        style: AppTextStyles.bodyMed(colors.accent).copyWith(
                           fontSize: 13,
                         ),
                       ),
