@@ -101,3 +101,7 @@ reviews/
 /refactor_dashboard.py
 /test_history.dart
 /test_streaming.py
+
+# Local scratch reports (branch-diff summaries, etc.) - not app code
+/MAIN_VS_DEPLOYMENT_DIFF_REPORT.md
+*_DIFF_REPORT.md
