@@ -4,6 +4,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+// IMPROVEMENT: Area 1 — Capture Friction
+import 'package:home_widget/home_widget.dart';
 import '../../../core/constants/timeout_constants.dart';
 import '../../../core/providers/dio_provider.dart';
 import '../models/chat_message.dart';
@@ -27,6 +29,7 @@ class BrainService {
     String query, {
     Map<String, dynamic>? location,
     Map<String, dynamic>? musicContext,
+    Map<String, dynamic>? healthContext,
   }) async* {
     final token = await _getToken();
     if (token == null) throw Exception('User not authenticated');
@@ -37,7 +40,8 @@ class BrainService {
         data: {
           'query': query,
           'location': location,
-          'music_context': ?musicContext,
+          'music_context': musicContext,
+          'health_context': healthContext,
         },
         options: Options(
           headers: {
@@ -121,15 +125,29 @@ class BrainService {
     }
   }
 
+  // IMPROVEMENT: Area 3d — Add debounce to BrainService
+  bool _isSaving = false;
+
   /// MEMORIZE NOTE: POST /upload-to-brain
   Future<Map<String, dynamic>> saveNote(String content) async {
-    final token = await _getToken();
-    if (token == null) throw Exception('User not authenticated');
-
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final filename = 'note_$timestamp.txt';
-
+    if (_isSaving) return {};
+    _isSaving = true;
+    
     try {
+      final token = await _getToken();
+      if (token == null) throw Exception('User not authenticated');
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final filename = 'note_$timestamp.txt';
+
+      // IMPROVEMENT: Area 1 — Capture Friction (save last note to widget)
+      try {
+        await HomeWidget.saveWidgetData<String>('lastNote', content);
+        await HomeWidget.updateWidget(iOSName: 'BrainDumpWidget', androidName: 'BrainDumpWidget');
+      } catch (e) {
+        debugPrint('Failed to update HomeWidget: $e');
+      }
+
       // Create Multipart request
       FormData formData = FormData.fromMap({
         'file': MultipartFile.fromBytes(
@@ -146,6 +164,10 @@ class BrainService {
       return response.data;
     } catch (e) {
       throw Exception('Memory upload failed: $e');
+    } finally {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _isSaving = false;
+      });
     }
   }
 
@@ -176,6 +198,21 @@ class BrainService {
       // Return empty list on error to not block UI, but print loudly
       debugPrint('Failed to fetch chat history: $e');
       return [];
+    }
+  }
+
+  /// END SESSION: POST /chat/end-session
+  Future<void> endSession() async {
+    final token = await _getToken();
+    if (token == null) return;
+
+    try {
+      await _dio.post(
+        '/chat/end-session',
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
+      );
+    } catch (e) {
+      debugPrint('End session signal failed: $e');
     }
   }
 }

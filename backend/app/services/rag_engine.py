@@ -2,6 +2,8 @@ import os
 import asyncio
 import time
 import concurrent.futures
+import logging
+from typing import List
 from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
     MarkdownHeaderTextSplitter,
@@ -14,7 +16,8 @@ from sentence_transformers import CrossEncoder, SentenceTransformer
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import and_
-from app.models.models import BrainEmbedding
+from app.models.models import BrainEmbedding, EpisodicMemory
+from app.models import models
 from app.core.database import SessionLocal
 import json
 import numpy as np
@@ -23,7 +26,10 @@ from textblob import TextBlob
 from app.schemas import (
     schemas,
 )  # Import schemas for LocationContext type hinting if needed (or just use dict)
-from app.services.gemini_service import gemini_service
+from app.services.llm_service import llm_service as gemini_service
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -45,6 +51,16 @@ N_CANDIDATES = 15  # Changed from 10
 CROSS_ENCODER_MODEL = (
     "cross-encoder/ms-marco-MiniLM-L-6-v2"  # Best accuracy/speed trade-off
 )
+
+# 4. GROUNDING CHECK CONFIG
+# Heuristic embedding-overlap threshold below which a generated answer is flagged
+# as weakly grounded in the retrieved context. This is NOT a hallucination
+# detector (no NLI/entailment model is in the dependency tree) — it's a coarse,
+# near-zero-cost signal computed with the embedding model already loaded for
+# retrieval. Calibrate against real traffic; 0.35 is a conservative starting
+# point for BGE-base cosine similarity between a generated answer and its
+# source context.
+GROUNDING_WARN_THRESHOLD = 0.35
 
 import threading
 from cachetools import LRUCache
@@ -107,7 +123,12 @@ class BM25Store:
                         BrainEmbedding.document,
                         BrainEmbedding.metadata_,
                     )
-                    .filter(BrainEmbedding.user_id == user_id)
+                    .filter(
+                        and_(
+                            BrainEmbedding.user_id == user_id,
+                            BrainEmbedding.source_type == "note",
+                        )
+                    )
                     .all()
                 )
 
@@ -331,7 +352,13 @@ def find_associative_memories(
 
 
 def index_text(
-    filename: str, text: str, user_id: int, db: Session, location_context: dict = None
+    filename: str,
+    text: str,
+    user_id: int,
+    db: Session,
+    location_context: dict = None,
+    health_context: dict = None,
+    source_type: str = "note",
 ):
     """Memorizes a file (Chunks -> Vectors) for a specific user"""
 
@@ -393,6 +420,25 @@ def index_text(
     # Create unique IDs (filename + chunk index + user_id)
     ids = [f"{user_id}_{filename}_{i}" for i in range(len(chunks))]
 
+    # 3. ENRICH WITH CONTEXT (Location + Health)
+    # Per rule: Pull latest health snapshot if not provided explicitly
+    if health_context is None:
+        latest = (
+            db.query(models.HealthSnapshot)
+            .filter(models.HealthSnapshot.user_id == user_id)
+            .order_by(models.HealthSnapshot.fetched_at.desc())
+            .first()
+        )
+        if latest:
+            # Structure it like the frontend's HealthContextResponse
+            health_context = {
+                "readiness": latest.readiness,
+                "steps_today": latest.steps_today,
+                "active_energy_kcal": latest.active_energy_kcal,
+                "hr_resting": latest.heart_rate.get("resting") if latest.heart_rate else None,
+                "hrv_curr": latest.hrv.get("current") if latest.hrv else None,
+            }
+
     # Metadata includes file type info AND Location info if available
     metadatas = []
     for _ in chunks:
@@ -400,6 +446,7 @@ def index_text(
             "source": filename,
             "user_id": user_id,
             "type": "markdown" if filename.lower().endswith(".md") else "text",
+            "source_type": source_type,
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -416,6 +463,19 @@ def index_text(
                 meta["latitude"] = location_context["latitude"]
             if location_context.get("longitude"):
                 meta["longitude"] = location_context["longitude"]
+
+        # Add health context if provided or fetched
+        if health_context:
+            if health_context.get("readiness"):
+                meta["health_readiness"] = health_context["readiness"]
+            if health_context.get("steps_today") is not None:
+                meta["health_steps"] = health_context["steps_today"]
+            if health_context.get("active_energy_kcal") is not None:
+                meta["health_kcal"] = health_context["active_energy_kcal"]
+            if health_context.get("hr_resting") is not None:
+                meta["health_hr_resting"] = health_context["hr_resting"]
+            if health_context.get("hrv_curr") is not None:
+                meta["health_hrv"] = health_context["hrv_curr"]
 
         metadatas.append(meta)
 
@@ -443,6 +503,7 @@ def index_text(
                     "document": doc,
                     "embedding": emb,
                     "metadata_": meta,
+                    "source_type": source_type,
                 }
             )
 
@@ -520,7 +581,7 @@ def ask_gemini(context: str, query: str):
     print(f"DEBUG: Entering ask_gemini with query: '{query}'")
     client = genai.Client(api_key=GEMINI_API_KEY)
 
-    system_instruction = """You are the user's Subconscious Mind.
+    system_instruction = f"""You are the user's Subconscious Mind.
         Today is {datetime.now().strftime('%B %d, %Y')}.
         
         HOW YOU THINK:
@@ -583,9 +644,11 @@ def ask_gemini(context: str, query: str):
 async def ask_gemini_stream_async(
     context: str,
     query: str,
+    user_id: int,
     max_tokens: int = 1000,
     location_context: dict = None,
     music_layer: str = "",
+    health_layer: str = "",
     chat_history: list = None,
     directives: list = None,
 ):
@@ -674,6 +737,15 @@ async def ask_gemini_stream_async(
         elif loc_type == "cafe":
             location_layer += " (Creative, social/work blend)."
 
+    # [Layer 6] Episodic Memory Recall (The Subconscious Learning)
+    episodic_recall = []
+    try:
+        episodic_recall = await async_retrieve_episodic_recall(query, user_id)
+        if episodic_recall:
+            print(f"DEBUG: [Episodic] Retreived {len(episodic_recall)} past reflections.")
+    except Exception as e:
+        logger.error(f"[Episodic] Recall failed: {e}")
+
     # Delegate to GeminiService — all timeout/injection/delimiter logic lives there
     async for chunk in gemini_service.async_stream(
         context=context,
@@ -684,11 +756,34 @@ async def ask_gemini_stream_async(
         tone_layer=tone_layer,
         location_layer=location_layer,
         music_layer=music_layer,
+        health_layer=health_layer,
         max_tokens=max_tokens,
         chat_history=chat_history,
         directives=directives,
+        episodic_recall=episodic_recall,
     ):
         yield chunk
+
+
+def retrieve_episodic_recall(query: str, user_id: int, db: Session, limit: int = 2) -> List[EpisodicMemory]:
+    """
+    Performs vector similarity search over the EpisodicMemory table.
+    Retrieves the most relevant past AI-User interaction reflections.
+    """
+    try:
+        emb_model = get_emb_fn()
+        query_embedding = emb_model.encode([query]).tolist()[0]
+        
+        memories = db.query(EpisodicMemory)\
+            .filter(EpisodicMemory.user_id == user_id)\
+            .order_by(EpisodicMemory.embedding.l2_distance(query_embedding))\
+            .limit(limit)\
+            .all()
+            
+        return memories
+    except Exception as e:
+        logger.error(f"Error in retrieve_episodic_recall: {e}")
+        return []
 
 
 def retrieve_context(
@@ -709,7 +804,12 @@ def retrieve_context(
 
     vector_results = (
         db.query(BrainEmbedding)
-        .filter(BrainEmbedding.user_id == user_id)
+        .filter(
+            and_(
+                BrainEmbedding.user_id == user_id,
+                BrainEmbedding.source_type == "note",
+            )
+        )
         .order_by(BrainEmbedding.embedding.l2_distance(query_embedding))
         .limit(n_results)
         .all()
@@ -899,6 +999,40 @@ def retrieve_context(
     return context_text, sources
 
 
+def compute_grounding_score(answer: str, context_text: str) -> float:
+    """
+    Coarse groundedness signal: cosine similarity between the generated answer
+    and the exact context string that was actually handed to the LLM.
+
+    This catches the cheap failure mode — an answer that has drifted entirely
+    away from the retrieved material (e.g. the model answered from general
+    knowledge, or latched onto the query and ignored the context). It will NOT
+    catch subtle factual hallucination that stays topically close to the
+    context (e.g. inventing a detail about a real note) — that needs an
+    entailment/NLI model this repo doesn't currently depend on. Treat this as
+    a tripwire, not a grounding guarantee.
+    """
+    if not answer or not context_text:
+        return 0.0
+
+    emb_model = get_emb_fn()
+    answer_vec, context_vec = emb_model.encode([answer, context_text])
+
+    denom = np.linalg.norm(answer_vec) * np.linalg.norm(context_vec)
+    if denom == 0:
+        return 0.0
+
+    return float(np.dot(answer_vec, context_vec) / denom)
+
+
+async def async_compute_grounding_score(answer: str, context_text: str) -> float:
+    """Runs compute_grounding_score in the shared executor (encode() is CPU-bound/sync)."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        _executor, compute_grounding_score, answer, context_text
+    )
+
+
 def search_brain(query: str, user_id: int, db: Session):
     """Retrieves context + Generates Answer (Sync)"""
     context_text, sources = retrieve_context(query, user_id, db)
@@ -953,14 +1087,41 @@ async def async_search_brain(query: str, user_id: int):
 
 
 async def async_index_text(
-    filename: str, text: str, user_id: int, location_context: dict = None
+    filename: str,
+    text: str,
+    user_id: int,
+    location_context: dict = None,
+    health_context: dict = None,
+    source_type: str = "note",
 ):
     """Run index_text in a separate thread"""
 
     def _run():
         db = SessionLocal()
         try:
-            return index_text(filename, text, user_id, db, location_context)
+            return index_text(
+                filename,
+                text,
+                user_id,
+                db,
+                location_context,
+                health_context,
+                source_type,
+            )
+        finally:
+            db.close()
+
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_executor, _run)
+
+
+async def async_retrieve_episodic_recall(query: str, user_id: int, limit: int = 2):
+    """Run retrieve_episodic_recall in a separate thread"""
+
+    def _run():
+        db = SessionLocal()
+        try:
+            return retrieve_episodic_recall(query, user_id, db, limit)
         finally:
             db.close()
 

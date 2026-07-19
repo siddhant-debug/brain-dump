@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/theme_provider.dart';
 
 const pageAccents = [
   Color(0xFF9b8aff), // Insights — purple
@@ -8,9 +10,9 @@ const pageAccents = [
   Color(0xFF2979FF), // Pipeline — indigo
 ];
 
-const pageLabels = ['Insights', 'Loops', 'Health', 'Music', 'Pipeline'];
+const pageLabels = ['Health', 'Music'];
 
-class PageIndicator extends StatelessWidget {
+class PageIndicator extends ConsumerWidget {
   final int currentPage;
   final int pageCount;
 
@@ -21,7 +23,8 @@ class PageIndicator extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = ref.watch(themeProvider.select((t) => t.colors));
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Column(
@@ -37,7 +40,7 @@ class PageIndicator extends StatelessWidget {
                 height: 5,
                 margin: const EdgeInsets.symmetric(horizontal: 3),
                 decoration: BoxDecoration(
-                  color: isActive ? pageAccents[index] : Colors.white12,
+                  color: isActive ? pageAccents[index] : colors.textDim.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(3),
                 ),
               );

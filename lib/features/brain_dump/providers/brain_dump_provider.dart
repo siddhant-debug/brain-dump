@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../services/brain_service.dart';
@@ -7,6 +7,7 @@ import '../../notes/services/note_service.dart';
 import '../models/chat_message.dart';
 import '../services/location_service.dart';
 import '../../music/controllers/music_sync_controller.dart';
+import '../../health/controllers/health_sync_controller.dart';
 import 'package:dio/dio.dart';
 
 String _formatError(dynamic e) {
@@ -33,12 +34,14 @@ class BrainDumpState {
   final bool isProcessing;
   final String? error;
   final bool isChatMode;
+  final bool isReflecting;
 
   BrainDumpState({
     this.messages = const [],
     this.isProcessing = false,
     this.error,
     this.isChatMode = false, // Default: Journal mode
+    this.isReflecting = false,
   });
 
   BrainDumpState copyWith({
@@ -47,23 +50,34 @@ class BrainDumpState {
     String? error,
     bool clearError = false,
     bool? isChatMode,
+    bool? isReflecting,
   }) {
     return BrainDumpState(
       messages: messages ?? this.messages,
       isProcessing: isProcessing ?? this.isProcessing,
       error: clearError ? null : (error ?? this.error),
       isChatMode: isChatMode ?? this.isChatMode,
+      isReflecting: isReflecting ?? this.isReflecting,
     );
   }
 }
 
-class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
+class BrainDumpNotifier extends StateNotifier<BrainDumpState> with WidgetsBindingObserver {
   final Ref ref;
   final _uuid = const Uuid();
   StreamSubscription? _currentStreamSubscription;
 
   BrainDumpNotifier(this.ref) : super(BrainDumpState()) {
+    WidgetsBinding.instance.addObserver(this);
     _fetchHistory();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Refresh history when app comes back to foreground to ensure state sync
+    if (state == AppLifecycleState.resumed) {
+      _fetchHistory();
+    }
   }
 
   Future<void> _fetchHistory() async {
@@ -102,6 +116,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _currentStreamSubscription?.cancel();
     super.dispose();
   }
@@ -109,9 +124,6 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
   Future<void> processInput(String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
-
-    // Cancel any ongoing stream
-    await _currentStreamSubscription?.cancel();
 
     // 1. Add User Message immediately
     final userMsgId = _uuid.v4();
@@ -128,6 +140,27 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
       isProcessing: true,
       error: null,
     );
+
+    // Cancel any ongoing stream
+    await _currentStreamSubscription?.cancel();
+
+    // [PERSISTENCE] Save to Notes DB if NOT in Chat Mode
+    // This prevents redundant entries for queries (e.g. "what is success?")
+    if (!state.isChatMode) {
+      unawaited(() async {
+        try {
+          await ref.read(noteServiceProvider).saveNote(trimmed);
+          ref.invalidate(
+            notesProvider,
+          ); // Refresh "Recent Notes" and Thoughts list
+          debugPrint("[DEBUG] Note saved successfully from OmniBar");
+        } catch (e) {
+          debugPrint("[DEBUG] Note persistence failed: $e");
+        }
+      }());
+    } else {
+      debugPrint("[DEBUG] Chat Mode: Skipping persistent note save.");
+    }
 
     // 2. Add "Thinking..." placeholder IMMEDIATELY
     final aiMsgId = _uuid.v4();
@@ -190,9 +223,21 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     } catch (e) {
       debugPrint("[DEBUG] Music context fetch skipped: $e");
     }
+    
+    // [CONTEXT] Fetch Health Snapshot from Riverpod State
+    Map<String, dynamic>? healthContext;
+    try {
+      final healthState = ref.read(healthSyncControllerProvider);
+      if (healthState.isAuthorized && healthState.latestSnapshot != null) {
+        healthContext = healthState.latestSnapshot!.toJson();
+        debugPrint("[DEBUG] Injecting Health Context to Chat Payload: $healthContext");
+      }
+    } catch (e) {
+      debugPrint("[DEBUG] Health context fetch skipped: $e");
+    }
 
     try {
-      await _handleQuery(trimmed, locationContext, musicContext, aiMsgId);
+      await _handleQuery(trimmed, locationContext, musicContext, healthContext, aiMsgId);
     } catch (e) {
       // Update ONLY the specific message by ID
       state = state.copyWith(
@@ -217,6 +262,7 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     String text,
     Map<String, dynamic>? location,
     Map<String, dynamic>? musicContext,
+    Map<String, dynamic>? healthContext,
     String aiMsgId,
   ) async {
     // 2.5 Update placeholder with location if available
@@ -233,31 +279,57 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
       );
     }
 
-    // 3. Stream AI response
+    // 3. Stream AI response with retry logic
+    // IMPROVEMENT: Area 3e — SSE Error Recovery
     String fullAnswer = "";
     List<String> sources = [];
+    int retryCount = 0;
+    const maxRetries = 2;
 
-    try {
-      await for (var data
-          in ref
-              .read(brainServiceProvider)
-              .askBrain(text, location: location, musicContext: musicContext)) {
-        // Handle text chunk
-        if (data['chunk'] != null) {
-          fullAnswer += data['chunk'];
-        }
-
-        // Handle citation sources (usually in the final chunk)
-        if (data['sources'] != null) {
-          try {
-            sources = List<String>.from(data['sources']);
-            debugPrint("Received sources: $sources");
-          } catch (e) {
-            debugPrint("Error parsing sources: $e");
+    while (retryCount <= maxRetries) {
+      try {
+        await for (var data in ref.read(brainServiceProvider).askBrain(
+          text,
+          location: location,
+          musicContext: musicContext,
+          healthContext: healthContext,
+        )) {
+          // Handle text chunk
+          if (data['chunk'] != null) {
+            fullAnswer += data['chunk'];
           }
+
+          // Handle citation sources (usually in the final chunk)
+          if (data['sources'] != null) {
+            try {
+              sources = List<String>.from(data['sources']);
+              debugPrint("Received sources: $sources");
+            } catch (e) {
+              debugPrint("Error parsing sources: $e");
+            }
+          }
+
+          // Update message with accumulated response
+          state = state.copyWith(
+            messages: state.messages.map((msg) {
+              if (msg.id == aiMsgId) {
+                return ChatMessage(
+                  id: msg.id,
+                  content: fullAnswer,
+                  sender: MessageSender.ai,
+                  timestamp: DateTime.now(),
+                  status: MessageStatus
+                      .thinking, // Keep thinking status until fully done
+                  sources: sources.isNotEmpty ? sources : msg.sources,
+                  locationContext: location, // Ensure location persists
+                );
+              }
+              return msg;
+            }).toList(),
+          );
         }
 
-        // Update message with accumulated response
+        // Mark as complete
         state = state.copyWith(
           messages: state.messages.map((msg) {
             if (msg.id == aiMsgId) {
@@ -266,54 +338,56 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
                 content: fullAnswer,
                 sender: MessageSender.ai,
                 timestamp: DateTime.now(),
-                status: MessageStatus
-                    .thinking, // Keep thinking status until fully done
-                sources: sources.isNotEmpty ? sources : msg.sources,
-                locationContext: location, // Ensure location persists
+                status: MessageStatus.sent,
+                sources: sources, // [Architect] FIX: Pass collected sources here
+                isRestored: false, // Live message
+                locationContext: location, // Final attachment
               );
             }
             return msg;
           }).toList(),
+          isProcessing: false,
         );
+        break; // Success, break out of retry loop
+      } catch (e) {
+        retryCount++;
+        final isLastAttempt = retryCount > maxRetries;
+        
+        if (isLastAttempt) {
+          // Permanently failed
+          state = state.copyWith(
+            messages: state.messages.map((msg) {
+              if (msg.id == aiMsgId) {
+                return msg.copyWith(
+                  content: "Error: ${_formatError(e)}\n\n(Retried $maxRetries times)",
+                  status: MessageStatus.error,
+                );
+              }
+              return msg;
+            }).toList(),
+            error: e.toString(),
+            isProcessing: false,
+          );
+          break;
+        } else {
+          // Reconnecting visual feedback
+          state = state.copyWith(
+            messages: state.messages.map((msg) {
+              if (msg.id == aiMsgId) {
+                return ChatMessage(
+                  id: msg.id,
+                  content: "Reconnecting... (Attempt $retryCount/maxRetries)",
+                  sender: MessageSender.ai,
+                  timestamp: DateTime.now(),
+                  status: MessageStatus.thinking, // Let it fade out/pulse
+                );
+              }
+              return msg;
+            }).toList(),
+          );
+          await Future.delayed(const Duration(seconds: 2));
+        }
       }
-
-      // Mark as complete
-      state = state.copyWith(
-        messages: state.messages.map((msg) {
-          if (msg.id == aiMsgId) {
-            return ChatMessage(
-              id: msg.id,
-              content: fullAnswer,
-              sender: MessageSender.ai,
-              timestamp: DateTime.now(),
-              status: MessageStatus.sent,
-              sources: sources, // [Architect] FIX: Pass collected sources here
-              isRestored: false, // Live message
-              locationContext: location, // Final attachment
-            );
-          }
-          return msg;
-        }).toList(),
-        isProcessing: false,
-      );
-    } catch (e) {
-      // Handle error
-      state = state.copyWith(
-        messages: state.messages.map((msg) {
-          if (msg.id == aiMsgId) {
-            return ChatMessage(
-              id: msg.id,
-              content: "Error: ${_formatError(e)}",
-              sender: MessageSender.ai,
-              timestamp: DateTime.now(),
-              status: MessageStatus.sent,
-            );
-          }
-          return msg;
-        }).toList(),
-        error: e.toString(),
-        isProcessing: false,
-      );
     }
   }
 
@@ -332,13 +406,61 @@ class BrainDumpNotifier extends StateNotifier<BrainDumpState> {
     }
   }
 
-  /// Clear message history from local state (doesn't affect backend)
+  /// Clear message history from local state and signal backend to reflect
   void clearLocalHistory() {
     state = state.copyWith(messages: []);
+    endSession(); // Trigger reflection in background
+  }
+
+  /// Signal the backend that a session has ended (manual trigger)
+  Future<void> endSession() async {
+    state = state.copyWith(isReflecting: true);
+    try {
+      await ref.read(brainServiceProvider).endSession();
+      debugPrint("[DEBUG] End session signal sent to backend");
+      
+      // Keep reflecting state for a few seconds for visual feedback
+      await Future.delayed(const Duration(seconds: 3));
+    } catch (e) {
+      debugPrint("[DEBUG] End session signal failed: $e");
+    } finally {
+      if (mounted) {
+        state = state.copyWith(isReflecting: false);
+      }
+    }
   }
 
   /// Toggle between Chat and Journal mode
   void toggleMode() {
     state = state.copyWith(isChatMode: !state.isChatMode);
+  }
+
+  /// Manually retry a failed message
+  Future<void> retryMessage(String aiMsgId) async {
+    // Find the user message before this AI message
+    final msgIndex = state.messages.indexWhere((m) => m.id == aiMsgId);
+    if (msgIndex <= 0) return;
+    
+    final userMsg = state.messages[msgIndex - 1];
+    if (userMsg.sender != MessageSender.user) return;
+
+    // Reset status to thinking
+    state = state.copyWith(
+      isProcessing: true,
+      messages: state.messages.map((msg) {
+        if (msg.id == aiMsgId) {
+          return msg.copyWith(
+            content: "Thinking...",
+            status: MessageStatus.thinking,
+          );
+        }
+        return msg;
+      }).toList(),
+    );
+
+    // Context is already in the old messages, but for simplicity we re-run standard context fetch
+    // or we could store the context in the ChatMessage.
+    // For now, let's just re-run standard _handleQuery with the original text.
+    await _handleQuery(userMsg.content, null, null, null, aiMsgId);
   }
 }
