@@ -93,3 +93,11 @@ docs/
 .claude/
 .agents/
 reviews/
+
+# Ad-hoc scratch/debug scripts (not part of the app, don't recommit)
+/implementation_plan.md
+/analyze.txt
+/fix_const.py
+/refactor_dashboard.py
+/test_history.dart
+/test_streaming.py
