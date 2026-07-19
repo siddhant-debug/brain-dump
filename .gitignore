@@ -27,6 +27,22 @@ temp_*.md
 backend/postgres_data/
 postgres_data/
 
+# Database backups (may contain sensitive user data)
+backend/backup.sql
+*.sql
+
+# Log and error dump files
+backend/error.txt
+backend/log.txt
+error.txt
+log.txt
+
+# Archives (build artifacts / accidental exports, not source)
+*.zip
+
+# Resolved-conflict scratch docs (may contain stale secrets)
+*.md.resolved
+
 .DS_Store
 .atom/
 .build/
