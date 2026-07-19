@@ -23,6 +23,10 @@ temp_*.pdf
 temp_*.txt
 temp_*.md
 
+# PostgreSQL data directory (Docker volume - never commit this)
+backend/postgres_data/
+postgres_data/
+
 .DS_Store
 .atom/
 .build/
