@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
@@ -7,18 +7,27 @@ import 'package:dio/dio.dart';
 import '../features/brain_dump/models/chat_message.dart';
 import '../features/brain_dump/providers/brain_dump_provider.dart';
 import '../features/auth/controllers/auth_controller.dart';
-import '../features/vault/presentation/file_vault_screen.dart';
-import '../features/vault/presentation/thoughts_screen.dart';
 import '../core/widgets/persistent_header.dart';
 import '../core/theme/app_theme.dart';
-import '../features/analytics/presentation/analytics_screen.dart';
 import '../features/analytics/services/analytics_service.dart';
-import '../features/music/controllers/music_sync_controller.dart';
+import '../widgets/context_bar.dart';
+import '../widgets/memory_sparks.dart';
+import '../widgets/omni_bar.dart';
+import '../core/theme/theme_provider.dart';
+import '../features/reminders/controllers/smart_reminder_controller.dart';
+import '../features/reminders/presentation/clarifying_prompt_sheet.dart';
 
 /// Black Canvas - Minimalist Digital Notebook
 /// Design: Pure black background, invisible list, hand-drawn spacing
 class BrainDumpScreen extends ConsumerStatefulWidget {
-  const BrainDumpScreen({super.key});
+  final bool startInJournal;
+  final bool autoTriggerMic;
+
+  const BrainDumpScreen({
+    super.key,
+    this.startInJournal = false,
+    this.autoTriggerMic = false,
+  });
 
   @override
   ConsumerState<BrainDumpScreen> createState() => _BrainDumpScreenState();
@@ -30,10 +39,6 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
   final FocusNode _focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
 
-  // Navigation State
-  int _selectedIndex = 0; // 0: Insights, 1: Chat, 2: Thoughts, 3: Vault
-
-  // Message tracking
   int _previousMessageCount = 0;
 
   // Checkmark animation for saved notes
@@ -50,6 +55,21 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
   @override
   void initState() {
     super.initState();
+
+    // IMPROVEMENT: Area 1 — Capture Friction / UX Focus
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.startInJournal) {
+        if (ref.read(brainDumpProvider).isChatMode) {
+          ref.read(brainDumpProvider.notifier).toggleMode();
+        }
+        _focusNode.requestFocus();
+      } else if (!ref.read(brainDumpProvider).isChatMode) {
+        // Just focus if already in journal mode anyway
+        // IMPROVEMENT: Area 2a - Instant Keyboard Focus on Brain Tab
+        _focusNode.requestFocus();
+      }
+    });
 
     _checkmarkController = AnimationController(
       vsync: this,
@@ -96,6 +116,9 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
+    // [Architect] UX FIX: CLEAN INPUT EARLY synchronously to prevent double-submissions
+    _controller.clear();
+
     final isChatMode = ref.read(brainDumpProvider).isChatMode;
 
     // In journal mode, capture text for ghost animation before clearing
@@ -106,8 +129,24 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
       });
     }
 
-    // [Architect] UX FIX: CLEAN INPUT EARLY
-    _controller.clear();
+    // [Architect] Smart Reminder Routing Check
+    final reminderKeywords = ['remind', 'reminder', 'alarm', 'wake me up'];
+    final lowerText = text.toLowerCase();
+    final isReminderIntent = reminderKeywords.any((k) => lowerText.contains(k));
+
+    if (isReminderIntent) {
+      // Trigger Smart Reminder Flow
+      await ref.read(smartReminderControllerProvider.notifier).parseInput(text);
+      if (mounted) {
+        showModalBottomSheet(
+          context: context,
+          backgroundColor: Colors.transparent,
+          isScrollControlled: true,
+          builder: (context) => const ClarifyingPromptSheet(),
+        );
+      }
+      return;
+    }
 
     try {
       if (isChatMode) {
@@ -123,6 +162,8 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
           if (mounted) {
             setState(() => _showGhost = false);
             _ghostController.reset();
+            // IMPROVEMENT: Area 1 — Capture Friction (haptic confirmation)
+            HapticFeedback.lightImpact();
           }
         });
 
@@ -177,9 +218,8 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
   @override
   Widget build(BuildContext context) {
     final brainDumpState = ref.watch(brainDumpProvider);
-    debugPrint(
-      'DEBUG UI RENDER: brainDumpState.messages.length = ${brainDumpState.messages.length}',
-    );
+    final themeState = ref.watch(themeProvider);
+    final colors = themeState.colors;
 
     // Auto-scroll when new messages arrive
     if (brainDumpState.messages.length > _previousMessageCount) {
@@ -190,95 +230,54 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
     }
 
     return Scaffold(
-      backgroundColor: AppColors.background, // Pure black
+      backgroundColor: colors.bgTop, // Pure black
       resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: Stack(
-          children: [
-            // LAYER 1: UNIFIED LAYOUT
-            Column(
-              children: [
-                // Top section: Routes between Journal/Chat/etc
-                Expanded(
-                  child: IndexedStack(
-                    index: _selectedIndex,
-                    children: [
-                      const AnalyticsScreen(),
-                      brainDumpState.isChatMode
-                          ? _buildChatLayer(brainDumpState)
-                          : _buildJournalLayout(),
-                      const ThoughtsScreen(isEmbedded: true),
-                      const FileVaultScreen(isEmbedded: true),
-                    ],
-                  ),
-                ),
-
-                // Bottom section: Unified Input (if chat) + Dock
-                Container(
-                  color: AppColors.background, // Block scrolling text
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_selectedIndex == 1 && brainDumpState.isChatMode)
-                        _buildMinimalInput(),
-                      _PillDock(
-                        selectedIndex: _selectedIndex,
-                        onTabSelected: (index) {
-                          setState(() {
-                            _selectedIndex = index;
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+        child: brainDumpState.isChatMode
+            ? _buildChatLayer(brainDumpState, colors)
+            : _buildJournalLayout(colors),
       ),
     );
   }
 
   /// Shared header — mode toggle + clear + logout
-  Widget _buildHeader(bool isChatMode) {
+  Widget _buildHeader(bool isChatMode, CircadianColors colors) {
     return PersistentHeader(
       title: 'BrainDumps',
-      subtitle: _buildModeToggle(isChatMode),
       actions: [
         // Clear History Button — only in chat mode
         if (isChatMode)
           IconButton(
             icon: Icon(
               Icons.cleaning_services_rounded,
-              color: AppColors.textSecondary,
+              color: colors.textDim,
               size: 20,
             ),
             onPressed: () {
               showDialog(
                 context: context,
                 builder: (context) => AlertDialog(
-                  backgroundColor: AppColors.background,
+                  backgroundColor: colors.bgTop,
                   title: Text(
                     'Clear Screen?',
-                    style: TextStyle(color: AppColors.textPrimary),
+                    style: TextStyle(color: colors.text),
                   ),
                   content: Text(
                     'This will clear messages from your screen but keep them in your brain.',
-                    style: TextStyle(color: AppColors.textSecondary),
+                    style: TextStyle(color: colors.textDim),
                   ),
                   actions: [
                     TextButton(
                       child: Text(
                         'Cancel',
-                        style: TextStyle(color: AppColors.textSecondary),
+                        style: TextStyle(color: colors.textDim),
                       ),
                       onPressed: () => Navigator.pop(context),
                     ),
                     TextButton(
-                      child: const Text(
+                      child: Text(
                         'Clear',
-                        style: TextStyle(color: AppColors.error),
+                        style: TextStyle(color: colors.red),
                       ),
                       onPressed: () {
                         ref
@@ -294,7 +293,7 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
           ),
         // Logout Button
         IconButton(
-          icon: const Icon(Icons.logout_rounded, color: Colors.white24),
+          icon: Icon(Icons.logout_rounded, color: colors.textDim.withValues(alpha: 0.2)),
           onPressed: () => ref.read(authControllerProvider.notifier).signOut(),
         ),
       ],
@@ -302,262 +301,206 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
   }
 
   /// Mode toggle
-  Widget _buildModeToggle(bool isChatMode) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          isChatMode ? 'Chat' : 'Journal',
-          style: TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            fontStyle: FontStyle.italic,
-          ),
+  Widget _buildModeToggle(bool isChatMode, CircadianColors colors) {
+    return GestureDetector(
+      onTap: () => ref.read(brainDumpProvider.notifier).toggleMode(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colors.surfaceBorder, width: 0.5),
         ),
-        const SizedBox(width: 6),
-        SizedBox(
-          height: 18,
-          child: Switch.adaptive(
-            value: isChatMode,
-            onChanged: (_) {
-              ref.read(brainDumpProvider.notifier).toggleMode();
-            },
-            activeThumbColor: const Color.fromARGB(106, 92, 83, 48),
-            activeTrackColor: AppColors.textPrimary.withValues(alpha: 0.1),
-            inactiveThumbColor: AppColors.accent,
-            inactiveTrackColor: AppColors.accent.withValues(alpha: 0.3),
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isChatMode ? Icons.chat_bubble_outline_rounded : Icons.edit_note_rounded,
+              size: 14,
+              color: colors.accent,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              isChatMode ? 'Chat' : 'Journal',
+              style: TextStyle(
+                color: colors.text,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
   /// Chat layout — messages list, input at bottom via Layer 2 overlay
-  Widget _buildChatLayer(BrainDumpState state) {
-    final musicState = ref.watch(musicSyncControllerProvider);
-
+  Widget _buildChatLayer(BrainDumpState state, CircadianColors colors) {
     return Column(
       children: [
-        _buildHeader(state.isChatMode),
-        if (musicState.isPlaying && musicState.currentSong != null)
-          _buildMusicChip(musicState),
+        _buildHeader(state.isChatMode, colors),
+        const ContextBar(),
+        const SizedBox(height: 12),
         Expanded(
-          child: ListView.builder(
-            reverse:
-                true, // Forces layout from bottom, so it naturally anchors to bottom
-            controller: _scrollController,
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 0,
-              bottom: 24, // Space around messages
-            ),
-            itemCount: state.messages.length,
-            itemBuilder: (context, index) {
-              // Because reverse is true, index 0 is at the bottom. We want index 0 to be the NEWEST message.
-              // state.messages[last] is newest. So reversed access:
-              final msgIndex = state.messages.length - 1 - index;
-              final msg = state.messages[msgIndex];
-              // To maintain normal spacing (last item has 0 bottom padding), check if it's the newest
-              final isLast = msgIndex == state.messages.length - 1;
-
-              return Padding(
-                padding: EdgeInsets.only(
-                  bottom: isLast ? 0 : 40,
-                ), // 40px spacing between Q&A pairs
-                child: _MinimalMessageRow(msg: msg),
-              );
+          child: RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(brainDumpProvider);
+              await Future.delayed(const Duration(milliseconds: 500));
             },
+            child: ListView.builder(
+              reverse:
+                  true, // Forces layout from bottom, so it naturally anchors to bottom
+              controller: _scrollController,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 0,
+                bottom: 24, // Space around messages
+              ),
+              itemCount: state.messages.length,
+              itemBuilder: (context, index) {
+                // Because reverse is true, index 0 is at the bottom. We want index 0 to be the NEWEST message.
+                // state.messages[last] is newest. So reversed access:
+                final msgIndex = state.messages.length - 1 - index;
+                final msg = state.messages[msgIndex];
+                // To maintain normal spacing (last item has 0 bottom padding), check if it's the newest
+                final isLast = msgIndex == state.messages.length - 1;
+  
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: isLast ? 0 : 40,
+                  ), // 40px spacing between Q&A pairs
+                  child: _MinimalMessageRow(msg: msg, colors: colors),
+                );
+              },
+            ),
           ),
+        ),
+        OmniBar(
+          controller: _controller,
+          onSubmitted: _onSubmitted,
+          isProcessing: state.isProcessing,
+          hintText: "ask anything...",
+          leading: _buildModeToggle(true, colors),
+          showMic: true,
+          autoTriggerMic: widget.autoTriggerMic,
         ),
       ],
     );
   }
 
   /// Journal layout — input at top with green text, ghost animation
-  Widget _buildJournalLayout() {
-    final musicState = ref.watch(musicSyncControllerProvider);
+  Widget _buildJournalLayout(CircadianColors colors) {
 
     return Column(
       children: [
-        _buildHeader(false),
-        if (musicState.isPlaying && musicState.currentSong != null)
-          _buildMusicChip(musicState),
+        _buildHeader(false, colors),
         // Input area at top — full remaining space
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Stack(
-              children: [
-                // Ghost text — floats up and fades after save
-                if (_showGhost)
-                  SlideTransition(
-                    position: _ghostSlide,
-                    child: FadeTransition(
-                      opacity: _ghostOpacity,
-                      child: Text(
-                        _ghostText,
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 18,
-                          height: 1.5,
+          child: RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(brainDumpProvider);
+              await Future.delayed(const Duration(milliseconds: 500));
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Stack(
+                children: [
+                  // Ghost text — floats up and fades after save
+                  if (_showGhost)
+                    SlideTransition(
+                      position: _ghostSlide,
+                      child: FadeTransition(
+                        opacity: _ghostOpacity,
+                        child: Text(
+                          _ghostText,
+                          style: TextStyle(
+                            color: colors.textDim,
+                            fontSize: 18,
+                            height: 1.5,
+                          ),
                         ),
                       ),
                     ),
+                  // Animated hint at input position
+                  ValueListenableBuilder(
+                    valueListenable: _controller,
+                    builder: (context, value, child) {
+                      return value.text.isEmpty
+                          ? _AnimatedHintText(text: 'dump your thoughts...', colors: colors)
+                          : const SizedBox.shrink();
+                    },
                   ),
-                // Animated hint at input position
-                ValueListenableBuilder(
-                  valueListenable: _controller,
-                  builder: (context, value, child) {
-                    return value.text.isEmpty
-                        ? const _AnimatedHintText(text: 'dump your thoughts...')
-                        : const SizedBox.shrink();
-                  },
-                ),
-                // Actual input — green text
-                TextField(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  maxLines: null,
-                  minLines: 1,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _onSubmitted(),
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 16,
-                    height: 1.5,
+                  // Actual input — green text
+                  TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    maxLines: null,
+                    minLines: 10, // Added minLines to make touch area larger for refresh
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _onSubmitted(),
+                    style: TextStyle(
+                      color: colors.text,
+                      fontSize: 16,
+                      height: 1.5,
+                    ),
+                    cursorColor: colors.accent,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      hintText: null,
+                    ),
                   ),
-                  cursorColor: AppColors.accent,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    hintText: null,
+                  // IMPROVEMENT: Area 2b — Character / Word Count Micro-label
+                  ValueListenableBuilder(
+                    valueListenable: _controller,
+                    builder: (context, value, child) {
+                      final wordCount = value.text.split(' ').where((w) => w.trim().isNotEmpty).length;
+                      return Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: AnimatedOpacity(
+                          opacity: wordCount > 0 ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 300),
+                          child: Text(
+                            '$wordCount words',
+                            style: AppTextStyles.micro(colors.textFaint),
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        // Checkmark indicator — centered below input after save
-        if (_showCheckmark)
-          FadeTransition(
-            opacity: _checkmarkController,
-            child: Padding(
-              padding: EdgeInsets.only(bottom: 12),
-              child: Icon(
-                Icons.check_circle_outline,
-                color: AppColors.textSecondary,
-                size: 28,
+                ],
               ),
             ),
           ),
-      ],
-    );
-  }
-
-  /// Minimal input for Chat mode — attached robust box
-  Widget _buildMinimalInput() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      decoration: BoxDecoration(
-        color: AppColors.background, // Match footer background perfectly
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          // Attachment Button
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Icon(
-              Icons.add_a_photo_outlined,
-              color: AppColors.textSecondary,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Stack(
-              alignment: Alignment.centerLeft,
-              children: [
-                // Custom Animated Hint
-                ValueListenableBuilder(
-                  valueListenable: _controller,
-                  builder: (context, value, child) {
-                    return value.text.isEmpty
-                        ? const _AnimatedHintText(text: 'start asking...')
-                        : const SizedBox.shrink();
-                  },
-                ),
-                // Actual Input
-                TextField(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  maxLines: null, // Allow wrapping
-                  minLines: 1,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _onSubmitted(),
-                  style: TextStyle(color: AppColors.textPrimary, fontSize: 16),
-                  cursorColor: AppColors.accent,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    hintText: null,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Voice Button OR Checkmark (depending on state)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: _showCheckmark
-                ? FadeTransition(
-                    opacity: _checkmarkController,
-                    child: Icon(
-                      Icons.check,
-                      color: AppColors.textPrimary,
-                      size: 20,
-                    ),
-                  )
-                : Icon(
-                    Icons.mic_none_outlined,
-                    color: AppColors.textSecondary,
+        ),
+        // Bottom Toggle for Journal Mode
+        Padding(
+          padding: const EdgeInsets.only(bottom: 24, left: 24, right: 24),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildModeToggle(false, colors),
+              const Spacer(),
+              if (_showCheckmark)
+                FadeTransition(
+                  opacity: _checkmarkController,
+                  child: Icon(
+                    Icons.check_circle_outline,
+                    color: colors.accent,
                     size: 20,
                   ),
+                ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMusicChip(MusicContextState state) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 24),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceHigh.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.music_note, size: 14, color: AppColors.accent),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              '${state.currentSong?.title ?? "Unknown"} • ${state.analyzedVibe?.primaryTone ?? (state.isAnalyzing ? "Analyzing vibe..." : "")}',
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -565,7 +508,8 @@ class _BrainDumpScreenState extends ConsumerState<BrainDumpScreen>
 // [Architect] NEW COMPONENT: Visible Thinking Indicator
 // Replaces the invisible/subtle text with a clear animation
 class ThinkingIndicator extends StatefulWidget {
-  const ThinkingIndicator({super.key});
+  final CircadianColors colors;
+  const ThinkingIndicator({super.key, required this.colors});
 
   @override
   State<ThinkingIndicator> createState() => _ThinkingIndicatorState();
@@ -599,7 +543,7 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator> {
     return Text(
       'thinking$dots',
       style: TextStyle(
-        color: AppColors.textSecondary,
+        color: widget.colors.textDim,
         fontSize: 14,
         fontStyle: FontStyle.italic,
       ),
@@ -607,31 +551,31 @@ class _ThinkingIndicatorState extends State<ThinkingIndicator> {
   }
 }
 
-/// Minimal Message Row - No cards, no bubbles, just text
+/// Minimal Message Row - Restyled with Glassmorphism and MemorySparks
 class _MinimalMessageRow extends StatelessWidget {
   final ChatMessage msg;
+  final CircadianColors colors;
 
-  const _MinimalMessageRow({required this.msg});
+  const _MinimalMessageRow({required this.msg, required this.colors});
 
   @override
   Widget build(BuildContext context) {
     final isUser = msg.sender == MessageSender.user;
 
     return Row(
-      mainAxisAlignment: isUser
-          ? MainAxisAlignment.end
-          : MainAxisAlignment.start,
-      crossAxisAlignment: CrossAxisAlignment.start, // Align to top
+      mainAxisAlignment:
+          isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // AI AVATAR (Left)
         if (!isUser) ...[
           CircleAvatar(
             radius: 16,
-            backgroundColor: AppColors.textPrimary.withValues(alpha: 0.12),
+            backgroundColor: colors.text.withValues(alpha: 0.12),
             child: Icon(
               Icons.psychology,
               size: 18,
-              color: AppColors.textSecondary,
+              color: colors.textDim,
             ),
           ),
           const SizedBox(width: 12),
@@ -639,68 +583,91 @@ class _MinimalMessageRow extends StatelessWidget {
 
         // MESSAGE CONTENT
         Flexible(
-          // Use Flexible to allow wrapping
           child: Container(
             constraints: BoxConstraints(
-              maxWidth:
-                  MediaQuery.of(context).size.width *
-                  0.75, // Slightly reduced width to fit avatars
+              maxWidth: MediaQuery.of(context).size.width * 0.75,
             ),
             child: Column(
-              crossAxisAlignment: isUser
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
-                // Show thinking indicator if we are in thinking or sending status
-                (msg.status == MessageStatus.thinking ||
-                        msg.status == MessageStatus.sending)
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (msg.content.isNotEmpty &&
-                              msg.content != 'Thinking...') ...[
-                            Expanded(
-                              child: Text.rich(
-                                TextSpan(
-                                  children: [TextSpan(text: msg.content)],
-                                ),
-                                textAlign: isUser
-                                    ? TextAlign.right
-                                    : TextAlign.left,
-                                style: TextStyle(
-                                  color: isUser
-                                      ? AppColors.textPrimary
-                                      : AppColors.textSecondary,
-                                  fontSize: 16,
-                                  height: 1.5,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isUser
+                        ? colors.accent
+                        : colors.surface.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isUser
+                          ? colors.accent
+                          : colors.surfaceBorder.withValues(alpha: 0.1),
+                    ),
+                  ),
+                  child: (msg.status == MessageStatus.thinking ||
+                          msg.status == MessageStatus.sending)
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (msg.content.isNotEmpty &&
+                                msg.content != 'Thinking...') ...[
+                              Flexible(
+                                child: Text(
+                                  msg.content,
+                                  style: AppTextStyles.body(
+                                    isUser
+                                        ? Colors.white
+                                        : colors.text,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
+                              const SizedBox(width: 8),
+                            ],
+                            ThinkingIndicator(colors: colors),
                           ],
-                          const Padding(
-                            padding: EdgeInsets.only(top: 2.0),
-                            child: ThinkingIndicator(),
-                          ),
-                        ],
-                      )
-                    : Text.rich(
-                        TextSpan(children: [TextSpan(text: msg.content)]),
-                        textAlign: isUser ? TextAlign.right : TextAlign.left,
-                        style: TextStyle(
-                          color: isUser
-                              ? AppColors.textPrimary
-                              : AppColors.textSecondary, // [Architect] AI Color
-                          fontSize: 16,
-                          height: 1.5,
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              msg.content,
+                              style: AppTextStyles.body(
+                                isUser ? Colors.white : (msg.status == MessageStatus.error ? colors.red : colors.text),
+                              ),
+                            ),
+                            if (msg.status == MessageStatus.error) ...[
+                              const SizedBox(height: 8),
+                              Consumer(
+                                builder: (context, ref, child) => GestureDetector(
+                                  onTap: () => ref.read(brainDumpProvider.notifier).retryMessage(msg.id),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.refresh_rounded, size: 14, color: colors.accent),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        "Retry",
+                                        style: AppTextStyles.label(colors.accent),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                      ),
+                ),
 
-                // SOURCES (If AI and has sources)
+                // Memory Sparks (only for AI)
                 if (!isUser && msg.sources.isNotEmpty)
-                  _CollapsibleSources(
-                    sources: msg.sources,
-                    locationContext: msg.locationContext,
+                  MemorySparks(
+                    count: msg.sources.length,
+                    labelOverride: msg.status == MessageStatus.thinking
+                        ? "Connecting memories..."
+                        : null,
                   ),
               ],
             ),
@@ -712,8 +679,8 @@ class _MinimalMessageRow extends StatelessWidget {
           const SizedBox(width: 12),
           CircleAvatar(
             radius: 16,
-            backgroundColor: AppColors.surfaceHigh,
-            child: Icon(Icons.person, size: 18, color: AppColors.textSecondary),
+            backgroundColor: colors.surface,
+            child: Icon(Icons.person, size: 18, color: colors.textDim),
           ),
         ],
       ],
@@ -721,123 +688,11 @@ class _MinimalMessageRow extends StatelessWidget {
   }
 }
 
-/// Pill-Shaped Dock - Minimal, glass effect replaced by a flat, solid dark UI
-class _PillDock extends StatelessWidget {
-  final int selectedIndex;
-  final Function(int) onTabSelected;
-
-  const _PillDock({required this.selectedIndex, required this.onTabSelected});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: AppColors.background, // Solid dark background for the dock
-        borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _DockItem(
-            icon: Icons.bar_chart_rounded,
-            label: 'Insights',
-            isSelected: selectedIndex == 0,
-            onTap: () => onTabSelected(0),
-          ),
-          _DockItem(
-            icon: Icons.note_alt_outlined,
-            label: 'Dump',
-            isSelected: selectedIndex == 1,
-            onTap: () => onTabSelected(1),
-          ),
-          _DockItem(
-            icon: Icons.lightbulb_outline,
-            label: 'Thoughts',
-            isSelected: selectedIndex == 2,
-            onTap: () => onTabSelected(2),
-          ),
-          _DockItem(
-            icon: Icons.folder_copy_rounded,
-            label: 'Vault',
-            isSelected: selectedIndex == 3,
-            onTap: () => onTabSelected(3),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DockItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _DockItem({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: isSelected ? AppColors.surfaceHigh : Colors.transparent,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                color: isSelected
-                    ? AppColors.textPrimary
-                    : AppColors.textSecondary,
-                size: 20,
-              ),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isSelected
-                        ? AppColors.textPrimary
-                        : AppColors.textSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Collapsible Sources Widget - Handles Option A and B for source display
 class _CollapsibleSources extends StatefulWidget {
   final List<String> sources;
-  final Map<String, dynamic>? locationContext;
 
-  const _CollapsibleSources({required this.sources, this.locationContext});
+  const _CollapsibleSources({required this.sources});
 
   @override
   State<_CollapsibleSources> createState() => _CollapsibleSourcesState();
@@ -853,35 +708,22 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
   Widget build(BuildContext context) {
     if (widget.sources.isEmpty) return const SizedBox.shrink();
 
-    // Format location string
-    String locationText = "";
-    if (widget.locationContext != null) {
-      final city = widget.locationContext!['city'] as String?;
-      final type = widget.locationContext!['location_type'] as String?;
-
-      if (city != null) {
-        String cleanCity = city.replaceAll('(specific_location)', '').trim();
-        locationText = " • at $cleanCity";
-        if (type != null &&
-            type != 'outdoor' &&
-            type != 'Unknown Place' &&
-            type != 'specific_location') {
-          locationText += " ($type)";
-        }
-      }
-    }
-
     // OPTION A: Subtle text "from X memories"
     if (_useOptionA) {
       return Padding(
         padding: const EdgeInsets.only(top: 8),
-        child: Text(
-          'from ${widget.sources.length} memories$locationText',
-          style: TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 11,
-            fontStyle: FontStyle.italic,
-          ),
+        child: Consumer(
+          builder: (context, ref, child) {
+            final colors = ref.watch(themeProvider.select((t) => t.colors));
+            return Text(
+              'from ${widget.sources.length} memories',
+              style: TextStyle(
+                color: colors.textDim,
+                fontSize: 11,
+                fontStyle: FontStyle.italic,
+              ),
+            );
+          },
         ),
       );
     }
@@ -898,49 +740,59 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
           },
           child: Padding(
             padding: const EdgeInsets.only(top: 8, bottom: 4),
-            child: Text(
-              _isExpanded ? '↑ sources' : '↓ sources',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            child: Consumer(
+              builder: (context, ref, child) {
+                final colors = ref.watch(themeProvider.select((t) => t.colors));
+                return Text(
+                  _isExpanded ? '↑ sources' : '↓ sources',
+                  style: TextStyle(color: colors.textDim, fontSize: 11),
+                );
+              },
             ),
           ),
         ),
         if (_isExpanded)
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: widget.sources.map((source) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceHigh.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.divider),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.description,
-                        color: AppColors.textSecondary,
-                        size: 12,
+            child: Consumer(
+              builder: (context, ref, child) {
+                final colors = ref.watch(themeProvider.select((t) => t.colors));
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: widget.sources.map((source) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        source, // Filename (e.g., notes.txt)
-                        style: TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 10,
-                        ),
+                      decoration: BoxDecoration(
+                        color: colors.surface.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: colors.surfaceBorder),
                       ),
-                    ],
-                  ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.description,
+                            color: colors.textDim,
+                            size: 12,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            source, // Filename (e.g., notes.txt)
+                            style: TextStyle(
+                              color: colors.text,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 );
-              }).toList(),
+              },
             ),
           ),
       ],
@@ -951,8 +803,9 @@ class _CollapsibleSourcesState extends State<_CollapsibleSources> {
 /// Animated Hint Text - Breathing effect, accepts configurable text
 class _AnimatedHintText extends StatefulWidget {
   final String text;
+  final CircadianColors colors;
 
-  const _AnimatedHintText({this.text = 'start typing ...'});
+  const _AnimatedHintText({required this.colors, this.text = 'start typing ...'});
 
   @override
   State<_AnimatedHintText> createState() => _AnimatedHintTextState();
@@ -989,7 +842,7 @@ class _AnimatedHintTextState extends State<_AnimatedHintText>
       child: Text(
         widget.text,
         style: TextStyle(
-          color: AppColors.textPrimary, // Opacity handles the dimming
+          color: widget.colors.text, // Opacity handles the dimming
           fontSize: 20,
           fontWeight: FontWeight.w300,
           fontStyle: FontStyle.italic,

@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'package:brain_dump/core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../notes/services/note_service.dart';
+import '../../notes/models/note.dart';
 import '../../../core/widgets/persistent_header.dart';
 import '../../auth/controllers/auth_controller.dart';
 import 'note_detail_screen.dart';
+import '../../../../core/theme/theme_provider.dart';
 
 class ThoughtsScreen extends ConsumerStatefulWidget {
   final bool isEmbedded;
@@ -16,6 +19,7 @@ class ThoughtsScreen extends ConsumerStatefulWidget {
 
 class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final Set<int> _deletedNoteIds = {};
 
   @override
   void dispose() {
@@ -23,47 +27,53 @@ class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
     super.dispose();
   }
 
-  Future<void> _showAddNoteDialog(BuildContext context, WidgetRef ref) async {
+  Future<void> _showAddNoteDialog(BuildContext context, WidgetRef ref, CircadianColors colors) async {
     final TextEditingController noteController = TextEditingController();
     return showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF111111),
-          title: const Text(
-            'Add New Thought',
-            style: TextStyle(color: Colors.white),
+          backgroundColor: colors.bgTop,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            side: BorderSide(color: colors.surfaceBorder, width: 0.5),
+          ),
+          title: Text(
+            'New Thought',
+            style: AppTextStyles.bodyMed(colors.text),
           ),
           content: TextField(
             controller: noteController,
             autofocus: true,
-            style: const TextStyle(color: Colors.white),
+            style: AppTextStyles.body(colors.text),
+            maxLines: 5,
             decoration: InputDecoration(
-              hintText: 'Type your thought here...',
-              hintStyle: const TextStyle(color: Colors.white38),
+              hintText: "What's on your mind?",
+              hintStyle: AppTextStyles.body(colors.textDim.withValues(alpha: 0.5)),
               filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.05),
+              fillColor: colors.surfaceLow,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppRadius.input),
                 borderSide: BorderSide.none,
               ),
+              contentPadding: const EdgeInsets.all(16),
             ),
-            maxLines: 5,
           ),
           actions: <Widget>[
             TextButton(
-              child: const Text(
+              child: Text(
                 'Cancel',
-                style: TextStyle(color: Colors.white54),
+                style: AppTextStyles.label(colors.textDim),
               ),
               onPressed: () {
                 Navigator.of(dialogContext).pop();
               },
             ),
             TextButton(
-              child: const Text(
+              child: Text(
                 'Save',
-                style: TextStyle(color: Colors.blueAccent),
+                style: AppTextStyles.label(colors.accent),
               ),
               onPressed: () async {
                 if (noteController.text.isNotEmpty) {
@@ -75,14 +85,14 @@ class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Thought saved successfully'),
+                          content: Text('Thought saved'),
                         ),
                       );
                     }
                   } catch (e) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to save thought: $e')),
+                        SnackBar(content: Text('Failed: $e')),
                       );
                     }
                   }
@@ -95,28 +105,23 @@ class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
           ],
         );
       },
-    );
+    ).then((_) {
+      // IMPROVEMENT: Area 3c — Controller Disposal
+      noteController.dispose();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final themeState = ref.watch(themeProvider);
+    final colors = themeState.colors;
     final notesState = ref.watch(notesProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: widget.isEmbedded
-          ? null
-          : AppBar(
-              title: const Text(
-                'My Thoughts',
-                style: TextStyle(color: Colors.white),
-              ),
-              backgroundColor: Colors.transparent,
-              iconTheme: const IconThemeData(color: Colors.white),
-            ),
-      body: Column(
-        children: [
-          if (widget.isEmbedded)
+      backgroundColor: colors.bgTop,
+      body: SafeArea(
+        child: Column(
+          children: [
             PersistentHeader(
               title: 'Thoughts',
               actions: [
@@ -127,85 +132,139 @@ class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
                 ),
               ],
             ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async {
-                ref.invalidate(notesProvider);
-              },
-              child: SingleChildScrollView(
-                padding: EdgeInsets.only(
-                  left: 20,
-                  right: 20,
-                  top: widget.isEmbedded ? 0 : 20,
-                  bottom: widget.isEmbedded ? 120 : 20,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildSectionHeader(
-                      'Stream of Consciousness',
-                      onAdd: () => _showAddNoteDialog(context, ref),
-                    ),
-                    //const SizedBox(height: 2),
-                    _buildNotesList(notesState),
-                  ],
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  ref.invalidate(notesProvider);
+                },
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(
+                    left: 20,
+                    right: 20,
+                    bottom: 120, // Space for Dock
+                  ),
+                    child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSectionHeader(
+                        'Stream of Consciousness',
+                        colors,
+                        onAdd: () => _showAddNoteDialog(context, ref, colors),
+                      ),
+                      _buildNotesList(notesState, colors),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildSectionHeader(String title, {VoidCallback? onAdd}) {
+  Widget _buildSectionHeader(String title, CircadianColors colors, {VoidCallback? onAdd}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
+          title.toUpperCase(),
+          style: AppTextStyles.label(colors.textDim).copyWith(
+            letterSpacing: 1.2,
           ),
         ),
         if (onAdd != null)
           IconButton(
-            icon: const Icon(Icons.add_circle_outline, color: Colors.white70),
+            icon: Icon(Icons.add_circle_outline, color: colors.textDim, size: 20),
             onPressed: onAdd,
           ),
       ],
     );
   }
 
-  Widget _buildNotesList(AsyncValue<List<dynamic>> notesState) {
+  Widget _buildNotesList(AsyncValue<List<Note>> notesState, CircadianColors colors) {
     return notesState.when(
       data: (notes) {
-        if (notes.isEmpty) {
-          return const Center(
-            child: Text(
-              'No thoughts saved yet.',
-              style: TextStyle(color: Colors.white38),
+        final visibleNotes = notes.where((n) => !_deletedNoteIds.contains(n.id)).toList();
+
+        // IMPROVEMENT: Area 2d — Empty States (Thoughts tab)
+        if (visibleNotes.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            alignment: Alignment.center,
+            child: Column(
+              children: [
+                Icon(Icons.bubble_chart_outlined, size: 48, color: colors.textDim.withValues(alpha: 0.3)),
+                const SizedBox(height: 16),
+                Text(
+                  'No thoughts yet',
+                  style: AppTextStyles.bodyMed(colors.textDim),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Your stream of consciousness will appear here.',
+                  style: AppTextStyles.body(colors.textFaint),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
           );
         }
 
-        return ListView.builder(
+        return ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: notes.length,
+          itemCount: visibleNotes.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 16),
           itemBuilder: (context, index) {
-            final note = notes[index];
-            final noteId = note['id'];
+            final note = visibleNotes[index];
+            
+            void handleDelete() {
+              setState(() => _deletedNoteIds.add(note.id));
 
-            return Card(
-              margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-              color: Colors.white.withValues(alpha: 0.05),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+              Timer(const Duration(seconds: 4), () async {
+                if (_deletedNoteIds.contains(note.id)) {
+                  try {
+                    await ref.read(noteServiceProvider).deleteNote(note.id);
+                  } catch (e) {
+                    debugPrint('Delayed delete failed: $e');
+                  }
+                }
+              });
+
+              ScaffoldMessenger.of(context).clearSnackBars();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Thought deleted', style: TextStyle(color: colors.bgTop)),
+                  backgroundColor: colors.text,
+                  duration: const Duration(seconds: 3),
+                  action: SnackBarAction(
+                    label: 'Undo',
+                    textColor: colors.bgTop,
+                    onPressed: () {
+                      setState(() {
+                        _deletedNoteIds.remove(note.id);
+                      });
+                    },
+                  ),
+                ),
+              );
+            }
+
+            // IMPROVEMENT: Area 2c — Swipe-to-Delete on Thought Cards
+            return Dismissible(
+              key: ValueKey(note.id),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 20),
+                color: colors.red.withValues(alpha: 0.2),
+                child: Icon(Icons.delete_outline, color: colors.red),
               ),
-              child: ListTile(
+              onDismissed: (_) => handleDelete(),
+              child: _ThoughtItem(
+                note: note,
+                colors: colors,
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -213,155 +272,177 @@ class _ThoughtsScreenState extends ConsumerState<ThoughtsScreen> {
                     ),
                   );
                 },
-                title: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      note['content'],
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (note['categories'] != null &&
-                        (note['categories'] as List).isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
-                        child: Wrap(
-                          spacing: 6,
-                          children: (note['categories'] as List).map((cat) {
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.blueAccent.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                cat.toString(),
-                                style: const TextStyle(
-                                  color: Colors.blueAccent,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                  ],
-                ),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 4.0),
-                  child: Row(
-                    children: [
-                      // Sentiment Dot
-                      if (note['sentiment'] != null) ...[
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color:
-                                note['sentiment'].toString().toLowerCase() ==
-                                    'positive'
-                                ? Colors.green
-                                : note['sentiment'].toString().toLowerCase() ==
-                                      'negative'
-                                ? Colors.red
-                                : Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
-                      Text(
-                        'Saved on ${note['created_at'].toString().split('T')[0]}',
-                        style: const TextStyle(
-                          color: Colors.white38,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(
-                        Icons.delete_outline,
-                        color: Colors.white24,
-                      ),
-                      onPressed: () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            backgroundColor: const Color(0xFF1E1E1E),
-                            title: const Text(
-                              'Delete Thought?',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            content: const Text(
-                              'This cannot be undone.',
-                              style: TextStyle(color: Colors.white70),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text(
-                                  'Cancel',
-                                  style: TextStyle(color: Colors.white54),
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                child: const Text(
-                                  'Delete',
-                                  style: TextStyle(color: Colors.redAccent),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-
-                        if (confirm == true) {
-                          try {
-                            await ref
-                                .read(noteServiceProvider)
-                                .deleteNote(noteId);
-                            ref.invalidate(notesProvider);
-                          } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Failed to delete: $e')),
-                              );
-                            }
-                          }
-                        }
-                      },
-                    ),
-                    Icon(
-                      note['is_favorite'] == true
-                          ? Icons.star
-                          : Icons.star_border,
-                      color: note['is_favorite'] == true
-                          ? Colors.yellowAccent
-                          : Colors.white24,
-                    ),
-                  ],
-                ),
+                onDelete: handleDelete,
               ),
             );
           },
         );
       },
-      loading: () =>
-          const Center(child: CircularProgressIndicator(color: Colors.white24)),
+      // IMPROVEMENT: Area 2e — Skeleton Loaders on Note Cards
+      loading: () => ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: 3,
+        separatorBuilder: (_, _) => const SizedBox(height: 16),
+        itemBuilder: (_, _) => _NoteCardSkeleton(colors: colors),
+      ),
       error: (e, _) => Center(
         child: Text(
           'Error: $e',
           style: const TextStyle(color: Colors.redAccent),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThoughtItem extends StatelessWidget {
+  final Note note;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+  final CircadianColors colors;
+
+  const _ThoughtItem({
+    required this.note,
+    required this.onTap,
+    required this.onDelete,
+    required this.colors,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final date = note.createdAt.toString().split(' ')[0];
+    final sentiment = note.sentiment?.toLowerCase();
+    final sentimentColor = sentiment == 'positive'
+        ? colors.green
+        : sentiment == 'negative'
+            ? colors.red
+            : colors.textDim;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: colors.bgTop,
+          border: Border(
+            left: BorderSide(
+              color: colors.accent,
+              width: 1.5,
+            ),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    note.content,
+                    style: AppTextStyles.body(colors.text),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.delete_outline, color: colors.textDim.withValues(alpha: 0.3), size: 18),
+                  onPressed: onDelete,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (sentiment != null) ...[
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: sentimentColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Text(
+                  date,
+                  style: AppTextStyles.micro(colors.textDim),
+                ),
+                const Spacer(),
+                if (note.isFavorite)
+                  Icon(Icons.star, color: Colors.amber.withValues(alpha: 0.5), size: 14),
+              ],
+            ),
+            if (note.categories.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: note.categories.map((cat) {
+                  return Text(
+                    '#${cat.toLowerCase()}',
+                    style: AppTextStyles.micro(colors.accent.withValues(alpha: 0.7)),
+                  );
+                }).toList(),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NoteCardSkeleton extends StatefulWidget {
+  final CircadianColors colors;
+  const _NoteCardSkeleton({required this.colors});
+
+  @override
+  State<_NoteCardSkeleton> createState() => _NoteCardSkeletonState();
+}
+
+class _NoteCardSkeletonState extends State<_NoteCardSkeleton> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+    _animation = Tween<double>(begin: 0.3, end: 0.7).animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _animation,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: widget.colors.bgTop,
+          border: Border(left: BorderSide(color: widget.colors.surfaceBorder, width: 1.5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(height: 16, width: double.infinity, color: widget.colors.surfaceLow),
+            const SizedBox(height: 8),
+            Container(height: 16, width: 200, color: widget.colors.surfaceLow),
+            const SizedBox(height: 16),
+            Container(height: 10, width: 80, color: widget.colors.surfaceLow),
+          ],
         ),
       ),
     );
